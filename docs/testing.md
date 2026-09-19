@@ -76,6 +76,25 @@ and they are not the same claim:
 Say which one you ran. The weaker claim stated honestly is worth more than the
 stronger one rounded up.
 
+## The frontend suite
+
+**vitest**, configured in `frontend/vitest.config.js`, with tests **beside the
+source they cover** — `src/lib/timing.test.js` next to `src/lib/timing.js` —
+as the media tracker does it.
+
+```bash
+cd frontend && npm test          # once
+cd frontend && npm run test:watch
+```
+
+It needs no lock and no database. CI runs it after the frontend lint.
+
+What belongs here is logic with no server behind it, and the due-now
+boundaries in `src/lib/timing.js` are the case that justified the runner: they
+are a date comparison that is only wrong on the evening it matters. Both dates
+are parameters rather than a `new Date()` inside the function, so a test can
+stand on a boundary instead of waiting for one.
+
 ## A refusal test has to be able to fail
 
 **Asserting that a gate allows is safe on an empty set; asserting that it

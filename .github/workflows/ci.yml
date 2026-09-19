@@ -86,6 +86,13 @@ jobs:
         run: npm run lint
         working-directory: frontend
 
+      # The due-now boundaries are pure functions with no server behind them,
+      # so nothing in the Python suite covers them. They are only wrong on the
+      # evening they matter, which is the worst time to find out.
+      - name: Test frontend
+        run: npm test
+        working-directory: frontend
+
       # dockerfile builds the frontend, so without this a bundle that does not
       # compile is found by the deploy rather than by the pull request.
       - name: Build the frontend
