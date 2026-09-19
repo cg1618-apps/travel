@@ -30,8 +30,16 @@ What it does not have is a packing list, a trip, a rule, a transport note — or
 a table for any of them: the Alembic chain holds one deliberately empty
 baseline revision, so the from-zero proof exists before the first column does.
 
-It is `status: planned` in the platform's `apps.yml`, so the tunnel does not
-route `travel.cg1618.com` yet. Going live is its own change.
+It is `status: live` in the platform's `apps.yml`, so the tunnel routes
+`travel.cg1618.com` to this app. That is a statement about the hostname being
+routed, not about anything interesting answering on it.
+
+Whether the DNS record exists, and whether Cloudflare is actually enforcing
+Access today, are the platform's to know and are recorded there. Only a probe
+from the open internet answers the second one, which is what the platform's
+`bin/check-exposure` is for. Asserting either here is how the previous version
+of this line went stale: an app file holding a platform fact it has no way to
+keep true.
 
 A feature starts with design, not implementation — brainstorm into
 `docs/superpowers/specs/`, and only then plan.
