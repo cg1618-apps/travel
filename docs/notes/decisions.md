@@ -134,10 +134,9 @@ easiest.
 
 ### Entities
 
-- **PackingList** — a nullable `trip_id`, a nullable `paired_list_id`, a
-  `template` flag, and a `leg` label (outbound, return, neither).
-- **PackingItem** — name, category, a `packed` flag, notes, and an `always`
-  marker for the things that are on every list.
+Module 1 is built; `data-model.md` is the description of what exists and this
+sketch no longer restates it. The four below are still sketches.
+
 - **Trip** — names, dates, destination, notes.
 - **BuyingItem** — name, a `bought` flag, notes, optionally attached to a trip.
 - **Rule** — text and tags.
@@ -154,15 +153,20 @@ easiest.
   is promoted to a template explicitly. Without that, "copy a previous list"
   degrades into a wall of forty names and stops being used — which would take
   the most valuable feature with it.
-- **A round trip is two ordinary lists that know about each other.**
-  `paired_list_id` is navigational: it lets the two be viewed together and says
-  nothing more. There is deliberately **no logic across the pair** — nothing
-  infers that something carried out must come back, because the return genuinely
-  differs and a system that assumes otherwise generates noise. Rejected: one
-  list with two check-off states, which models the legs as identical when they
-  are not.
-- **Pairing is a self-reference rather than a trip.** Routing it through trips
-  would make a trip mandatory for the one case where laziness is most likely.
+- **A round trip is two ordinary lists that know about each other.** Pairing is
+  navigational: it lets the two be viewed together and says nothing more. There
+  is deliberately **no logic across the pair** — nothing infers that something
+  carried out must come back, because the return genuinely differs and a system
+  that assumes otherwise generates noise. Rejected: one list with two check-off
+  states, which models the legs as identical when they are not.
+- **Pairing is not routed through a trip**, which would make a trip mandatory
+  for the one case where laziness is most likely.
+- **A shared `pair_id`, not a `paired_list_id` self-pointer.** Designed as a
+  self-reference and built as a shared key, for two reasons found while
+  writing it: a pointer holds two copies of one fact and can desync — A points
+  at B while B points at C, and nothing complains — and the cap counts a pair
+  as one slot, which is a distinct-count against a shared key but an awkward
+  self-join against a pointer.
 - **Rules and transport notes are tagged text, not structured records.** Rules
   are experience; fields would lose the thing that makes them worth writing. If
   a shape emerges after fifty of them, structure it then.
@@ -174,6 +178,79 @@ easiest.
 
 `name_cn`, `name_en`, `aliases[]`, with `name_cn` as the display default — the
 platform-wide convention, shared with `food` and `art`.
+
+**Packing lists and items deviate: they carry a single `name`.** The convention
+exists for library entities that other people's data flows into — an
+ingredient, a film, an artist. A packing item is a line typed at midnight, and
+a second language field plus an aliases array on each one has no reader. If a
+shared trip ever needs to be read in the other language, that is a property of
+the share rather than of every row.
+
+### Packing lists, as built
+
+The rejected alternatives, which the shipped code cannot show on its own.
+
+- **One list entity with two independent flags, not a separate template
+  table.** `saved` exempts a list from the cap; `template` offers it as a
+  starting point. A list can be both, either or neither, so promoting one is a
+  flag flip rather than a duplication, and there is no copying between kinds.
+  Rejected: templates as their own entity, which makes "keep this actual list
+  and also start from it" two rows that drift apart.
+
+- **There is no "always packed" marker.** It was in the original design and was
+  removed before anything was built. Nothing is unconditionally packed — the
+  phone is, right up until the trip is strange enough that it isn't — so the
+  set of things on every list is a property of the *template chosen for this
+  trip*, not of the item. Templates already do that job, and two mechanisms for
+  one job is how they drift apart. It also had no answerable seed source: the
+  lists whose always-items the union would be read from are the ones the cap
+  deletes.
+
+- **Status is a triple, not a boolean.** Without `no_need` a list never reads
+  as finished, and the items left unticked cannot say whether they are
+  forgotten or deliberately left behind — which is the distinction being
+  scanned for at the door.
+
+- **Double-check is two fields, not a fourth status value.** The state worth
+  seeing is *packed and still unverified*: the passport is in the bag and
+  nobody has looked at the expiry date. A single mutually-exclusive field
+  cannot express it. Rejected: `not_packed / packed / needs_double_check /
+  no_need`, which forces an item to be either checked off or flagged.
+
+- **Quantity is a target and a count, which forced it to be numeric.** It was
+  designed as free text — "2 pairs", "enough for 5 days" — and changed when the
+  packed count was added, because "3 of 5" cannot be computed from a string.
+  The number and its unit are separate columns. The cost is real: an
+  unquantifiable amount is rounded or left null with the detail in `notes`. The
+  benefit is that being short is visible at a glance, which is the failure a
+  packing list exists to catch.
+
+- **The count suggests the status; it never sets it.** An item may be marked
+  `packed` while short, because sometimes three of five is what you are taking,
+  and a derived status would force you to edit the target to say so.
+  Over-packing is not an error either. Rejected: deriving status from the count
+  whenever a quantity is set, which is one source of truth and no way to say
+  "three is enough".
+
+- **A pair counts as one slot against the cap.** The pair is how a trip is
+  actually thought about; charging it two would punish the round trip for being
+  modelled honestly.
+
+- **Eviction refuses before it deletes, and the refusal is a plain string.**
+  `detail` is a plain string on every endpoint, matching media, so the ids the
+  confirmation dialog needs arrive as `evict_next` on the index instead — data
+  on a normal response rather than structure smuggled into an error.
+
+- **Options are learned, not curated.** Typing a category records it; a small
+  screen renames, reorders and prunes. Rejected: a curated list seeded before
+  use, which makes autocomplete useless until the seeding is done. Because an
+  item holds the text rather than a reference, a rename rewrites the items, a
+  name collision means merge, and a delete leaves the items alone.
+
+- **Due-now is computed on the frontend.** The viewer's calendar day is the one
+  that matters and the server's is not necessarily the same. That is what
+  brought vitest into this app: it is a date boundary, wrong only on the
+  evening it counts.
 
 ### Out of scope, deliberately
 

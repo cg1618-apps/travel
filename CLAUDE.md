@@ -23,11 +23,11 @@ smallest surface on which to prove the platform's app contract end to end.
 
 ## Status
 
-**The first feature is being built: packing lists.** Under it is the skeleton
-— the app runs locally, builds as a container, and answers a health probe that
-compares the revision the database is stamped with against the head the running
-code ships. What it still does not have is a trip, a buying list, a rule or a
-transport note.
+**Packing lists are built; the other four modules are not.** Under the feature
+is the skeleton — the app runs locally, builds as a container, and answers a
+health probe that compares the revision the database is stamped with against
+the head the running code ships. What it still does not have is a trip, a
+buying list, a rule or a transport note.
 
 `0001_baseline` is deliberately empty, so the from-zero proof existed before
 the first column did rather than being added once the chain was already long.

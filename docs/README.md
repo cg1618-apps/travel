@@ -14,8 +14,8 @@ in `notes/`.
 | `testing.md` | How the tests are laid out, what each fixture gives you, and what a refusal test has to set up before it can fail. |
 | `superpowers/` | Where a spec and a plan live **while a task is in progress**, and nowhere else. Both are deleted when that task ends, with anything durable moved into a real page first — so the directory is absent between tasks, which is its normal state. |
 
-The first feature is being built: packing lists. There is still no buying
-list, no rules and no transport information. Under it sits the skeleton:
+Packing lists are built. There is still no trip, no buying list, no rules and
+no transport information. Under the feature sits the skeleton:
 config read once from the environment, a `/api/health` endpoint that checks
 the database's Alembic revision against the code's, the Alembic chain, a
 React/Vite frontend uvicorn serves once built, a production container and
