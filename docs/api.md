@@ -44,6 +44,7 @@ question only a probe from the open internet answers, and the platform's
 - [Health — `/api/health`](#health--apihealth)
 - [Packing lists — `/api/packing-lists`](#packing-lists--apipacking-lists)
 - [Packing items — `/api/packing-items`](#packing-items--apipacking-items)
+- [Common options — `/api/label-options`](#common-options--apilabel-options)
 
 ## Health — `/api/health`
 
@@ -142,3 +143,27 @@ something compared positions across lists.
 Sending `null` clears a nullable field. The router uses `exclude_unset`, not
 `exclude_none`, so "remove this category" and "leave the category alone" are
 different requests.
+
+## Common options — `/api/label-options`
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/label-options` | none | Every option, in `position` order. `?kind=category` or `?kind=bag` narrows it. |
+| `PATCH` | `/api/label-options/{id}` | none | Rename or reorder. A rename rewrites the items using it; renaming onto an existing value **merges**. |
+| `DELETE` | `/api/label-options/{id}` | none | `204`. The items using it are left alone. |
+
+There is no `POST`. Options are **learned**: writing an item records its
+`category` and `bag`, on create and on any `PATCH` that changes them.
+
+Each option carries a `usage_count` — how many items currently hold that value
+— so a rename screen can say what it is about to rewrite before it does it.
+
+**A rename can delete the row you addressed.** Renaming onto a value that
+already exists merges the two: the items are rewritten either way, then the
+source row is removed, because the unique constraint on (`kind`, `value`) would
+refuse the update outright. The response is the **surviving** option, not the
+one named in the path — the rename succeeded, so a `404` would be a lie.
+
+**Deleting prunes a suggestion and nothing else.** Items keep the value, and
+typing it again brings the option back. These rows are autocomplete, not
+records.

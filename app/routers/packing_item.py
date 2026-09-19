@@ -16,6 +16,7 @@ from app.schemas.packing_item import (
     PackingItemResponse,
     PackingItemUpdate,
 )
+from app.services.domain.packing import remember_item_labels
 
 router = APIRouter(tags=["Packing items"])
 
@@ -55,6 +56,8 @@ def create(list_id: int, payload: PackingItemCreate, db: Session = Depends(get_d
         list_id=list_id, position=_next_position(db, list_id), **payload.model_dump()
     )
     db.add(item)
+    db.flush()
+    remember_item_labels(db, item)
     db.commit()
     db.refresh(item)
     return item
@@ -68,6 +71,9 @@ def update(item_id: int, payload: PackingItemUpdate, db: Session = Depends(get_d
     # excluding it would make those fields impossible to unset.
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
+    # After the assignment, so a value typed into this PATCH is remembered
+    # too - not only the ones an item was created with.
+    remember_item_labels(db, item)
     db.commit()
     db.refresh(item)
     return item
