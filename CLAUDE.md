@@ -31,7 +31,11 @@ buying list, a rule or a transport note.
 
 `0001_baseline` is deliberately empty, so the from-zero proof existed before
 the first column did rather than being added once the chain was already long.
-`0002_packing` is the first revision that proof actually checks.
+`p1acking0001` is the first revision that proof actually checks.
+
+**Revision ids are mnemonics, not sequence numbers** — `p1acking0001`, the way
+the media tracker names its own. Only `0001_baseline` is numbered, and it came
+from the skeleton rather than from a choice.
 
 It is `status: live` in the platform's `apps.yml`, so the tunnel routes
 `travel.cg1618.com` to this app. That is a statement about the hostname being

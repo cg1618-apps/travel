@@ -52,6 +52,21 @@ reader can tell a decision from an accident.
   `alembic_version` — which `create_all` never writes — so the divergence
   cannot be quietly undone.
 
+- **Revision ids are mnemonics, not sequence numbers.** `p1acking0001`,
+  following media (`c1image0001`, `s1r2rootflag`, `al1n2ilist`) and food
+  (`i1ngredients_the_ingredient_library`). Only `0001_baseline` is numbered, and
+  it came from the app skeleton rather than from anyone's choice — food's chain
+  has the same shape for the same reason.
+
+  Worth recording because the mistake was nearly made in both directions.
+  `travel`, `food` and `art` all shipped with a numbered baseline, so three
+  apps appeared to agree on sequential numbering and the first hand-named
+  revision here followed that apparent convention instead of the reference.
+  Media's actual directory was one `ls` away. It was renamed while it was still
+  unmerged, unreleased and applied only to a local database — after a release
+  that stops being a rename, because a revision id already in a version table
+  is stranded by changing it, and the fix becomes a migration of its own.
+
 - **A plain integer `id` primary key; media carries a UUID `system_id` plus a
   sequence-backed `public_id`.** That pair exists there to give Google-Sheets
   round trips a stable key and users a short one. travel syncs to nothing and

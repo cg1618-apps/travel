@@ -20,7 +20,7 @@ type: adding a member to a PG enum inside a reversible revision is
 disproportionate ceremony for five small sets, and the application is
 exhaustive over all of them anyway.
 
-Revision ID: 0002_packing
+Revision ID: p1acking0001
 Revises: 0001_baseline
 Create Date: 2026-09-19
 
@@ -30,7 +30,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "0002_packing"
+revision = "p1acking0001"
 down_revision = "0001_baseline"
 branch_labels = None
 depends_on = None
