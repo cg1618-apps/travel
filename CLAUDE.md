@@ -23,8 +23,17 @@ smallest surface on which to prove the platform's app contract end to end.
 
 ## Status
 
-**Nothing is built.** There is no stack, no schema, no application code. The
-next step is design, not implementation — brainstorm into
+**The skeleton is built and there are no features in it.** The app runs
+locally, builds as a container, and answers a health probe that compares the
+revision the database is stamped with against the head the running code ships.
+What it does not have is a packing list, a trip, a rule, a transport note — or
+a table for any of them: the Alembic chain holds one deliberately empty
+baseline revision, so the from-zero proof exists before the first column does.
+
+It is `status: planned` in the platform's `apps.yml`, so the tunnel does not
+route `travel.cg1618.com` yet. Going live is its own change.
+
+A feature starts with design, not implementation — brainstorm into
 `docs/superpowers/specs/`, and only then plan.
 
 ## The contract this app owes the platform
@@ -33,9 +42,10 @@ Four things, none of which names a framework:
 
 1. **A container listening on port 8002**, publishing nothing to the host.
 2. **A health path** that answers 200 only when the app can actually serve —
-   not a route that returns 200 with the database down. It is declared in the
-   platform's `apps.yml` as `/health`; change it there if this app exposes
-   something else.
+   not a route that returns 200 with the database down. It is `/api/health`
+   here, declared as such in the platform's `apps.yml`; moving it means
+   changing both. (`food` and `art` use `/health`; the path is per-app, not a
+   platform-wide convention.)
 3. **`DATABASE_URL` read from the environment.**
 4. **A `main` branch that is production**, moving only by pull request.
 
@@ -53,9 +63,11 @@ The cost is known and accepted: a build step, a second port in development, and
 a `frontend_dist/` that goes stale if you forget to rebuild. The media
 tracker's `CLAUDE.md` documents each of those.
 
-Migrations: Alembic, which means this app ships `deploy/migrations` with
-`current`, `added` and `downgrade` once it has a schema — the hook the
-platform's rollback calls. See the platform's Step 4 plan.
+Migrations: Alembic. `entrypoint.sh` runs `alembic upgrade head` on every
+container start, and the app ships `deploy/migrations` with `current`, `added`
+and `downgrade` — the hook the platform's deploy pipeline calls to roll a
+migration back, because reading a version table and reversing a migration are
+specific to the tool an app uses and cannot be generic.
 
 ## Who can see it
 

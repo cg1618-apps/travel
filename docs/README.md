@@ -7,7 +7,7 @@ in `notes/`.
 | Page | What it holds |
 | --- | --- |
 | `notes/decisions.md` | Why things are the way they are, including rejected alternatives. The one place that is allowed to talk about the past. |
-| `superpowers/specs/` | Working scaffolding for a task in progress. **Deleted when that task ends**, with anything durable moved into a real page first. |
+| `superpowers/` | Where a spec and a plan live **while a task is in progress**, and nowhere else. Both are deleted when that task ends, with anything durable moved into a real page first — so the directory is absent between tasks, which is its normal state. |
 
 There is no feature yet — no packing list, no buying list, no rules, no
 transport information. What exists is the skeleton the features will sit on:
