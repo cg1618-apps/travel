@@ -65,4 +65,7 @@ def test_there_is_exactly_one_head():
         capture_output=True,
         text=True,
     )
-    assert len(result.stdout.strip().splitlines()) == 1, result.stdout
+    assert result.returncode == 0, result.stderr
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    assert len(lines) == 1, result.stdout
+    assert "0001_baseline" in lines[0], result.stdout
