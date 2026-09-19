@@ -18,4 +18,18 @@ as they bind this app:
 
 ## Decisions for this application
 
-None yet. The first will be the stack.
+- **FastAPI, PostgreSQL, React + Vite, Alembic** — the media tracker's stack.
+  Rejected: Django and a server-rendered frontend, for the same reasons
+  recorded across the other apps; the deciding factor was consistency with an
+  app that already works.
+- **Cloudflare Access over the whole hostname, and no auth code in the app.**
+  One user, no accounts. Rejected: an app-level single-user password with a JWT
+  cookie, copying the media tracker — roughly 150 lines of security-sensitive
+  code, written to duplicate a gate that already exists. Its one real advantage
+  is failing closed: Access failing open, if a policy is deleted, exposes
+  everything. That risk is accepted for now and is the reason the flip to
+  `public` is treated as a deliberate, tested event rather than a config edit.
+- **Sharing is anticipated, not built.** `/s/...` as the prefix for anything
+  shareable, a `visibility` field from the first migration, and share tokens
+  rather than accounts. All three are nearly free now and expensive to
+  retrofit; none of them is implemented until sharing is actually wanted.

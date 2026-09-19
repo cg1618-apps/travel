@@ -44,13 +44,49 @@ including the network alias (`travel-app`) the tunnel routes to.
 
 ## Stack
 
-**Undecided, and deliberately so.** Python and PostgreSQL are the only things
-guaranteed across this box; the web framework, whether there is a frontend at
-all, and the migration tool belong to this application.
+**FastAPI + PostgreSQL on the backend, React + Vite on the frontend** — the
+same shape as the media tracker, deliberately. Four months of patterns exist to
+copy from, and the platform's app contract is enforced by `apps.yml` and the
+deploy pipeline rather than by every app being different.
 
-Record the decision in `docs/notes/decisions.md` when it is made, with what was
-rejected and why — and update this section, the CI workflow and
-`requirements-dev.txt` in the same change.
+The cost is known and accepted: a build step, a second port in development, and
+a `frontend_dist/` that goes stale if you forget to rebuild. The media
+tracker's `CLAUDE.md` documents each of those.
+
+Migrations: Alembic, which means this app ships `deploy/migrations` with
+`current`, `added` and `downgrade` once it has a schema — the hook the
+platform's rollback calls. See the platform's Step 4 plan.
+
+## Who can see it
+
+**Nobody but you, today.** `exposure: cloudflare-access` in the platform's
+registry: Cloudflare authenticates before a request reaches the box, so there
+is no login page, no session, no password and no auth code in this app. One
+user, one person's data.
+
+**But sharing is expected**, and the shape is already known: a single trip's
+information sent to the people going on it. That is why this app is *not* on
+the platform's never-public list — for `journal`, `health` and `money` public
+is never correct; here it is a change the app is meant to want.
+
+Three things make that change cheap, and all three are free now and expensive
+later:
+
+1. **Anything shareable lives under `/s/...`** from the first route. Opening one
+   trip to the world is then an Access policy that exempts that prefix, not a
+   redesign — because Access is all-or-nothing per path.
+2. **Shareable entities carry a visibility field from the first migration** —
+   `private` / `unlisted` / `public`, everything `private`. The column is
+   trivial to add later; retrofitting the *checks* at every read path is not.
+3. **A password on a shared thing is a share token, not an account.** There is
+   never a second identity here, so the model is "this trip has a secret link,
+   optionally with a passphrase" — a field on the object, never a users table.
+
+**The dangerous moment is the flip**, if it ever comes: moving from
+`cloudflare-access` to `public` moves the gate from Cloudflare into this
+codebase. The visibility checks have to work *before* that lands, and be tested
+for refusal with fixtures that make refusal possible — a check over an empty set
+passes without ever firing.
 
 ## Commands
 
