@@ -7,6 +7,7 @@ in `notes/`.
 | Page | What it holds |
 | --- | --- |
 | `notes/decisions.md` | Why things are the way they are, including rejected alternatives. The one place that is allowed to talk about the past. |
+| `testing.md` | How the tests are laid out, what each fixture gives you, and what a refusal test has to set up before it can fail. |
 | `superpowers/` | Where a spec and a plan live **while a task is in progress**, and nowhere else. Both are deleted when that task ends, with anything durable moved into a real page first — so the directory is absent between tasks, which is its normal state. |
 
 There is no feature yet — no packing list, no buying list, no rules, no

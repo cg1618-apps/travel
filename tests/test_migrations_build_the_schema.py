@@ -15,33 +15,20 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, inspect, text
 
-from app.config import settings
 from app.database import Base
+from tests.conftest import admin_url
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def _admin_url(database: str) -> str:
-    """settings.sqlalchemy_database_url with only the trailing db name swapped.
-
-    The scratch-database test needs an administrative connection, but it may
-    not assume the shared PostgreSQL's superuser password - that value is
-    per-machine and not something a test should hardcode. Deriving it from
-    the app's own settings means the test works wherever the app itself
-    would.
-    """
-    base = settings.sqlalchemy_database_url
-    return base.rsplit("/", 1)[0] + f"/{database}"
 
 
 @pytest.fixture
 def scratch_database():
     """A database created for this test and dropped afterwards."""
-    admin = create_engine(_admin_url("postgres"), isolation_level="AUTOCOMMIT")
+    admin = create_engine(admin_url("postgres"), isolation_level="AUTOCOMMIT")
     with admin.connect() as conn:
         conn.execute(text("DROP DATABASE IF EXISTS travel_migration_test"))
         conn.execute(text("CREATE DATABASE travel_migration_test"))
-    yield _admin_url("travel_migration_test")
+    yield admin_url("travel_migration_test")
     # WITH (FORCE) because the test reads the scratch database back, and a
     # failed assertion leaves that connection open - a plain DROP would then
     # fail in teardown and bury the assertion that actually matters under an

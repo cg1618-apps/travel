@@ -34,6 +34,24 @@ as they bind this app:
   rather than accounts. All three are nearly free now and expensive to
   retrofit; none of them is implemented until sharing is actually wanted.
 
+## Divergences from the media tracker
+
+The platform makes `media` the reference implementation: its conventions are the
+default, and a deliberate divergence is recorded here with its reason so a later
+reader can tell a decision from an accident.
+
+- **Test fixtures build the schema by running Alembic; media's call
+  `Base.metadata.create_all`.** This is the one convention of media's that must
+  not be copied. Its own baseline migration records the cost: 145 revisions on a
+  chain that could not build from nothing, because the models were right, the
+  migrations were wrong, and no test could tell the difference. A fixture built
+  from the models tests the models against themselves. The cost here is one
+  `alembic upgrade head` per session, and a migration that does not run becomes
+  a suite that does not start rather than a drift nobody notices for four
+  months. `tests/api/test_the_fixture_runs_migrations.py` reads
+  `alembic_version` — which `create_all` never writes — so the divergence
+  cannot be quietly undone.
+
 ## The skeleton
 
 - **The SPA catch-all refuses the `/api` prefix explicitly, rather than
