@@ -65,7 +65,9 @@ infers that what went out must come back, because the return genuinely differs.
 | `list_id` | FK → `packing_list`, **ON DELETE CASCADE** | An item has no life without its list. |
 | `name` | text, not null | |
 | `category` | text, nullable | Free text. |
-| `quantity` | text, nullable | Free text, not an integer: "2 pairs", "enough for 5 days". Nothing does arithmetic on it, and the unit is usually the point. |
+| `quantity` | int, nullable | How many to pack. Null means the question doesn't apply. |
+| `quantity_packed` | int, not null, default 0 | How many are in the bag. |
+| `unit` | text, nullable | Free text: "pairs", "days' worth", or blank. Carries what a numeric quantity cannot. |
 | `bag` | text, nullable | Free text. Which bag it goes in. |
 | `status` | text, not null, default `not_packed` | `not_packed` \| `packed` \| `no_need`. |
 | `timing` | text, not null, default `whenever` | `whenever` \| `night_before` \| `day_of` \| `just_before`. |
@@ -84,6 +86,21 @@ that, and that is the state that matters.
 finished, and the items left unticked cannot say whether they are forgotten or
 deliberately left behind — which is the distinction you are scanning for at the
 door.
+
+**Quantity is a target and a count, and that forces it to be numeric.** "3 of 5
+packed" cannot be computed from free text, so the number and its unit are
+separate columns rather than one string — `2` + `pairs`, `5` + `days' worth`,
+`1` + nothing. The cost is that an unquantifiable amount has to be rounded into
+a number or left null and written in `notes`; the benefit is that being short is
+visible at a glance, which is the failure a packing list exists to catch.
+
+**The count suggests the status; it does not set it.** `status` stays an
+explicit field. Reaching the target offers to flip it to `packed`, and an item
+may be marked `packed` while short — sometimes three of five is what you are
+taking, and a derived status would force you to edit the target to say so. A
+short count is surfaced on the list rather than blocking it, and **the
+definition of a finished list under "The screens" reads `status` alone**: an item you have
+deliberately marked packed at three of five does not hold the list open.
 
 **Enumerated values are text with a CHECK constraint, not a PostgreSQL enum
 type.** Adding a value to a PG enum inside a reversible Alembic revision is
@@ -139,7 +156,7 @@ alike. **The definition carries and the state resets.**
 
 | Carries | Resets |
 | --- | --- |
-| name, category, quantity, bag, timing, `needs_double_check`, notes, position | `status` → `not_packed`, `double_checked` → false |
+| name, category, `quantity`, `unit`, bag, timing, `needs_double_check`, notes, position | `status` → `not_packed`, `quantity_packed` → 0, `double_checked` → false |
 
 Nothing arrives pre-ticked. A duplicated list with its ticks intact is how you
 reach the airport certain you packed the charger.
