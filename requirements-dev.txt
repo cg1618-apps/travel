@@ -4,3 +4,4 @@
 # Anything framework-shaped waits for the stack decision.
 pytest==8.3.4
 ruff==0.8.4
+httpx==0.28.1
