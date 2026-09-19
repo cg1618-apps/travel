@@ -91,9 +91,25 @@ passes without ever firing.
 ## Commands
 
 ```bash
-venv/Scripts/python.exe -m pytest -q      # tests
-venv/Scripts/ruff.exe check .             # lint
+venv/Scripts/python.exe -m pytest tests/ -q      # tests
+venv/Scripts/ruff.exe check .                    # lint
+cd frontend && npm run build                     # writes frontend_dist/ for uvicorn
+cd frontend && npm run lint                       # oxlint
+alembic upgrade head
+alembic revision --autogenerate -m "describe change"
+
+.\dev.ps1   # shared Postgres (anime_site_postgres_db, database "travel") +
+            # uvicorn --reload on :8002 + vite on :5175, one window
 ```
 
-That is all there is until a stack is chosen. Add commands here as they become
-real, not before.
+**Ports are box-wide**, allocated in the platform's `apps.yml`: uvicorn binds
+the app's registry port, and Vite binds `5173 + (port - 8000)`. `travel` is
+uvicorn `8002`, Vite `5175` — `media`'s `8000`/`5173` on the same laptop must
+stay undisturbed, which is why `dev.ps1` refuses to start rather than picking
+a free port when 8002 is already held.
+
+**One PostgreSQL container, one database per app.** `travel` has no
+`docker-compose.yml` of its own in development — it runs its `travel`
+database inside `anime_site_postgres_db`, the same container `media` starts,
+created once by the platform's provisioning. `dev.ps1` starts that container
+if it is stopped; it never creates or owns it.
