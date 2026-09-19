@@ -13,9 +13,10 @@ import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 
 from app.config import settings
+from app.database import Base
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,8 +42,12 @@ def scratch_database():
         conn.execute(text("DROP DATABASE IF EXISTS travel_migration_test"))
         conn.execute(text("CREATE DATABASE travel_migration_test"))
     yield _admin_url("travel_migration_test")
+    # WITH (FORCE) because the test reads the scratch database back, and a
+    # failed assertion leaves that connection open - a plain DROP would then
+    # fail in teardown and bury the assertion that actually matters under an
+    # unrelated error.
     with admin.connect() as conn:
-        conn.execute(text("DROP DATABASE IF EXISTS travel_migration_test"))
+        conn.execute(text("DROP DATABASE IF EXISTS travel_migration_test WITH (FORCE)"))
 
 
 def test_upgrade_head_runs_against_an_empty_database(scratch_database):
@@ -56,6 +61,22 @@ def test_upgrade_head_runs_against_an_empty_database(scratch_database):
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+    # A return code on its own says nothing about WHERE the run landed. With
+    # 0001_baseline empty, a run that ignored DATABASE_URL and stamped the
+    # developer's real `travel` database would exit 0 and this test would stay
+    # green. Reading the scratch database back is what pins it.
+    engine = create_engine(scratch_database)
+    with engine.connect() as conn:
+        stamped = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        assert stamped == "0001_baseline"
+
+        # Vacuous while there are no models, and deliberately so: it starts
+        # biting the moment the first table is declared, which is when a
+        # revision that forgets a table would otherwise ship.
+        tables = set(inspect(conn).get_table_names())
+        assert tables >= set(Base.metadata.tables), set(Base.metadata.tables) - tables
+    engine.dispose()
 
 
 def test_there_is_exactly_one_head():

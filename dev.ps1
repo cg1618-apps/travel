@@ -56,9 +56,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not start $dbContainer - is Docker Desktop running, and has media's docker-compose created it yet?"
 }
 
-# --- Wait for Postgres to accept connections. app/database.py touches the DB at
-# --- import time and uvicorn only binds the port after that, so starting the
-# --- backend against a still-booting container is what delays the port opening.
+# --- Wait for Postgres to accept connections. create_engine is lazy, so nothing
+# --- touches the database at import time and uvicorn binds its port whether the
+# --- container is up or not - the failure surfaces per request instead, as an
+# --- /api/health that answers 503 until the database is ready. Waiting here is
+# --- what makes the first page load work rather than look broken.
 Write-Host '==> Waiting for PostgreSQL to accept connections' -NoNewline -ForegroundColor Cyan
 $dbReady = $false
 foreach ($i in 1..60) {

@@ -1,7 +1,8 @@
 """Liveness that touches the database, for the deploy ladder and the container.
 
-Two conditions are checked, and the second is the one nothing else on the box
-would notice. After a failed migration-bearing deploy the database holds the
+Three conditions are checked - the database is reachable, both revisions are
+readable, and the two are equal - and the last is the one nothing else on the
+box would notice. After a failed migration-bearing deploy the database holds the
 new revision while the image has rolled back to code that has never heard of
 it. The site still serves pages. Row counts still look right. Only a
 comparison between what the schema SAYS it is and what the code EXPECTS
@@ -55,7 +56,15 @@ def expected_revision() -> str | None:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
-    script = ScriptDirectory.from_config(Config(str(BASE_DIR / "alembic.ini")))
+    cfg = Config(str(BASE_DIR / "alembic.ini"))
+    # alembic.ini's `script_location = alembic` is relative to the CURRENT
+    # WORKING DIRECTORY, not to the ini file, so pointing Config at an
+    # absolute ini path is not enough on its own: called from anywhere but
+    # the repository root it raises `Path doesn't exist`. Overriding the
+    # option is what actually makes this cwd-independent.
+    cfg.set_main_option("script_location", str(BASE_DIR / "alembic"))
+
+    script = ScriptDirectory.from_config(cfg)
     heads = script.get_heads()
     return heads[0] if len(heads) == 1 else None
 
@@ -64,16 +73,17 @@ def expected_revision() -> str | None:
 def health(response: Response, db: Session = Depends(get_db)):
     try:
         actual = read_alembic_revision(db)
+        expected = expected_revision()
     except Exception:
-        # Deliberately broad. Anything that stops this query - the database
-        # down, the table absent, a connection pool exhausted - means the app
-        # cannot serve, and a health probe that raised would be a 500 the
-        # container's healthcheck reads the same way anyway. Reporting 503
-        # keeps the meaning explicit.
+        # Deliberately broad, and it covers both reads. Anything that stops
+        # them - the database down, the table absent, a connection pool
+        # exhausted, an unreadable revision directory - means the app cannot
+        # serve, and a health probe that raised would be a 500 the container's
+        # healthcheck reads the same way anyway. Reporting 503 keeps the
+        # meaning explicit, and keeps every "cannot serve" state answering
+        # with the same status.
         response.status_code = 503
         return {"status": "unavailable"}
-
-    expected = expected_revision()
 
     # `actual is None` is checked explicitly rather than relying on the
     # comparison: if expected_revision() also returned None, None == None would

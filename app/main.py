@@ -14,14 +14,21 @@ DIST = BASE_DIR / "frontend_dist"
 
 def create_app(dist: Path = DIST) -> FastAPI:
     """Build the application. `dist` is a parameter so tests can mount the
-    catch-all against a directory they control - in CI there is no build, so a
-    test that depends on frontend_dist/ existing silently tests nothing.
+    catch-all against a directory they control - nothing has built
+    frontend_dist/ when the suite runs, so a test that depends on it existing
+    silently tests nothing.
     """
     app = FastAPI(title="travel")
     app.include_router(health.router)
 
     if dist.is_dir():
-        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+        # Conditional: a bundle small enough for Vite to inline every asset
+        # has no assets/ directory, and StaticFiles raises on a missing one
+        # while the app is being built - so the process would fail to start
+        # because of a frontend change, with nothing in the frontend to point
+        # at.
+        if (dist / "assets").is_dir():
+            app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
 
         @app.get("/{full_path:path}")
         def spa(full_path: str):

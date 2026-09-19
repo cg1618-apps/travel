@@ -103,6 +103,13 @@ def test_the_app_healthcheck_does_not_probe_the_catch_all_route(compose):
     probe = " ".join(compose["services"]["app"]["healthcheck"]["test"])
     assert "/api/health" in probe, probe
 
+    # And it must probe the port the app is actually told to listen on.
+    # Pinning the path alone lets PORT and the probe's URL drift apart
+    # silently: the container then reports unhealthy forever while each line
+    # reads as correct on its own.
+    port = compose["services"]["app"]["environment"]["PORT"]
+    assert f":{port}/api/health" in probe, probe
+
 
 def test_app_carries_an_image_name_alongside_build(compose):
     # Keeps the move to a registry a one-line change: the service already

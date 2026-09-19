@@ -41,11 +41,37 @@ def test_two_unreadable_sides_are_not_a_match(monkeypatch):
     assert TestClient(app).get("/api/health").status_code == 503
 
 
+def test_an_unreadable_revision_directory_is_503_not_500(monkeypatch):
+    # The other half of the same fix: expected_revision() is inside the try,
+    # so a broken revision directory answers the way every other "cannot
+    # serve" state does instead of escaping as an unhandled 500.
+    monkeypatch.setattr(health, "read_alembic_revision", lambda db: "abc123")
+
+    def boom():
+        raise RuntimeError("Path doesn't exist")
+
+    monkeypatch.setattr(health, "expected_revision", boom)
+    assert TestClient(app).get("/api/health").status_code == 503
+
+
 def test_expected_revision_reads_the_real_alembic_ini():
     # Every test above monkeypatches expected_revision() itself, so the real
     # code path - reading alembic.ini through ScriptDirectory - is otherwise
     # exercised by nothing. lru_cache means a stale cached value from before
     # alembic.ini existed would poison this; clear it first so the assertion
     # proves the real read, not a leftover.
+    health.expected_revision.cache_clear()
+    assert health.expected_revision() == "0001_baseline"
+
+
+def test_expected_revision_does_not_depend_on_the_working_directory(
+    monkeypatch, tmp_path
+):
+    # alembic.ini's `script_location = alembic` resolves against the cwd, so
+    # an absolute path to the ini does not make this portable on its own:
+    # from any other directory it raised `Path doesn't exist`. The call now
+    # sits inside the handler's try as well, so even a future version of this
+    # failure is a 503 rather than an unhandled 500.
+    monkeypatch.chdir(tmp_path)
     health.expected_revision.cache_clear()
     assert health.expected_revision() == "0001_baseline"

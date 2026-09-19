@@ -1,8 +1,9 @@
 """The catch-all must not shadow the API.
 
-CI never runs `npm run build`, so `frontend_dist/` does not exist there and
-the module-level `app` never mounts the catch-all at all - a test built
-against that `app` would pass by finding nothing to test. These tests build
+Nothing has run `npm run build` when this suite runs - CI builds the frontend
+in a later step - so `frontend_dist/` need not exist and the module-level
+`app` then never mounts the catch-all at all: a test built against that
+`app` would pass by finding nothing to test. These tests build
 a fresh app via `create_app()` against a `tmp_path` directory that always
 has an `index.html` and an `assets/` directory, so the catch-all is mounted
 in every environment, built frontend or not.
@@ -40,5 +41,16 @@ def test_a_non_api_path_serves_the_spa_index(tmp_path):
     # Proves the catch-all is genuinely mounted and serving the bundle - the
     # other two assertions would pass vacuously if it were not.
     response = TestClient(_app_with_dist(tmp_path)).get("/trips/42")
+    assert response.status_code == 200
+    assert "spa" in response.text
+
+
+def test_a_bundle_with_no_assets_directory_still_starts(tmp_path):
+    # Vite inlines every asset when the bundle is small enough, and the build
+    # then has no assets/ at all. StaticFiles raises on a missing directory
+    # as the app is built, so an unguarded mount would turn that frontend
+    # change into a process that will not start.
+    (tmp_path / "index.html").write_text("<html><body>spa</body></html>")
+    response = TestClient(create_app(dist=tmp_path)).get("/trips/42")
     assert response.status_code == 200
     assert "spa" in response.text
