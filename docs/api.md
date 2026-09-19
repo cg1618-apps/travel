@@ -43,6 +43,7 @@ question only a probe from the open internet answers, and the platform's
 
 - [Health — `/api/health`](#health--apihealth)
 - [Packing lists — `/api/packing-lists`](#packing-lists--apipacking-lists)
+- [Packing items — `/api/packing-items`](#packing-items--apipacking-items)
 
 ## Health — `/api/health`
 
@@ -113,3 +114,31 @@ then fail the request.
 **Saved lists and templates are never refused**, because they do not occupy a
 slot. `PATCH` enforces the same rule when a list stops being exempt: otherwise
 save-then-unsave holds five working lists with nothing complaining.
+
+## Packing items — `/api/packing-items`
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/packing-lists/{list_id}/items` | none | Add an item. It lands at the end of **that** list. |
+| `PATCH` | `/api/packing-items/{id}` | none | Change any field. `null` clears a nullable one. |
+| `DELETE` | `/api/packing-items/{id}` | none | `204`. |
+
+An item is created under the list that owns it and addressed on its own
+afterwards, which is why the two path shapes differ.
+
+`position` is assigned by the server as one past the end of that list, and is
+counted **per list rather than globally** — a shared counter would leave a new
+list's first item at position 400, sorting correctly by accident until
+something compared positions across lists.
+
+### What does not happen automatically
+
+| Not done | Why |
+| --- | --- |
+| Reaching `quantity` does not set `status` | The count suggests; the caller decides. An item may be `packed` while short, because sometimes three of five is what you are taking, and a derived status would force you to edit the target to say so. |
+| `quantity_packed` above `quantity` is not refused | Over-packing is a real state, not an error. |
+| `double_checked` and `status` do not drive each other | *Packed and still unverified* is the state the second field exists for. |
+
+Sending `null` clears a nullable field. The router uses `exclude_unset`, not
+`exclude_none`, so "remove this category" and "leave the category alone" are
+different requests.

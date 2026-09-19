@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import health, packing_list
+from app.routers import health, packing_item, packing_list
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DIST = BASE_DIR / "frontend_dist"
@@ -21,6 +21,7 @@ def create_app(dist: Path = DIST) -> FastAPI:
     app = FastAPI(title="travel")
     app.include_router(health.router)
     app.include_router(packing_list.router)
+    app.include_router(packing_item.router)
 
     if dist.is_dir():
         # Conditional: a bundle small enough for Vite to inline every asset
