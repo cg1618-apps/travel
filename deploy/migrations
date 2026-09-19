@@ -35,9 +35,33 @@ case "${1:-}" in
     current)
         # From alembic_version and nowhere else. Asking the image answers what
         # that image knows, which is exactly what changes during a rollback.
-        "${COMPOSE[@]}" exec -T db \
-            psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tA \
-            -c "SELECT version_num FROM alembic_version" | tr -d '[:space:]'
+        #
+        # Two queries rather than one because a database that has never been
+        # migrated has no alembic_version table at all, and a statement naming
+        # a table that does not exist fails to PARSE - so no coalesce or CASE
+        # can rescue it from inside a single query.
+        #
+        # That state is not an error. It is every app's FIRST deploy, and its
+        # correct answer is `base`: Alembic's own name for the point before
+        # the first revision, and a real target for `downgrade`. A rollback
+        # recorded against it reverses the whole schema and then restores a
+        # dump that was taken from an empty database, which is right. Erroring
+        # here instead refuses the very deploy that would create the schema -
+        # travel's first deploy died exactly there.
+        ask() {
+            "${COMPOSE[@]}" exec -T db \
+                psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -tA -c "$1" \
+                | tr -d '[:space:]'
+        }
+        if [ "$(ask "SELECT to_regclass('public.alembic_version') IS NOT NULL")" != "t" ]; then
+            echo base
+        else
+            # The table outlives its rows: `downgrade base` empties it rather
+            # than dropping it, so "exists" and "has a revision" are different
+            # questions and both mean `base`.
+            revision="$(ask 'SELECT version_num FROM alembic_version')"
+            echo "${revision:-base}"
+        fi
         ;;
     added)
         from="${2:?added needs a from-revision}"
