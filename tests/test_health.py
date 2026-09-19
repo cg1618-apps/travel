@@ -39,3 +39,13 @@ def test_two_unreadable_sides_are_not_a_match(monkeypatch):
     monkeypatch.setattr(health, "read_alembic_revision", lambda db: None)
     monkeypatch.setattr(health, "expected_revision", lambda: None)
     assert TestClient(app).get("/api/health").status_code == 503
+
+
+def test_expected_revision_reads_the_real_alembic_ini():
+    # Every test above monkeypatches expected_revision() itself, so the real
+    # code path - reading alembic.ini through ScriptDirectory - is otherwise
+    # exercised by nothing. lru_cache means a stale cached value from before
+    # alembic.ini existed would poison this; clear it first so the assertion
+    # proves the real read, not a leftover.
+    health.expected_revision.cache_clear()
+    assert health.expected_revision() == "0001_baseline"
