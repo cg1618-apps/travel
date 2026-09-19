@@ -122,11 +122,13 @@ venv/Scripts/python.exe -m pytest tests/ -q      # tests
 venv/Scripts/ruff.exe check .                    # lint
 cd frontend && npm run build                     # writes frontend_dist/ for uvicorn
 cd frontend && npm run lint                       # oxlint
+cd frontend && npm test                          # vitest, once
 alembic upgrade head
 alembic revision --autogenerate -m "describe change"
 
 .\dev.ps1   # shared Postgres (anime_site_postgres_db, database "travel") +
             # uvicorn --reload on :8002 + vite on :5175, one window
+dev.cmd     # the same thing from cmd.exe or a double-click
 ```
 
 **Ports are box-wide**, allocated in the platform's `apps.yml`: uvicorn binds
