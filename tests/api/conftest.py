@@ -82,7 +82,14 @@ def db_session(engine):
     """
     connection = engine.connect()
     transaction = connection.begin()
-    session = Session(bind=connection, autoflush=False)
+    # `join_transaction_mode="create_savepoint"` is what makes this work once
+    # the routers start committing. Without it a request's `db.commit()` ends
+    # the transaction opened above, the rollback in teardown has nothing left
+    # to undo, and rows leak between tests - which shows up as a test that
+    # passes alone and fails in a suite, days later.
+    session = Session(
+        bind=connection, autoflush=False, join_transaction_mode="create_savepoint"
+    )
     try:
         yield session
     finally:
