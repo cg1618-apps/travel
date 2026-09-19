@@ -10,12 +10,8 @@ def test_database_url_is_honoured_verbatim_when_set(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@example:5432/db")
     from app import config
 
-    try:
-        importlib.reload(config)
-        assert config.settings.sqlalchemy_database_url == "postgresql://u:p@example:5432/db"
-    finally:
-        # Restore the module to clean state so later tests get a fresh Settings()
-        importlib.reload(config)
+    importlib.reload(config)
+    assert config.settings.sqlalchemy_database_url == "postgresql://u:p@example:5432/db"
 
 
 def test_the_url_is_built_from_the_parts_when_it_is_not(monkeypatch):
@@ -26,11 +22,16 @@ def test_the_url_is_built_from_the_parts_when_it_is_not(monkeypatch):
     monkeypatch.setenv("POSTGRES_HOST", "db")
     from app import config
 
-    try:
-        importlib.reload(config)
-        assert config.settings.sqlalchemy_database_url == (
-            "postgresql://travel:secret@db:5432/travel"
-        )
-    finally:
-        # Restore the module to clean state so later tests get a fresh Settings()
-        importlib.reload(config)
+    importlib.reload(config)
+    assert config.settings.sqlalchemy_database_url == (
+        "postgresql://travel:secret@db:5432/travel"
+    )
+
+
+def test_defaults_are_intact_for_a_test_that_patches_nothing():
+    # Ordered after the two patching tests in this file. Under the leak this
+    # sees postgres_host == "db" from the previous test and fails, which is
+    # the whole point of asserting it here rather than trusting the fixture.
+    from app import config
+
+    assert config.settings.postgres_host == "localhost"
