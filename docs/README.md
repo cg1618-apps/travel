@@ -7,6 +7,7 @@ in `notes/`.
 | Page | What it holds |
 | --- | --- |
 | `notes/decisions.md` | Why things are the way they are, including rejected alternatives. The one place that is allowed to talk about the past. |
+| `business-rules.md` | What fills the three-list cap, what a copy carries, when an item is due, and how the common options behave. |
 | `data-model.md` | Every table, what each column means, and which rules the database itself enforces. |
 | `testing.md` | How the tests are laid out, what each fixture gives you, and what a refusal test has to set up before it can fail. |
 | `superpowers/` | Where a spec and a plan live **while a task is in progress**, and nowhere else. Both are deleted when that task ends, with anything durable moved into a real page first — so the directory is absent between tasks, which is its normal state. |
