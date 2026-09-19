@@ -1,0 +1,28 @@
+"""Configuration, and the one rule about it that has bitten this project."""
+
+import importlib
+
+
+def test_database_url_is_honoured_verbatim_when_set(monkeypatch):
+    # A stale DATABASE_URL in a machine's .env wins over the POSTGRES_* parts
+    # and breaks that machine. It is honoured deliberately - the surprise is
+    # only a surprise to someone who does not know - so it is pinned here.
+    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@example:5432/db")
+    from app import config
+
+    importlib.reload(config)
+    assert config.settings.sqlalchemy_database_url == "postgresql://u:p@example:5432/db"
+
+
+def test_the_url_is_built_from_the_parts_when_it_is_not(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("POSTGRES_USER", "travel")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "secret")
+    monkeypatch.setenv("POSTGRES_DB", "travel")
+    monkeypatch.setenv("POSTGRES_HOST", "db")
+    from app import config
+
+    importlib.reload(config)
+    assert config.settings.sqlalchemy_database_url == (
+        "postgresql://travel:secret@db:5432/travel"
+    )
