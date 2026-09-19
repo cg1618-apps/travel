@@ -11,26 +11,37 @@ from app.routers import health
 BASE_DIR = Path(__file__).resolve().parents[1]
 DIST = BASE_DIR / "frontend_dist"
 
-app = FastAPI(title="travel")
-app.include_router(health.router)
 
-if DIST.is_dir():
-    app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
+def create_app(dist: Path = DIST) -> FastAPI:
+    """Build the application. `dist` is a parameter so tests can mount the
+    catch-all against a directory they control - in CI there is no build, so a
+    test that depends on frontend_dist/ existing silently tests nothing.
+    """
+    app = FastAPI(title="travel")
+    app.include_router(health.router)
 
-    @app.get("/{full_path:path}")
-    def spa(full_path: str):
-        """Every non-API path serves the bundle, so client routing works.
+    if dist.is_dir():
+        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
 
-        Registered AFTER the API router, which is what stops it swallowing
-        a REGISTERED /api/... route: had this route been added first, it
-        would match /api/health before the health router ever got a turn.
+        @app.get("/{full_path:path}")
+        def spa(full_path: str):
+            """Every non-API path serves the bundle, so client routing works.
 
-        A `path` converter still matches any string, registered first or
-        last, so ordering alone does not stop it claiming an UNREGISTERED
-        /api/... path too - a mistyped endpoint would otherwise come back
-        as a misleading 200 with the SPA's HTML instead of a 404. The
-        explicit prefix check below is what actually prevents that.
-        """
-        if full_path == "api" or full_path.startswith("api/"):
-            raise HTTPException(status_code=404)
-        return FileResponse(DIST / "index.html")
+            Registered AFTER the API router, which is what stops it swallowing
+            a REGISTERED /api/... route: had this route been added first, it
+            would match /api/health before the health router ever got a turn.
+
+            A `path` converter still matches any string, registered first or
+            last, so ordering alone does not stop it claiming an UNREGISTERED
+            /api/... path too - a mistyped endpoint would otherwise come back
+            as a misleading 200 with the SPA's HTML instead of a 404. The
+            explicit prefix check below is what actually prevents that.
+            """
+            if full_path == "api" or full_path.startswith("api/"):
+                raise HTTPException(status_code=404)
+            return FileResponse(dist / "index.html")
+
+    return app
+
+
+app = create_app()

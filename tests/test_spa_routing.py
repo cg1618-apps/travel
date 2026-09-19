@@ -1,13 +1,44 @@
-"""The catch-all must not shadow the API."""
+"""The catch-all must not shadow the API.
+
+CI never runs `npm run build`, so `frontend_dist/` does not exist there and
+the module-level `app` never mounts the catch-all at all - a test built
+against that `app` would pass by finding nothing to test. These tests build
+a fresh app via `create_app()` against a `tmp_path` directory that always
+has an `index.html` and an `assets/` directory, so the catch-all is mounted
+in every environment, built frontend or not.
+"""
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import create_app
 
 
-def test_an_unknown_api_path_is_404_not_the_spa():
+def _app_with_dist(tmp_path):
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<html><body>spa</body></html>")
+    return create_app(dist=tmp_path)
+
+
+def test_an_unknown_api_path_is_404_not_the_spa(tmp_path):
     # If the catch-all is mounted before the API routes, every mistyped
     # endpoint returns the index page with a 200, and a broken frontend call
     # looks like a rendering bug rather than a missing route.
-    response = TestClient(app).get("/api/does-not-exist")
+    response = TestClient(_app_with_dist(tmp_path)).get("/api/does-not-exist")
     assert response.status_code == 404
+
+
+def test_a_registered_api_route_still_reaches_its_own_handler(tmp_path):
+    # Proves the catch-all does not shadow a route that DOES exist - the
+    # other half of "router before catch-all". Whatever the health route
+    # itself returns (200 or 503 depending on the database), it must not be
+    # the SPA's HTML.
+    response = TestClient(_app_with_dist(tmp_path)).get("/api/health")
+    assert not response.headers["content-type"].startswith("text/html")
+
+
+def test_a_non_api_path_serves_the_spa_index(tmp_path):
+    # Proves the catch-all is genuinely mounted and serving the bundle - the
+    # other two assertions would pass vacuously if it were not.
+    response = TestClient(_app_with_dist(tmp_path)).get("/trips/42")
+    assert response.status_code == 200
+    assert "spa" in response.text
