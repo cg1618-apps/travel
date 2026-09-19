@@ -34,6 +34,32 @@ as they bind this app:
   rather than accounts. All three are nearly free now and expensive to
   retrofit; none of them is implemented until sharing is actually wanted.
 
+## The skeleton
+
+- **The SPA catch-all refuses the `/api` prefix explicitly, rather than
+  relying on route registration order.** Registering the API router first is
+  necessary but not sufficient: FastAPI's `path` converter matches any string
+  whenever it is reached, so ordering protects only routes that actually
+  exist. Without the prefix check a mistyped endpoint returns 200 with the
+  bundle's HTML, and a broken frontend call reads as a rendering bug instead
+  of a missing route.
+- **`create_app(dist)` is a factory so the catch-all can be mounted against a
+  directory a test controls.** Nothing builds the frontend before the suite
+  runs — CI builds it in a later step — so `frontend_dist/` need not exist,
+  the module-level `app` then mounts no catch-all at all, and a test written
+  against it passes by finding nothing to test.
+- **`deploy/migrations` clears `COMPOSE_PROJECT_NAME` for `current` and
+  deliberately not for `downgrade`.** `current` reaches the shared PostgreSQL,
+  which lives in the platform's compose project; `downgrade` runs this app's
+  own image in this app's project, where the exported name is the right one.
+  The two arms differ because the containers they talk to belong to different
+  projects, not by oversight.
+- **Migrations run in `entrypoint.sh` on every start, and a rollback reverses
+  them from the new image.** The previous image has never heard of the
+  revisions being reversed, so it cannot undo them — which is why
+  `deploy/migrations downgrade` runs `--entrypoint alembic` against the image
+  that just failed rather than the one being rolled back to.
+
 ## Structure
 
 Five modules, built in this order. Each gets its own design pass immediately
