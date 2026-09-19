@@ -7,6 +7,7 @@ in `notes/`.
 | Page | What it holds |
 | --- | --- |
 | `notes/decisions.md` | Why things are the way they are, including rejected alternatives. The one place that is allowed to talk about the past. |
+| `deployment-selfhost.md` | What a release does to the box, and what your options are when one fails. `bin/rollback` names this page when it freezes. |
 | `api.md` | Every HTTP endpoint, the shared conventions, and the two-step refusal that guards the cap. |
 | `frontend.md` | How the React app is laid out, the visual language it shares with the media tracker, and the mobile-first rules a new screen follows. |
 | `business-rules.md` | What fills the three-list cap, what a copy carries, when an item is due, and how the common options behave. |
