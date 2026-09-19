@@ -22,4 +22,8 @@ echo "🚀 Running Alembic Migrations..."
 alembic upgrade head
 
 echo "✨ Starting Uvicorn..."
-exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips='*'
+# No default port. docker-compose.prod.yml sets PORT to the registry port this
+# app's network alias is routed to, and a default here would let the container
+# come up listening somewhere the ingress does not reach - a 502 with every
+# file reading as correct on its own.
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:?PORT must be set}" --proxy-headers --forwarded-allow-ips='*'

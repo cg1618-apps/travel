@@ -14,6 +14,21 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# POSTGRES_USER and POSTGRES_DB are expanded under `set -u`, so a hand run
+# outside the deploy pipeline dies on the first unset one. .env is where they
+# live on the box, so load it rather than requiring the caller to have
+# exported them. It also makes the downgrade arm's comment true by
+# construction: the COMPOSE_PROJECT_NAME it relies on definitely exists.
+#
+# Guarded because the repository is checked out without a .env in CI, where
+# the test suite runs this script's usage path.
+if [ -f .env ]; then
+    set -a
+    # shellcheck disable=SC1091  # .env is per-machine and never committed.
+    . ./.env
+    set +a
+fi
+
 COMPOSE=(env -u COMPOSE_PROJECT_NAME docker compose -f "${PLATFORM_DIR:-${HOME}/cg1618}/docker-compose.prod.yml")
 
 case "${1:-}" in
