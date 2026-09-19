@@ -3,8 +3,8 @@
 Last verified: 2026-09-19
 
 **What this is for.** The rules that are not visible in the schema — what fills
-the three-list cap, what eviction destroys, what a copy carries, and when an
-item is due. Column-level facts live in `data-model.md`; why a rule is shaped
+the three-list cap, what eviction destroys, what a copy carries, and how the
+status and check fields relate. Column-level facts live in `data-model.md`; why a rule is shaped
 this way lives in `notes/decisions.md`.
 
 These live in `app/services/domain/packing.py`, not in the routers. A router
@@ -81,24 +81,21 @@ hold the list open; an unverified item does.
 
 ## Packing timing
 
-Every item carries one of `whenever`, `night_before`, `day_of`, `just_before`,
-and the list screen groups by it. Which groups are *due* is computed from the
-list's `departure_at`:
+Every item carries one of `whenever`, `night_before`, `day_of`, `just_before`.
+**It is an attribute, not a mode.** The sheet shows it as the `When` column and
+sorts by it in that escalating order rather than alphabetically, which is the
+only special handling it gets.
 
-| Group | Due when |
-| --- | --- |
-| `whenever` | always |
-| `night_before` | departure is tomorrow or sooner |
-| `day_of` | departure is today or past |
-| `just_before` | departure is today or past, and rendered last |
+It used to drive the layout: the list screen grouped by it and highlighted
+whichever groups were "due", computed from `departure_at`. That was removed —
+see `notes/decisions.md`. The escalating order in
+`frontend/src/lib/timing.js` is what survives, along with `daysUntil`, which
+turns a departure date into "leaving tomorrow". That still runs on the frontend
+because the viewer's calendar day is the one that matters and the server's is
+not necessarily the same one.
 
-**With no `departure_at`, nothing is due.** The four groups render in their
-fixed order and none is highlighted. A list without a departure date is normal,
-not incomplete.
-
-This is computed on the frontend, in `frontend/src/lib/timing.js`, because the
-viewer's calendar day is the one that matters and the server's is not
-necessarily the same one.
+**A list without a departure date is normal, not incomplete.** It reads "No
+date set" and everything else works.
 
 ## Common options
 

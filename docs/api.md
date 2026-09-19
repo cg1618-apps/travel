@@ -78,6 +78,12 @@ serve.
 | `templates` | Lists with `template` set. |
 | `evict_next` | The slot the next working list would destroy, or `[]` when there is room. Both halves of a round-trip pair. |
 
+Each summary carries `item_count` and `settled_count` — how many items the list
+has, and how many are `packed` or `no_need`. The index renders them as a
+fraction; sending the items themselves so the client could count them would be
+a page-sized payload for one number. A list's own `GET` returns the items and
+omits the counts.
+
 A list with both flags appears on **both** shelves. It is one row either way;
 the shelves are views of the flags, not categories a list belongs to.
 

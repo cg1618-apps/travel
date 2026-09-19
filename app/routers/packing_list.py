@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.constants import Status
 from app.database import get_db
 from app.models import PackingList
 from app.schemas.packing_list import (
@@ -63,6 +64,16 @@ def _make_room(db: Session, *, confirmed: bool) -> None:
     evict(db, slot)
 
 
+def _summary(packing_list: PackingList) -> PackingListSummary:
+    """A list plus the two numbers the index renders as a fraction."""
+    summary = PackingListSummary.model_validate(packing_list)
+    summary.item_count = len(packing_list.items)
+    summary.settled_count = sum(
+        1 for item in packing_list.items if item.status != Status.NOT_PACKED
+    )
+    return summary
+
+
 @router.get("", response_model=PackingListIndex)
 def index(db: Session = Depends(get_db)):
     lists = (
@@ -83,13 +94,11 @@ def index(db: Session = Depends(get_db)):
         if not packing_list.saved and not packing_list.template
     ]
     return PackingListIndex(
-        recent=[PackingListSummary.model_validate(row) for row in working],
-        saved=[PackingListSummary.model_validate(row) for row in lists if row.saved],
-        templates=[
-            PackingListSummary.model_validate(row) for row in lists if row.template
-        ],
+        recent=[_summary(row) for row in working],
+        saved=[_summary(row) for row in lists if row.saved],
+        templates=[_summary(row) for row in lists if row.template],
         evict_next=(
-            [PackingListSummary.model_validate(row) for row in oldest_slot(db)]
+            [_summary(row) for row in oldest_slot(db)]
             if count_slots(db) >= SLOT_CAP
             else []
         ),

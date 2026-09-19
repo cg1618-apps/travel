@@ -332,3 +332,46 @@ def test_deleting_a_list_takes_its_items_with_it(client, db_session):
 
 def test_deleting_a_list_that_does_not_exist_is_a_404(client):
     assert client.delete("/api/packing-lists/9999").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# The index's per-list counts
+# --------------------------------------------------------------------------
+
+
+def test_the_index_counts_items_and_how_many_are_settled(client, db_session):
+    # The index renders "3 / 11" per list. The counts come from the server
+    # because the alternative is sending every item of every list so the client
+    # can length them - a page-sized payload to render one fraction.
+    packing_list = make_list(db_session, "Hanoi")
+    db_session.add(PackingItem(list_id=packing_list.id, name="a", status="packed"))
+    db_session.add(PackingItem(list_id=packing_list.id, name="b", status="no_need"))
+    db_session.add(PackingItem(list_id=packing_list.id, name="c"))
+    db_session.commit()
+
+    row = client.get("/api/packing-lists").json()["recent"][0]
+    assert row["item_count"] == 3
+    # `no_need` counts as settled: the question is what is left to deal with,
+    # and a thing deliberately left behind has been dealt with.
+    assert row["settled_count"] == 2
+
+
+def test_an_empty_list_counts_zero_of_zero(client, db_session):
+    make_list(db_session, "Hanoi")
+    db_session.commit()
+    row = client.get("/api/packing-lists").json()["recent"][0]
+    assert row["item_count"] == 0
+    assert row["settled_count"] == 0
+
+
+def test_the_counts_are_per_list_not_across_all_of_them(client, db_session):
+    first = make_list(db_session, "Hanoi", days=0)
+    second = make_list(db_session, "Seoul", days=1)
+    db_session.add(PackingItem(list_id=first.id, name="a"))
+    db_session.add(PackingItem(list_id=second.id, name="b"))
+    db_session.add(PackingItem(list_id=second.id, name="c"))
+    db_session.commit()
+
+    by_name = {row["name"]: row for row in client.get("/api/packing-lists").json()["recent"]}
+    assert by_name["Hanoi"]["item_count"] == 1
+    assert by_name["Seoul"]["item_count"] == 2

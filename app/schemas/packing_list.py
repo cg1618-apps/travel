@@ -37,8 +37,8 @@ class PackingListUpdate(BaseModel):
     evict_confirmed: bool = False
 
 
-class PackingListSummary(BaseModel):
-    """A list without its items, for the index."""
+class PackingListFields(BaseModel):
+    """What every read of a list carries, whichever shape it is asked for."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -51,7 +51,19 @@ class PackingListSummary(BaseModel):
     pair_id: str | None
 
 
-class PackingListResponse(PackingListSummary):
+class PackingListSummary(PackingListFields):
+    """A list without its items, for the index.
+
+    The counts are here rather than on the items the caller does not get: the
+    index shows "3 / 11 packed" per list, and sending every item so the client
+    can count them would be a page-sized payload to render one fraction.
+    """
+
+    item_count: int = 0
+    settled_count: int = 0
+
+
+class PackingListResponse(PackingListFields):
     items: list[PackingItemResponse] = []
 
 

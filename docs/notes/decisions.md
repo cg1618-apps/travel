@@ -91,6 +91,36 @@ reader can tell a decision from an accident.
   database clock is correct for a row written by a migration or by hand as well
   as by the app, and needs no helper.
 
+- **The list screen is a spreadsheet, with a checklist beside it.** The first
+  build grouped items by a mode chosen from "When / Category / Bag" and added
+  them through a box labelled "Add something". Both were rejected on sight once
+  there was something to look at, and for the same reason: they put the data
+  model's vocabulary on screen and asked the reader a question about it.
+  Grouping is not a thing anyone wants; seeing their list is.
+
+  The references are the two tools this list would otherwise live in. A
+  **spreadsheet** for planning — every column visible, every header sorting,
+  every cell editing in place, no save button — and **Google Tasks** for
+  working through — a tick, a name, a quiet second line, done items folded
+  away. Two views rather than one, because one screen doing both jobs is what
+  produced the first attempt.
+
+  What went with it: the grouping toggle, the modal item editor (every field it
+  held is now a column), and due-now highlighting.
+
+- **Packing timing became an ordinary column.** It was designed to drive the
+  layout, with groups highlighted as they fell due. In practice the highlight
+  competed with the list for attention and the grouping hid things. It is now
+  the `When` column, sorted in escalating rather than alphabetical order. The
+  `dueTimings` function and its boundary tests were deleted; `daysUntil`
+  survives, because "leaving tomorrow" is still worth saying and is still a
+  date boundary worth testing.
+
+- **The index carries `item_count` and `settled_count`.** The list of lists
+  shows "2 / 6" per row. Sending every item of every list so the client could
+  length them would be a page-sized payload to render one fraction, so the
+  counts are computed where the rows already are.
+
 - **Tailwind 4 and media's design tokens, but not media's components.** The
   platform asks the four apps to read as one product, so the token names and
   values in `frontend/src/index.css` are copied from
