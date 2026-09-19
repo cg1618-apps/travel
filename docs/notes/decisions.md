@@ -76,6 +76,19 @@ reader can tell a decision from an accident.
   database clock is correct for a row written by a migration or by hand as well
   as by the app, and needs no helper.
 
+- **Tailwind 4 and media's design tokens, but not media's components.** The
+  platform asks the four apps to read as one product, so the token names and
+  values in `frontend/src/index.css` are copied from
+  `media/frontend/src/index.css` — bone paper, wisteria, flat surfaces. What is
+  not copied is anything media-specific, such as its per-media-type scope hues,
+  and no component is shared: the apps are separate repositories by design and
+  a shared component library would be a git pointer between them.
+
+- **TanStack Query on every screen.** Media's split is query hooks for anything
+  written back from the UI and plain `fetch` for read-only pages. Every screen
+  here is editable — a packing list exists to be ticked off — so there is no
+  page that qualifies for the plain-fetch side of that split.
+
 ## The skeleton
 
 - **The SPA catch-all refuses the `/api` prefix explicitly, rather than
