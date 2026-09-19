@@ -10,8 +10,12 @@ def test_database_url_is_honoured_verbatim_when_set(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@example:5432/db")
     from app import config
 
-    importlib.reload(config)
-    assert config.settings.sqlalchemy_database_url == "postgresql://u:p@example:5432/db"
+    try:
+        importlib.reload(config)
+        assert config.settings.sqlalchemy_database_url == "postgresql://u:p@example:5432/db"
+    finally:
+        # Restore the module to clean state so later tests get a fresh Settings()
+        importlib.reload(config)
 
 
 def test_the_url_is_built_from_the_parts_when_it_is_not(monkeypatch):
@@ -22,7 +26,11 @@ def test_the_url_is_built_from_the_parts_when_it_is_not(monkeypatch):
     monkeypatch.setenv("POSTGRES_HOST", "db")
     from app import config
 
-    importlib.reload(config)
-    assert config.settings.sqlalchemy_database_url == (
-        "postgresql://travel:secret@db:5432/travel"
-    )
+    try:
+        importlib.reload(config)
+        assert config.settings.sqlalchemy_database_url == (
+            "postgresql://travel:secret@db:5432/travel"
+        )
+    finally:
+        # Restore the module to clean state so later tests get a fresh Settings()
+        importlib.reload(config)
