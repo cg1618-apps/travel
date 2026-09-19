@@ -23,12 +23,15 @@ smallest surface on which to prove the platform's app contract end to end.
 
 ## Status
 
-**The skeleton is built and there are no features in it.** The app runs
-locally, builds as a container, and answers a health probe that compares the
-revision the database is stamped with against the head the running code ships.
-What it does not have is a packing list, a trip, a rule, a transport note — or
-a table for any of them: the Alembic chain holds one deliberately empty
-baseline revision, so the from-zero proof exists before the first column does.
+**The first feature is being built: packing lists.** Under it is the skeleton
+— the app runs locally, builds as a container, and answers a health probe that
+compares the revision the database is stamped with against the head the running
+code ships. What it still does not have is a trip, a buying list, a rule or a
+transport note.
+
+`0001_baseline` is deliberately empty, so the from-zero proof existed before
+the first column did rather than being added once the chain was already long.
+`0002_packing` is the first revision that proof actually checks.
 
 It is `status: live` in the platform's `apps.yml`, so the tunnel routes
 `travel.cg1618.com` to this app. That is a statement about the hostname being

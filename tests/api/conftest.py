@@ -87,7 +87,12 @@ def db_session(engine):
         yield session
     finally:
         session.close()
-        transaction.rollback()
+        # A test that asserts a constraint REFUSES leaves the transaction
+        # already aborted, and rolling back an inactive one warns. Guarding
+        # keeps the refusal tests - which are most of the value here - from
+        # filling the run with noise that trains people to ignore warnings.
+        if transaction.is_active:
+            transaction.rollback()
         connection.close()
 
 

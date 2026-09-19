@@ -52,6 +52,30 @@ reader can tell a decision from an accident.
   `alembic_version` — which `create_all` never writes — so the divergence
   cannot be quietly undone.
 
+- **A plain integer `id` primary key; media carries a UUID `system_id` plus a
+  sequence-backed `public_id`.** That pair exists there to give Google-Sheets
+  round trips a stable key and users a short one. travel syncs to nothing and
+  exposes no ids to anybody, so the second key would be a column with no reader
+  and the first a wider index with no benefit. If sharing ever needs an
+  unguessable identifier it belongs on the share token, not on every row.
+
+- **`status`, `timing`, `leg`, `visibility` and `kind` carry
+  `CheckConstraint`s.** This follows media's *discriminator* precedent
+  (`ck_movies_media_type`) rather than its open-vocabulary one, where values
+  live in a constants module with no constraint because the list grows. These
+  five are small closed sets the application branches over exhaustively, and a
+  value outside one of them is a bug rather than a new option. They are text
+  plus a constraint rather than PostgreSQL `ENUM` types: adding a member to a
+  PG enum inside a reversible revision is disproportionate ceremony, and the
+  constraint is generated from the `StrEnum` in `app/constants.py` so the two
+  cannot drift.
+
+- **Timestamps come from the database clock (`server_default=now()`); media
+  defaults them in Python from a Taipei-now helper.** Media displays them.
+  Nothing here does — `created_at` exists to order the cap's eviction — so the
+  database clock is correct for a row written by a migration or by hand as well
+  as by the app, and needs no helper.
+
 ## The skeleton
 
 - **The SPA catch-all refuses the `/api` prefix explicitly, rather than

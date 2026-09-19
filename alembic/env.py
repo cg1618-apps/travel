@@ -9,6 +9,11 @@ from alembic import context
 # Add the root directory to the python path so `app` can be imported below.
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+# `models` is imported for its side effect: it registers every table on
+# Base.metadata, which is empty until something imports them. Autogenerate
+# compares the database against that metadata, so a model missing here is a
+# table autogenerate silently decides to DROP.
+from app import models  # noqa: F401
 from app.config import settings
 from app.database import Base
 
