@@ -111,3 +111,24 @@ setting; it is the only reason the cap's refusal can fail.
 
 Assert the mirror case with the same fixture. A green then proves the rule did
 the refusing, rather than an empty table doing it for free.
+
+Two more of the same shape arrived with the logging contract, and both are
+easy to read as decoration:
+
+- **`test_the_f_string_guard_can_actually_fail`.** Its neighbour,
+  `test_no_log_call_formats_its_own_message`, walks `app/` with an AST scan and
+  asserts it found nothing. A detector that matches nothing at all passes that
+  identically, and would keep passing through the change that fills this app
+  with f-string log calls. This one feeds the detector a known-bad module and
+  proves it fires.
+- **`test_an_id_of_exactly_sixty_four_characters_is_honoured`.** Every
+  rejection case in `tests/unit/test_request_id.py` asserts "a fresh id was
+  generated instead" — which a validator refusing *everything* would also
+  satisfy. This is the acceptance, and it sits on the boundary rather than
+  safely inside it, so an off-by-one in the pattern is caught too.
+
+And one that is weaker than it looks unless read closely:
+`test_uvicorns_own_loggers_are_taken_over` asserts the handler **by identity**
+against the root console handler. Asserting that *some* handler exists passes
+while the bug is present, because uvicorn installs one of its own — which is
+the entire failure being guarded against.
