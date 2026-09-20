@@ -1,99 +1,127 @@
+@import "tailwindcss";
+
+/*
+ * The visual language is the media tracker's, so the four apps read as one
+ * product: bone paper, wisteria, flat surfaces and barely-eased corners.
+ * Token NAMES and values are copied from `media/frontend/src/index.css`;
+ * what is not copied is anything media-specific, such as its per-media-type
+ * scope hues.
+ *
+ * Theme switch. `data-theme` on <html> beats the OS preference in both
+ * directions, so an explicit light choice survives a dark OS.
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme {
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-surface-3: var(--c-surface-3);
+  --color-text: var(--c-text);
+  --color-text-muted: var(--c-text-muted);
+  --color-text-faint: var(--c-text-faint);
+  --color-border: var(--c-border);
+  --color-border-strong: var(--c-border-strong);
+  --color-brand: var(--c-brand);
+  --color-brand-hover: var(--c-brand-hover);
+  --color-brand-soft: var(--c-brand-soft);
+  --color-on-brand: var(--c-on-brand);
+  --color-ink: var(--c-ink);
+  --color-ink-text: var(--c-ink-text);
+
+  --color-danger: #ef4444;
+  --color-danger-hover: #dc2626;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-info: #0ea5e9;
+
+  /* Flat surfaces: corners barely eased, no resting shadow. Elevation is
+     reserved for menus and modals. */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 6px;
+  --shadow-sm: 0 0 #0000;
+  --shadow-md: 0 0 #0000;
+}
+
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --c-canvas: #ece9e2;        /* bone paper */
+  --c-surface: #f8f6f1;
+  --c-surface-2: #e6e2d9;
+  --c-surface-3: #d9d4c9;
+  --c-text: #1c1a17;
+  --c-text-muted: #5b5750;
+  --c-text-faint: #8f8a80;
+  --c-border: #cfc9bd;
+  --c-border-strong: #9f9889;
+  --c-brand: #7a4c9e;         /* wisteria */
+  --c-brand-hover: #63397f;
+  --c-brand-soft: rgb(122 76 158 / 0.08);
+  --c-on-brand: #ffffff;
+  --c-ink: #1c1a17;
+  --c-ink-text: #f8f6f1;
+}
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
-
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
+[data-theme="dark"] {
+  color-scheme: dark;
+  --c-canvas: #17150f;
+  --c-surface: #211e18;
+  --c-surface-2: #2b2720;
+  --c-surface-3: #3a352c;
+  --c-text: #ece8df;
+  --c-text-muted: #aaa397;
+  --c-text-faint: #736d62;
+  --c-border: #3a352c;
+  --c-border-strong: #57503f;
+  --c-brand: #c2a0e6;
+  --c-brand-hover: #d4b8f0;
+  --c-brand-soft: rgb(194 160 230 / 0.14);
+  --c-on-brand: #17150f;
+  --c-ink: #0f0e0a;
+  --c-ink-text: #ece8df;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --c-canvas: #17150f;
+    --c-surface: #211e18;
+    --c-surface-2: #2b2720;
+    --c-surface-3: #3a352c;
+    --c-text: #ece8df;
+    --c-text-muted: #aaa397;
+    --c-text-faint: #736d62;
+    --c-border: #3a352c;
+    --c-border-strong: #57503f;
+    --c-brand: #c2a0e6;
+    --c-brand-hover: #d4b8f0;
+    --c-brand-soft: rgb(194 160 230 / 0.14);
+    --c-on-brand: #17150f;
+    --c-ink: #0f0e0a;
+    --c-ink-text: #ece8df;
   }
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
 }
 
 body {
   margin: 0;
+  background: var(--c-canvas);
+  color: var(--c-text);
+  font-family: ui-sans-serif, system-ui, "Noto Sans TC", sans-serif;
+  -webkit-text-size-adjust: 100%;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
-}
-
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+/* This app is used standing over an open suitcase holding a phone. Tap
+   targets come before density everywhere. */
+button,
+[role="button"] {
+  min-height: 44px;
+  touch-action: manipulation;
 }

@@ -40,6 +40,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The bit has been lost six times across these repositories: both
+      # development machines have core.fileMode=false, so git records 100644
+      # for a file the filesystem calls executable and nothing in the working
+      # tree disagrees. The box then cannot run the hook, and since the
+      # registry declares migrations: true, that refuses EVERY deploy.
+      #
+      # ls-tree, not ls-files: the latter reads the index, which already
+      # reflects a chmod that was never committed.
+      - name: The migration hook must be executable in the commit
+        run: |
+          mode=$(git ls-tree HEAD -- deploy/migrations | awk '{print $1}')
+          echo "deploy/migrations is $mode"
+          test "$mode" = "100755"
+
       - uses: actions/setup-python@v5
         with:
           # Same interpreter as the runtime image (dockerfile: python:3.13-slim).
@@ -70,6 +84,13 @@ jobs:
 
       - name: Lint frontend
         run: npm run lint
+        working-directory: frontend
+
+      # The due-now boundaries are pure functions with no server behind them,
+      # so nothing in the Python suite covers them. They are only wrong on the
+      # evening they matter, which is the worst time to find out.
+      - name: Test frontend
+        run: npm test
         working-directory: frontend
 
       # dockerfile builds the frontend, so without this a bundle that does not

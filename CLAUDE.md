@@ -23,15 +23,30 @@ smallest surface on which to prove the platform's app contract end to end.
 
 ## Status
 
-**The skeleton is built and there are no features in it.** The app runs
-locally, builds as a container, and answers a health probe that compares the
-revision the database is stamped with against the head the running code ships.
-What it does not have is a packing list, a trip, a rule, a transport note — or
-a table for any of them: the Alembic chain holds one deliberately empty
-baseline revision, so the from-zero proof exists before the first column does.
+**Packing lists are built; the other four modules are not.** Under the feature
+is the skeleton — the app runs locally, builds as a container, and answers a
+health probe that compares the revision the database is stamped with against
+the head the running code ships. What it still does not have is a trip, a
+buying list, a rule or a transport note.
 
-It is `status: planned` in the platform's `apps.yml`, so the tunnel does not
-route `travel.cg1618.com` yet. Going live is its own change.
+`0001_baseline` is deliberately empty, so the from-zero proof existed before
+the first column did rather than being added once the chain was already long.
+`p1acking0001` is the first revision that proof actually checks.
+
+**Revision ids are mnemonics, not sequence numbers** — `p1acking0001`, the way
+the media tracker names its own. Only `0001_baseline` is numbered, and it came
+from the skeleton rather than from a choice.
+
+It is `status: live` in the platform's `apps.yml`, so the tunnel routes
+`travel.cg1618.com` to this app. That is a statement about the hostname being
+routed, not about anything interesting answering on it.
+
+Whether the DNS record exists, and whether Cloudflare is actually enforcing
+Access today, are the platform's to know and are recorded there. Only a probe
+from the open internet answers the second one, which is what the platform's
+`bin/check-exposure` is for. Asserting either here is how the previous version
+of this line went stale: an app file holding a platform fact it has no way to
+keep true.
 
 A feature starts with design, not implementation — brainstorm into
 `docs/superpowers/specs/`, and only then plan.
@@ -107,11 +122,13 @@ venv/Scripts/python.exe -m pytest tests/ -q      # tests
 venv/Scripts/ruff.exe check .                    # lint
 cd frontend && npm run build                     # writes frontend_dist/ for uvicorn
 cd frontend && npm run lint                       # oxlint
+cd frontend && npm test                          # vitest, once
 alembic upgrade head
 alembic revision --autogenerate -m "describe change"
 
-.\dev.ps1   # shared Postgres (anime_site_postgres_db, database "travel") +
+.\dev.ps1   # shared Postgres (cg1618-dev-db, database "travel") +
             # uvicorn --reload on :8002 + vite on :5175, one window
+dev.cmd     # the same thing from cmd.exe or a double-click
 ```
 
 **Ports are box-wide**, allocated in the platform's `apps.yml`: uvicorn binds
@@ -120,8 +137,13 @@ uvicorn `8002`, Vite `5175` — `media`'s `8000`/`5173` on the same laptop must
 stay undisturbed, which is why `dev.ps1` refuses to start rather than picking
 a free port when 8002 is already held.
 
-**One PostgreSQL container, one database per app.** `travel` has no
-`docker-compose.yml` of its own in development — it runs its `travel`
-database inside `anime_site_postgres_db`, the same container `media` starts,
-created once by the platform's provisioning. `dev.ps1` starts that container
-if it is stopped; it never creates or owns it.
+**One PostgreSQL container, one database per app, and the platform owns it.**
+`travel` has no `docker-compose.yml` of its own in development — it runs its
+`travel` database inside `cg1618-dev-db`, described by the platform's
+`docker-compose.dev-db.yml`. `dev.ps1` brings that project up; it never creates
+or owns the server.
+
+It used to be `anime_site_postgres_db` inside **media's** compose project, and
+the misleading name was the smaller half of that: a `docker compose down` in
+any media tree removed the database `travel` was using. A compose project of
+its own is what makes that impossible.

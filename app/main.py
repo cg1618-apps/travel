@@ -6,7 +6,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.routers import health
+from app import logging_config
+from app.request_context import RequestIdMiddleware
+from app.routers import health, label_option, packing_item, packing_list
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DIST = BASE_DIR / "frontend_dist"
@@ -18,8 +20,16 @@ def create_app(dist: Path = DIST) -> FastAPI:
     frontend_dist/ when the suite runs, so a test that depends on it existing
     silently tests nothing.
     """
+    logging_config.configure()
+
     app = FastAPI(title="travel")
+    # Added first, so it is the OUTERMOST middleware and the id is set before
+    # anything below it can log.
+    app.add_middleware(RequestIdMiddleware)
     app.include_router(health.router)
+    app.include_router(packing_list.router)
+    app.include_router(packing_item.router)
+    app.include_router(label_option.router)
 
     if dist.is_dir():
         # Conditional: a bundle small enough for Vite to inline every asset
