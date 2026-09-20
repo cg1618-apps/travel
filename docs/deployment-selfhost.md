@@ -87,14 +87,19 @@ planned` for a day after it went live.
 `travel` has no database of its own on the box. It uses the platform's
 PostgreSQL, one database per app.
 
-**Use `docker compose stop db`, never `docker compose down`.** Every tree is
-in one compose project — which is exactly what `COMPOSE_PROJECT_NAME` pinning
-is *for*, since it makes a worktree mount the real volume instead of silently
-creating an empty one — and the same project name makes the *container* shared
-too. A `down` in any tree removes the container all four apps are using. It
-happened on the development machine on 2026-09-19; no data was lost, because
-`down` without `-v` leaves named volumes alone, but on the box it would take
-production's database out from under four apps with nobody in front of it.
+**On the box, use `docker compose stop db`, never `docker compose down`.** A
+`down` removes the container all four apps are using, and there that is
+production's database taken out from under four apps with nobody in front of
+it. `down` without `-v` leaves the named volume alone, so it is recoverable —
+but it is an outage nobody asked for.
+
+**On a development machine this is no longer a trap**, and the paragraph that
+used to be here described one that has been removed. The development database
+lived in `media`'s compose project, so a `down` in any media tree took it from
+every other app; that happened on 2026-09-19 and read as data loss for ninety
+seconds. It is now the platform's own project — `docker-compose.dev-db.yml`,
+container `cg1618-dev-db`, volume `cg1618_dev_pgdata` — so nothing an app runs
+can adopt or destroy it.
 
 ## Why there is one page here and two in `media`
 
