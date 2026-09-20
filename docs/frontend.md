@@ -71,6 +71,34 @@ looks like is how an app starts feeling like several.
 An empty state offers the action that fills it. "No templates" is less useful
 than "No templates. Mark a list as a template to start from it next time."
 
+## How the built bundle is served
+
+**One process serves the API and the bundle, and nothing sits in front of it** —
+cloudflared connects straight to uvicorn, so there is no proxy to serve a static
+file this app declines to. `app/main.py` is the whole story:
+
+- **`/assets/...`** is mounted as `StaticFiles`, when the build produced an
+  `assets/` directory at all. Vite inlines every asset when the bundle is small
+  enough, so the mount is conditional.
+- **`/api/...`** is refused by the catch-all with a 404, even when
+  unregistered. This app's health path is `/api/health`, so that one guard
+  covers the deploy probe too; a mistyped endpoint must not come back as a 200
+  carrying the bundle.
+- **Any other path that names a real file inside the bundle is served as that
+  file** — `favicon.svg`, `favicon.ico`, `robots.txt`, anything the build copies
+  from `frontend/public/` to the root of `frontend_dist/`. The path is resolved
+  and confined to the dist directory first, so `..%2F.env` cannot read a file
+  beside the bundle.
+- **Everything else is `index.html`**, so client-side routing works.
+
+The order matters and is the same as `media`'s: the API routers are registered
+before the catch-all, so it cannot shadow a route that exists.
+
+**A file in `frontend/public/` reaches production only through this handler.**
+Before it served real files, `/favicon.svg` answered with `index.html` under
+`text/html` and the browser discarded it — the icon was in the repository and in
+the bundle, and had never once been shown.
+
 ## The dev proxy uses 127.0.0.1
 
 Not `localhost`. uvicorn binds IPv4 only, but Node resolves `localhost` to
