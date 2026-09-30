@@ -1,6 +1,6 @@
 # Data model
 
-Last verified: 2026-09-30
+Last verified: 2026-10-01
 
 **What this is for.** Every table this application ships, what each column
 means, and which rules the database itself enforces. The vocabularies the
@@ -218,8 +218,15 @@ they belong to its legs.
 | `id` | integer | no | identity | |
 | `name` | text | no | | |
 | `notes` | text | yes | | |
+| `visibility` | text | no | `private` | `private`, `unlisted`, `public`. A single trip is the thing expected to be shared. **Nothing reads this yet**, as with `packing_list.visibility`. |
 | `created_at` | timestamptz | no | `now()` | |
 | `updated_at` | timestamptz | no | `now()` | |
+
+**Constraints**
+
+| Name | What it enforces |
+| --- | --- |
+| `ck_trip_visibility` | One of the three values. |
 
 ## `trip_leg`
 

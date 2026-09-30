@@ -243,3 +243,28 @@ def test_the_current_endpoint_returns_the_trip_when_there_is_one(client, trip):
     assert response.status_code == 200
     assert response.json()["id"] == trip["id"]
     assert response.json()["legs"]
+
+
+def test_a_trip_defaults_to_private(db_session):
+    trip = Trip(name="彰化 ⇄ 台北")
+    db_session.add(trip)
+    db_session.flush()
+    db_session.refresh(trip)
+    assert trip.visibility == "private"
+
+
+def test_an_unknown_trip_visibility_is_refused_by_the_database(db_session):
+    from sqlalchemy.exc import IntegrityError
+
+    db_session.add(Trip(name="彰化 ⇄ 台北", visibility="friends"))
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+def test_every_declared_trip_visibility_is_accepted(db_session):
+    # The mirror of the refusal above, with the same shape of row.
+    from app.constants import Visibility
+
+    for visibility in Visibility:
+        db_session.add(Trip(name=f"trip {visibility}", visibility=visibility))
+    db_session.flush()

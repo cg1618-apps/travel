@@ -14,16 +14,27 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.constants import Visibility
 from app.database import Base
-from app.models.base import TimestampMixin
+from app.models.base import TimestampMixin, in_clause
 
 
 class Trip(Base, TimestampMixin):
     __tablename__ = "trip"
+    __table_args__ = (
+        CheckConstraint(in_clause("visibility", Visibility), name="ck_trip_visibility"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # A single trip is the thing expected to be shared. Nothing reads this yet,
+    # as with `PackingList.visibility`: the column is carried now so that the
+    # checks, when they come, have something to check.
+    visibility: Mapped[str] = mapped_column(
+        String, nullable=False, default=Visibility.PRIVATE, server_default=Visibility.PRIVATE
+    )
 
     legs = relationship(
         "TripLeg",
