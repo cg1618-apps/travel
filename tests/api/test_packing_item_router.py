@@ -198,3 +198,45 @@ def test_deleting_an_item_leaves_its_list_alone(client, db_session, packing_list
 
 def test_deleting_an_item_that_does_not_exist_is_a_404(client):
     assert client.delete("/api/packing-items/9999").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Detail, need and location
+# --------------------------------------------------------------------------
+
+
+def test_an_item_carries_detail_need_and_location(client, packing_list):
+    response = add_item(
+        client, packing_list, name="鑰匙", detail="家鑰匙", need="bring", location="彰化"
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert (body["detail"], body["need"], body["location"]) == ("家鑰匙", "bring", "彰化")
+
+
+def test_need_may_be_left_blank(client, packing_list):
+    assert add_item(client, packing_list).json()["need"] is None
+
+
+def test_an_unknown_need_is_a_422_not_a_500(client, packing_list):
+    assert add_item(client, packing_list, need="borrow").status_code == 422
+
+
+def test_every_declared_need_is_accepted(client, packing_list):
+    # The mirror of the refusal above.
+    for need in ("need", "bring", "buy"):
+        assert add_item(client, packing_list, need=need).status_code == 201
+
+
+def test_the_need_constraint_holds_when_the_schema_is_bypassed(db_session, packing_list):
+    from sqlalchemy.exc import IntegrityError
+
+    db_session.add(PackingItem(list_id=packing_list.id, name="x", need="borrow"))
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+def test_saving_an_item_remembers_its_location(client, packing_list):
+    add_item(client, packing_list, location="新北")
+    values = [row["value"] for row in client.get("/api/label-options?kind=location").json()]
+    assert values == ["新北"]

@@ -1,6 +1,6 @@
 # Business rules
 
-Last verified: 2026-09-19
+Last verified: 2026-09-30
 
 **What this is for.** The rules that are not visible in the schema — what fills
 the three-list cap, what eviction destroys, what a copy carries, and how the
@@ -42,7 +42,7 @@ alike. **The definition carries; the state resets.**
 
 | Carries | Resets |
 | --- | --- |
-| `name`, `category`, `quantity`, `unit`, `bag`, `timing`, `needs_double_check`, `notes`, `position` | `status` → `not_packed`, `quantity_packed` → 0, `double_checked` → `false` |
+| `name`, `detail`, `category`, `quantity`, `unit`, `bag`, `location`, `need`, `timing`, `needs_double_check`, `notes`, `position` | `status` → `not_packed`, `quantity_packed` → 0, `double_checked` → `false` |
 
 Nothing arrives pre-ticked. A duplicated list with its ticks intact is how you
 reach the airport certain you packed the charger.
@@ -99,11 +99,11 @@ date set" and everything else works.
 
 ## Common options
 
-`label_option` rows are suggestions for the free-text `category` and `bag`
-fields, learned from what gets typed. An item may always carry a value that is
+`label_option` rows are suggestions for the free-text `category`, `bag` and
+`location` fields, learned from what gets typed. An item may always carry a value that is
 not among them.
 
-- **Saving an item records its `category` and `bag`** as options, if they are
+- **Saving an item records its `category`, `bag` and `location`** as options, if they are
   not already there.
 - **Renaming an option rewrites every item using the old value**, because the
   item holds the text itself — a rename that touched only the option row would
@@ -116,3 +116,10 @@ not among them.
 
 An option's `kind` scopes its uniqueness, so "day bag" can be both a category
 and a bag. They are different facts.
+
+## Need and location
+
+`need` says why an item is on the list, and is null where the question does
+not apply. `bring` is already owned and taken from the item's `location`; `buy`
+has to be bought, at that location; `need` is needed with bring-or-buy not yet
+decided. `location` is free text, suggested like `category` and `bag`.

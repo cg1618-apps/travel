@@ -84,3 +84,16 @@ def test_there_is_exactly_one_head():
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert len(lines) == 1, result.stdout
     assert head_revision() in lines[0], result.stdout
+
+
+def test_the_chain_downgrades_to_base_and_back(scratch_database):
+    env = {**os.environ, "DATABASE_URL": scratch_database}
+    for command in (["upgrade", "head"], ["downgrade", "base"], ["upgrade", "head"]):
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", *command],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr

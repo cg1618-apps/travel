@@ -12,7 +12,7 @@ from app.constants import LabelKind
 from app.database import get_db
 from app.models import LabelOption
 from app.schemas.label_option import LabelOptionResponse, LabelOptionUpdate
-from app.services.domain.packing import count_items_using, rename_option
+from app.services.domain.labels import count_using, rename_option
 
 router = APIRouter(prefix="/api/label-options", tags=["Common options"])
 
@@ -28,7 +28,7 @@ def _get(db: Session, option_id: int) -> LabelOption:
 
 def _as_response(db: Session, option: LabelOption) -> LabelOptionResponse:
     response = LabelOptionResponse.model_validate(option)
-    response.usage_count = count_items_using(db, option)
+    response.usage_count = count_using(db, option)
     return response
 
 

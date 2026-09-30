@@ -1,6 +1,6 @@
 # API
 
-Last verified: 2026-09-19
+Last verified: 2026-09-30
 
 **What this is for.** Every HTTP endpoint this application serves. The
 authority is FastAPI's own route table — if a row here and the dump disagree,
@@ -133,6 +133,10 @@ save-then-unsave holds five working lists with nothing complaining.
 An item is created under the list that owns it and addressed on its own
 afterwards, which is why the two path shapes differ.
 
+Beyond the name, an item's text fields are `detail`, `category`, `bag` and
+`location`; `need` is one of `need`, `bring`, `buy` or `null`, and any other
+value is a `422`.
+
 `position` is assigned by the server as one past the end of that list, and is
 counted **per list rather than globally** — a shared counter would leave a new
 list's first item at position 400, sorting correctly by accident until
@@ -154,12 +158,12 @@ different requests.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/label-options` | none | Every option, in `position` order. `?kind=category` or `?kind=bag` narrows it. |
+| `GET` | `/api/label-options` | none | Every option, in `position` order. `?kind=category`, `?kind=bag` or `?kind=location` narrows it. |
 | `PATCH` | `/api/label-options/{id}` | none | Rename or reorder. A rename rewrites the items using it; renaming onto an existing value **merges**. |
 | `DELETE` | `/api/label-options/{id}` | none | `204`. The items using it are left alone. |
 
 There is no `POST`. Options are **learned**: writing an item records its
-`category` and `bag`, on create and on any `PATCH` that changes them.
+`category`, `bag` and `location`, on create and on any `PATCH` that changes them.
 
 Each option carries a `usage_count` — how many items currently hold that value
 — so a rename screen can say what it is about to rewrite before it does it.

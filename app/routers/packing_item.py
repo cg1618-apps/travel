@@ -16,7 +16,7 @@ from app.schemas.packing_item import (
     PackingItemResponse,
     PackingItemUpdate,
 )
-from app.services.domain.packing import remember_item_labels
+from app.services.domain.labels import remember_item_labels
 
 router = APIRouter(tags=["Packing items"])
 

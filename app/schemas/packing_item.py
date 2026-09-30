@@ -2,13 +2,16 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants import Status, Timing
+from app.constants import Need, Status, Timing
 
 
 class PackingItemBase(BaseModel):
     name: str = Field(min_length=1)
+    detail: str | None = None
     category: str | None = None
     bag: str | None = None
+    location: str | None = None
+    need: Need | None = None
     # `ge=0` on both: a negative count is not a state, and the database has no
     # constraint saying so. Over-packing deliberately IS allowed, so there is
     # no check that `quantity_packed <= quantity`.
@@ -33,8 +36,11 @@ class PackingItemUpdate(BaseModel):
     """Every field optional: PATCH changes what it names and nothing else."""
 
     name: str | None = Field(default=None, min_length=1)
+    detail: str | None = None
     category: str | None = None
     bag: str | None = None
+    location: str | None = None
+    need: Need | None = None
     quantity: int | None = Field(default=None, ge=0)
     quantity_packed: int | None = Field(default=None, ge=0)
     unit: str | None = None

@@ -244,6 +244,26 @@ def test_a_copy_carries_the_definition_and_resets_the_state(client, db_session):
     assert item["double_checked"] is False
 
 
+def test_a_copy_carries_detail_need_and_location(client):
+    source = client.post("/api/packing-lists", json={"name": "src", "saved": True}).json()
+    client.post(
+        f"/api/packing-lists/{source['id']}/items",
+        json={
+            "name": "鑰匙",
+            "detail": "家鑰匙",
+            "need": "bring",
+            "location": "彰化",
+            "status": "packed",
+        },
+    )
+    copy = client.post(
+        "/api/packing-lists", json={"name": "copy", "saved": True, "copy_from_id": source["id"]}
+    ).json()
+    item = copy["items"][0]
+    assert (item["detail"], item["need"], item["location"]) == ("家鑰匙", "bring", "彰化")
+    assert item["status"] == "not_packed"
+
+
 def test_a_copy_does_not_carry_the_source_list_s_own_fields(client, db_session):
     source = make_list(
         db_session, "winter", template=True, departure_at=None, leg="outbound"
