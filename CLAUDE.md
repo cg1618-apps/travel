@@ -126,7 +126,7 @@ cd frontend && npm test                          # vitest, once
 alembic upgrade head
 alembic revision --autogenerate -m "describe change"
 
-.\dev.ps1   # shared Postgres (anime_site_postgres_db, database "travel") +
+.\dev.ps1   # shared Postgres (cg1618-dev-db, database "travel") +
             # uvicorn --reload on :8002 + vite on :5175, one window
 dev.cmd     # the same thing from cmd.exe or a double-click
 ```
@@ -137,8 +137,13 @@ uvicorn `8002`, Vite `5175` — `media`'s `8000`/`5173` on the same laptop must
 stay undisturbed, which is why `dev.ps1` refuses to start rather than picking
 a free port when 8002 is already held.
 
-**One PostgreSQL container, one database per app.** `travel` has no
-`docker-compose.yml` of its own in development — it runs its `travel`
-database inside `anime_site_postgres_db`, the same container `media` starts,
-created once by the platform's provisioning. `dev.ps1` starts that container
-if it is stopped; it never creates or owns it.
+**One PostgreSQL container, one database per app, and the platform owns it.**
+`travel` has no `docker-compose.yml` of its own in development — it runs its
+`travel` database inside `cg1618-dev-db`, described by the platform's
+`docker-compose.dev-db.yml`. `dev.ps1` brings that project up; it never creates
+or owns the server.
+
+It used to be `anime_site_postgres_db` inside **media's** compose project, and
+the misleading name was the smaller half of that: a `docker compose down` in
+any media tree removed the database `travel` was using. A compose project of
+its own is what makes that impossible.

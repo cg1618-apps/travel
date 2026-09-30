@@ -7,11 +7,13 @@ in `notes/`.
 | Page | What it holds |
 | --- | --- |
 | `notes/decisions.md` | Why things are the way they are, including rejected alternatives. The one place that is allowed to talk about the past. |
+| `deployment-selfhost.md` | What a release does to the box, and what your options are when one fails. `bin/rollback` names this page when it freezes. |
 | `api.md` | Every HTTP endpoint, the shared conventions, and the two-step refusal that guards the cap. |
 | `frontend.md` | How the React app is laid out, the visual language it shares with the media tracker, and the mobile-first rules a new screen follows. |
 | `business-rules.md` | What fills the three-list cap, what a copy carries, when an item is due, and how the common options behave. |
 | `data-model.md` | Every table, what each column means, and which rules the database itself enforces. |
 | `testing.md` | How the tests are laid out, what each fixture gives you, and what a refusal test has to set up before it can fail. |
+| `logging.md` | What a log line looks like, why uvicorn's loggers are taken over, and why an inbound `X-Request-ID` is validated even though this app is gated. travel's half of a platform contract. |
 | `superpowers/` | Where a spec and a plan live **while a task is in progress**, and nowhere else. Both are deleted when that task ends, with anything durable moved into a real page first — so the directory is absent between tasks, which is its normal state. |
 
 Packing lists are built. There is still no trip, no buying list, no rules and

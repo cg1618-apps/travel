@@ -136,3 +136,22 @@ def test_the_compose_file_sits_beside_the_env_it_interpolates():
     assert COMPOSE.parent == ROOT, (
         f"{COMPOSE.name} must sit beside .env at the repository root; found it in {COMPOSE.parent}"
     )
+
+
+def test_the_app_caps_its_log_driver(compose):
+    """Docker's default json-file driver has no max-size at all.
+
+    Nothing rotates it and nothing prunes it, so the file grows until the disk
+    is full - and this box's disk is the shared PostgreSQL and every hostname
+    on it. The failure accumulates over months, so whatever gets blamed will
+    not be the cause.
+
+    Both values are strings on purpose: `max-file` as a YAML integer is
+    rejected when the container starts, which is a failure that reaches the box
+    rather than CI.
+    """
+    logging_config = compose["services"]["app"].get("logging")
+    assert logging_config, "no logging block; the app inherits docker's uncapped default"
+    assert logging_config["driver"] == "json-file"
+    assert logging_config["options"]["max-size"] == "10m"
+    assert logging_config["options"]["max-file"] == "5"
