@@ -264,13 +264,17 @@ def test_after_id_inserts_directly_after_and_shifts_later_items(client, packing_
 
 
 def test_after_id_does_not_move_another_lists_items(client, db_session, packing_list):
+    # Load-bearing: other must have items at positions > 0, so the shift would
+    # touch them if the list_id filter were missing from insert_after.
     other = PackingList(name="other")
     db_session.add(other)
     db_session.commit()
-    add_item(client, other, name="far")
+    add_item(client, other, name="x")
+    add_item(client, other, name="y")
+    add_item(client, other, name="z")
     first = add_item(client, packing_list, name="a").json()
     add_item(client, packing_list, name="b", after_id=first["id"])
-    assert positions(client, other) == [("far", None, 0)]
+    assert positions(client, other) == [("x", None, 0), ("y", None, 1), ("z", None, 2)]
 
 
 def test_after_id_from_another_list_is_a_404(client, db_session, packing_list):
@@ -281,3 +285,18 @@ def test_after_id_from_another_list_is_a_404(client, db_session, packing_list):
     assert add_item(client, packing_list, name="x", after_id=foreign["id"]).status_code == 404
     # Mirror: the same id on its own list is accepted.
     assert add_item(client, other, name="y", after_id=foreign["id"]).status_code == 201
+
+
+def test_after_id_naming_no_item_is_a_404(client, packing_list):
+    assert add_item(client, packing_list, name="x", after_id=999999).status_code == 404
+
+
+def test_inserting_after_the_last_item_appends(client, packing_list):
+    add_item(client, packing_list, name="a")
+    second = add_item(client, packing_list, name="b").json()
+    add_item(client, packing_list, name="c", after_id=second["id"])
+    assert positions(client, packing_list) == [
+        ("a", None, 0),
+        ("b", None, 1),
+        ("c", None, 2),
+    ]
