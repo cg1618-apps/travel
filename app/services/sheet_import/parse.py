@@ -152,6 +152,15 @@ def _text(row, columns, header) -> str | None:
     return as_text(_get(row, columns, header))
 
 
+def _int(row, columns, header, where: str) -> int | None:
+    """`as_int` on a cell, refusing a non-number by naming the tab, row and value."""
+    cell = _get(row, columns, header)
+    try:
+        return as_int(cell)
+    except ValueError as error:
+        raise ValueError(f"{where}: cannot read {header} {cell!r}") from error
+
+
 def _lookup(table: dict, value: str | None, default, where: str):
     """Map a sheet word to its stored value; blank is the default, unknown is refused."""
     if value is None:
@@ -205,8 +214,8 @@ def _parse_packing(ws, report: list[str]) -> ParsedList:
             category=category,
             name=name,
             detail=as_text(row[detail_at]) if detail_at < len(row) else None,
-            quantity=as_int(_get(row, columns, "數量")),
-            quantity_packed=as_int(_get(row, columns, "已打包數量")) or 0,
+            quantity=_int(row, columns, "數量", where),
+            quantity_packed=_int(row, columns, "已打包數量", where) or 0,
             status=_lookup(STATUS, _text(row, columns, "打包狀態"), Status.NOT_PACKED, where),
             needs_double_check=check[0],
             double_checked=check[1],
@@ -295,7 +304,7 @@ def _parse_option(row, columns, where: str, report: list[str]) -> ParsedOption:
         line_to=_text(row, columns, "終點"),
         board_at=_text(row, columns, "實際起點"),
         alight_at=_text(row, columns, "實際終點"),
-        price=as_int(_get(row, columns, "價錢")),
+        price=_int(row, columns, "價錢", where),
         duration=_text(row, columns, "時間"),
         headway=_text(row, columns, "班次間隔"),
     )
@@ -375,7 +384,7 @@ def _parse_this_time(ws, trip_start: date, trip_name: str, lists: list[ParsedLis
             from_place=_text(row, columns, "出發地點"), to_place=_text(row, columns, "目的地"),
             departs_at=departs, arrives_at=arrives,
             service=_text(row, columns, "車種"), service_number=_text(row, columns, "車號"),
-            seat=_text(row, columns, "座位"), price=as_int(_get(row, columns, "價錢")),
+            seat=_text(row, columns, "座位"), price=_int(row, columns, "價錢", where),
             ticket_type=_text(row, columns, "車票類型"),
             booking_code=_text(row, columns, "訂票代碼"), notes=_text(row, columns, "備註"),
             **_booking_flags(_text(row, columns, "訂票狀態"), where),

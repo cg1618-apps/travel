@@ -68,3 +68,4 @@ Everything skipped is printed as a `note:` line.
 | A packing row with no `項目` and none above it | Refused with an error naming the tab and row. |
 | A departure cell with an unreadable time | Refused with an error naming the tab, row, column and value. |
 | An unknown status, timing, need, Double Check or booking word | Refused with an error naming the tab, row and value. |
+| A `數量`, `已打包數量` or `價錢` that is not a number, such as 兩個 | Refused with an error naming the tab, row, column and value. |

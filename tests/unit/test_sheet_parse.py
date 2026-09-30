@@ -192,3 +192,17 @@ def test_a_second_leg_for_a_linked_list_is_left_unlinked_and_reported():
     parsed = _parse(wb)
     assert [leg.packing_list_name for leg in parsed.trip.legs] == ["彰化回台北", None]
     assert any("already linked to another leg" in line for line in parsed.report)
+
+
+def test_a_non_numeric_quantity_is_refused_naming_the_cell():
+    wb = workbook()
+    wb["彰化回台北"]["D2"] = "兩個"
+    with pytest.raises(ValueError, match="彰化回台北 row 2: cannot read 數量 '兩個'"):
+        _parse(wb)
+
+
+def test_a_non_numeric_price_is_refused_naming_the_cell():
+    wb = workbook()
+    wb["This time"]["H3"] = "五百五"
+    with pytest.raises(ValueError, match="This time row 3: cannot read 價錢 '五百五'"):
+        _parse(wb)
