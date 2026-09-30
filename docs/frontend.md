@@ -182,7 +182,9 @@ journey is a card under it.
   row the times fall under 早 / 中 / 下午 / 晚 (`groupByBucket`). An irregular
   time is a dashed chip titled 「不一定有這班」. The chip that
   `nextDeparture` picks for the current time is filled and followed by 下一班;
-  the page's clock moves on once a minute.
+  the page's clock moves on once a minute. Today's day type and the time of
+  day are read in Asia/Taipei (`Intl.DateTimeFormat`, as `lib/trips.js` does),
+  not from the device clock, so a phone abroad still picks Taipei's next run.
 - **Adding a time.** The input at the end of each row takes the sheet's
   notation, `*13:40` for an irregular one. Unparseable input shows 時間格式不對
   and sends nothing; a 409 shows 這班已經有了, rendered from the status, not

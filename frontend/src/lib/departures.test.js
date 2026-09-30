@@ -25,10 +25,16 @@ describe('groupByBucket', () => {
 })
 
 describe('dayTypeOf', () => {
-  it('treats Saturday and Sunday as holidays', () => {
-    expect(dayTypeOf(new Date(2026, 8, 26))).toBe('holiday') // Sat
-    expect(dayTypeOf(new Date(2026, 8, 27))).toBe('holiday') // Sun
-    expect(dayTypeOf(new Date(2026, 8, 28))).toBe('weekday') // Mon
+  // UTC instants whose Taipei (UTC+8) weekday is known, so the result does not
+  // depend on the timezone of the machine running the tests.
+  it('treats Saturday and Sunday in Taipei as holidays', () => {
+    expect(dayTypeOf(new Date('2026-09-26T00:00:00Z'))).toBe('holiday') // Sat 08:00 Taipei
+    expect(dayTypeOf(new Date('2026-09-27T04:00:00Z'))).toBe('holiday') // Sun 12:00 Taipei
+    expect(dayTypeOf(new Date('2026-09-28T04:00:00Z'))).toBe('weekday') // Mon 12:00 Taipei
+  })
+  it('takes the Taipei day, not the UTC one', () => {
+    expect(dayTypeOf(new Date('2026-09-25T16:30:00Z'))).toBe('holiday') // Fri UTC, Sat 00:30 Taipei
+    expect(dayTypeOf(new Date('2026-09-27T17:00:00Z'))).toBe('weekday') // Sun UTC, Mon 01:00 Taipei
   })
 })
 
@@ -38,12 +44,16 @@ describe('nextDeparture', () => {
     { id: 2, day_type: 'holiday', time: '13:40:00' },
     { id: 3, day_type: 'weekday', time: '09:00:00' },
   ]
-  it('is the first of today\'s day type at or after now', () => {
-    expect(nextDeparture(deps, new Date(2026, 8, 26, 8, 0)).id).toBe(2)
-    expect(nextDeparture(deps, new Date(2026, 8, 26, 13, 40)).id).toBe(2)
+  it("is the first of today's day type at or after now", () => {
+    expect(nextDeparture(deps, new Date('2026-09-26T00:00:00Z')).id).toBe(2) // Sat 08:00 Taipei
+    expect(nextDeparture(deps, new Date('2026-09-26T05:40:00Z')).id).toBe(2) // Sat 13:40 Taipei
   })
-  it('is null once today\'s last one has gone', () => {
-    expect(nextDeparture(deps, new Date(2026, 8, 26, 20, 0))).toBeNull()
+  it("is null once today's last one has gone", () => {
+    expect(nextDeparture(deps, new Date('2026-09-26T12:00:00Z'))).toBeNull() // Sat 20:00 Taipei
+  })
+  it('reads the clock in Taipei, not on the device', () => {
+    // 22:30 UTC Friday is 06:30 Saturday in Taipei: the 07:00 holiday run is next.
+    expect(nextDeparture(deps, new Date('2026-09-25T22:30:00Z')).id).toBe(1)
   })
 })
 

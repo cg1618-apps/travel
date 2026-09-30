@@ -3,8 +3,11 @@
  *
  * `now` is always a parameter, never a `new Date()` inside, so tests can stand
  * on a boundary. Weekday vs holiday is Monday–Friday vs Saturday–Sunday;
- * public holidays are not modelled.
+ * public holidays are not modelled. The weekday and the clock are read in
+ * Asia/Taipei, like every leg time, whatever timezone the device is in.
  */
+
+import { TAIPEI } from './trips'
 
 export const BUCKETS = ['morning', 'midday', 'afternoon', 'evening']
 
@@ -28,14 +31,24 @@ export function groupByBucket(departures) {
   return groups
 }
 
+const taipeiClock = new Intl.DateTimeFormat('en-US', {
+  timeZone: TAIPEI, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+})
+
+/** The weekday ('Sat') and minutes since midnight of an instant, in Taipei. */
+function taipeiNow(date) {
+  const p = Object.fromEntries(taipeiClock.formatToParts(date).map((x) => [x.type, x.value]))
+  return { weekday: p.weekday, minutes: Number(p.hour) * 60 + Number(p.minute) }
+}
+
 export function dayTypeOf(date) {
-  const day = date.getDay()
-  return day === 0 || day === 6 ? 'holiday' : 'weekday'
+  const { weekday } = taipeiNow(date)
+  return weekday === 'Sat' || weekday === 'Sun' ? 'holiday' : 'weekday'
 }
 
 export function nextDeparture(departures, now) {
   const today = dayTypeOf(now)
-  const current = now.getHours() * 60 + now.getMinutes()
+  const current = taipeiNow(now).minutes
   const candidates = departures
     .filter((d) => d.day_type === today && minutes(d.time) >= current)
     .sort((a, b) => minutes(a.time) - minutes(b.time))
