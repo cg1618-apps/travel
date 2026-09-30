@@ -10,13 +10,14 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from app.constants import LabelKind
-from app.models import LabelOption, PackingItem
+from app.models import LabelOption, PackingItem, TripLeg
 
 #: Which column each kind of option suggests values for.
 COLUMN_FOR_KIND: dict[LabelKind, InstrumentedAttribute] = {
     LabelKind.CATEGORY: PackingItem.category,
     LabelKind.BAG: PackingItem.bag,
     LabelKind.LOCATION: PackingItem.location,
+    LabelKind.TICKET_TYPE: TripLeg.ticket_type,
 }
 
 

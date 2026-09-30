@@ -80,7 +80,7 @@ def index(db: Session = Depends(get_db)):
     lists = (
         db.execute(
             select(PackingList)
-            .options(selectinload(PackingList.items))
+            .options(selectinload(PackingList.items), selectinload(PackingList.trip_leg))
             .order_by(PackingList.created_at.desc(), PackingList.id.desc())
         )
         .scalars()
@@ -138,7 +138,7 @@ def read(list_id: int, db: Session = Depends(get_db)):
     packing_list = db.execute(
         select(PackingList)
         .where(PackingList.id == list_id)
-        .options(selectinload(PackingList.items))
+        .options(selectinload(PackingList.items), selectinload(PackingList.trip_leg))
     ).scalar_one_or_none()
     if packing_list is None:
         raise HTTPException(status_code=404, detail=NOT_FOUND)

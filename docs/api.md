@@ -46,6 +46,7 @@ question only a probe from the open internet answers, and the platform's
 - [Packing items — `/api/packing-items`](#packing-items--apipacking-items)
 - [Common options — `/api/label-options`](#common-options--apilabel-options)
 - [Transport — `/api/transport-routes`](#transport--apitransport-routes)
+- [Trips — `/api/trips`](#trips--apitrips)
 
 ## Health — `/api/health`
 
@@ -68,6 +69,12 @@ serve.
 | `PATCH` | `/api/packing-lists/{id}` | none | Change any of `name`, `departure_at`, `saved`, `template`, `leg`, `pair_id`. `409` if un-saving would evict. |
 | `POST` | `/api/packing-lists/{id}/reset` | none | Reset the list's packing progress. Unpacks `packed` items, clears `quantity_packed` and `double_checked`, but leaves `no_need` and `needs_double_check` definition alone. |
 | `DELETE` | `/api/packing-lists/{id}` | none | `204`. Items go with it. |
+
+Every read of a list carries `departure_at` as the **effective** date, and
+`departure_source`, `"list"` or `"trip_leg"`. While a trip leg links the list,
+`departure_at` is that leg's Asia/Taipei calendar day and `departure_source` is
+`trip_leg`; otherwise both are the list's own. A `PATCH` of `departure_at` writes
+the list's own date, which stays hidden behind the leg until the link is removed.
 
 ### The index
 
@@ -163,7 +170,7 @@ different requests.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/label-options` | none | Every option, in `position` order. `?kind=category`, `?kind=bag` or `?kind=location` narrows it. |
+| `GET` | `/api/label-options` | none | Every option, in `position` order. `?kind=category`, `?kind=bag`, `?kind=location` or `?kind=ticket_type` narrows it. |
 | `PATCH` | `/api/label-options/{id}` | none | Rename or reorder. A rename rewrites the items using it; renaming onto an existing value **merges**. |
 | `DELETE` | `/api/label-options/{id}` | none | `204`. The items using it are left alone. |
 
@@ -207,3 +214,38 @@ type is a different departure. Departures read back ordered by `day_type` (alpha
 **A `PATCH` cannot null a required field.** `from_place`, `to_place`, `mode`,
 `advance_ticket`, `day_type`, `time`, `irregular` and `position` answer `422`
 when sent as `null`; nullable fields such as `notes` accept it and clear.
+
+## Trips — `/api/trips`
+
+A trip owns legs. Like packing items, a leg is created under its trip and
+addressed on its own afterwards.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/trips` | none | Every trip with its legs nested, newest first by latest `departs_at`; a trip with no legs is last. |
+| `GET` | `/api/trips/current` | none | The current trip (see `business-rules.md`). `404` with `No current trip.` when there is none. |
+| `POST` | `/api/trips` | none | `201`. `name` is required and non-empty. |
+| `GET` / `PATCH` / `DELETE` | `/api/trips/{id}` | none | `404` when missing. Deleting takes the legs with it. |
+| `POST` | `/api/trips/{trip_id}/legs` | none | `201`. `from_place`, `to_place`, `departs_at` and `arrives_at` are required. |
+| `PATCH` / `DELETE` | `/api/trip-legs/{id}` | none | `404` when missing. |
+
+A leg response carries `packing_list_name`, the linked list's name or `null`.
+
+**Times carry a zone.** `departs_at` and `arrives_at` are ISO 8601 with an
+offset, for example `2026-09-24T18:06:00+08:00`; a time without one is a `422`.
+
+**`arrives_at` must be after `departs_at`**, else `422`. A `PATCH` is checked
+against the merged values, so moving only one of the two is judged against the
+stored other.
+
+**Linking a list.** `packing_list_id` naming no list is a `404`. A list already
+linked from another leg is a `409` with `That packing list is already linked to
+another leg.`; a `PATCH` that keeps the leg's own link is not a collision.
+Deleting a linked list keeps the leg and clears its link.
+
+**A leg's `ticket_type` is remembered** as a `ticket_type` label option.
+
+**A `PATCH` cannot null a required field.** `name` on a trip, and `from_place`,
+`to_place`, `departs_at`, `arrives_at`, `booked`, `paid` and `collected` on a
+leg, answer `422` when sent as `null`; nullable fields such as `notes` accept it
+and clear.

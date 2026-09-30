@@ -1,6 +1,7 @@
 """What a list looks like going in and coming out."""
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -44,7 +45,9 @@ class PackingListFields(BaseModel):
 
     id: int
     name: str
-    departure_at: date | None
+    #: The EFFECTIVE date: a linked leg's Taipei day, else the list's own.
+    departure_at: date | None = Field(validation_alias="effective_departure_at")
+    departure_source: Literal["list", "trip_leg"] = "list"
     saved: bool
     template: bool
     leg: Leg | None

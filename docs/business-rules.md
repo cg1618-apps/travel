@@ -109,12 +109,30 @@ because the viewer's calendar day is the one that matters and the server's is
 not necessarily the same one.
 
 **A list without a departure date is normal, not incomplete.** It reads "No
-date set" and everything else works.
+date set" and everything else works. A list's date is its own `departure_at`
+unless a trip leg links it; see "Departure source".
+
+## The current trip
+
+The trip with the soonest leg still ahead of now is current. With nothing
+ahead, the trip whose legs ended most recently is. Ties go to the newer trip
+(the higher id), and a trip with no legs is never current. With no trips, or
+only leg-less ones, there is no current trip.
+
+## Departure source
+
+A list linked from a trip leg takes that leg's departure as its date: the
+calendar day in Asia/Taipei, not the server's and not UTC's, so a 00:30 Taipei
+departure is that day and not the previous one. The list's own `departure_at`
+is ignored while the link exists and is used again, unchanged, once it is gone.
+A list no leg links keeps its own date. Reads report which one applied as
+`departure_source`.
 
 ## Common options
 
 `label_option` rows are suggestions for the free-text `category`, `bag` and
-`location` fields, learned from what gets typed. An item may always carry a value that is
+`location` fields of an item and the `ticket_type` of a trip leg, learned from
+what gets typed. An item may always carry a value that is
 not among them.
 
 - **Saving an item records its `category`, `bag` and `location`** as options, if they are

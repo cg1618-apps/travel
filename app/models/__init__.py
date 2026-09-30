@@ -9,6 +9,7 @@ from app.models.label_option import LabelOption
 from app.models.packing_item import PackingItem
 from app.models.packing_list import PackingList
 from app.models.transport import TransportDeparture, TransportOption, TransportRoute
+from app.models.trip import Trip, TripLeg
 
 __all__ = [
     "LabelOption",
@@ -17,4 +18,6 @@ __all__ = [
     "TransportDeparture",
     "TransportOption",
     "TransportRoute",
+    "Trip",
+    "TripLeg",
 ]

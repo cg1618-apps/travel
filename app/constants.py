@@ -12,6 +12,11 @@ can use the same class to produce a 422 before the constraint is ever reached.
 """
 
 from enum import StrEnum
+from zoneinfo import ZoneInfo
+
+#: Every leg time is entered and shown here, and a linked list's departure
+#: date is the calendar day here - not the server's, not UTC's.
+TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 class Status(StrEnum):
@@ -78,6 +83,7 @@ class LabelKind(StrEnum):
     CATEGORY = "category"
     BAG = "bag"
     LOCATION = "location"
+    TICKET_TYPE = "ticket_type"
 
 
 class DayType(StrEnum):

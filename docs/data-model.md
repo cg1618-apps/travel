@@ -18,6 +18,8 @@ the migration wins and this page is wrong.
 - [`transport_route`](#transport_route) — getting from one place to another
 - [`transport_option`](#transport_option) — one way of doing a route
 - [`transport_departure`](#transport_departure) — one scheduled time of an option
+- [`trip`](#trip) — a named group of journeys
+- [`trip_leg`](#trip_leg) — one booked journey, and the list packed for it
 
 ## The shape
 
@@ -28,6 +30,8 @@ flowchart TD
     O["label_option"] -.->|suggests values for<br/>category, bag and location| I
     R["transport_route"] -->|route_id, ON DELETE CASCADE| T["transport_option"]
     T -->|option_id, ON DELETE CASCADE| D["transport_departure"]
+    P["trip"] -->|trip_id, ON DELETE CASCADE| G["trip_leg"]
+    G -.->|packing_list_id, ON DELETE SET NULL, unique| L
 ```
 
 Two of the three edges are dotted because they are not foreign keys. A
@@ -35,7 +39,10 @@ round-trip pair is two `packing_list` rows sharing a `pair_id` value, and an
 item's `category`, `bag` and `location` are free text that `label_option` merely suggests.
 Neither is enforced, and both are deliberate — see `notes/decisions.md`.
 
-There is no trip table. A list carries its own `departure_at`.
+A list's date comes from the leg that links it, when one does: the link is
+`trip_leg.packing_list_id`, unique, so a list belongs to at most one leg. The
+list's own `departure_at` is used only while no leg links it. See
+`business-rules.md`.
 
 ## `packing_list`
 
@@ -47,7 +54,7 @@ when creating a new list. A list can be both, either or neither.
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | identity | |
 | `name` | text | no | | |
-| `departure_at` | date | **yes** | | What makes packing timing mean anything. Null is normal — the list still works, nothing is ever "due now". |
+| `departure_at` | date | **yes** | | What makes packing timing mean anything. Null is normal — the list still works, nothing is ever "due now". Ignored while a trip leg links the list; reads go through the effective date. |
 | `saved` | boolean | no | `false` | Exempt from the cap. |
 | `template` | boolean | no | `false` | Offered when creating a list. |
 | `leg` | text | yes | | `outbound` or `return`, or null for a list that is neither. |
@@ -113,7 +120,7 @@ pruned.
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | identity | |
-| `kind` | text | no | | `category`, `bag` or `location`. Indexed. |
+| `kind` | text | no | | `category`, `bag`, `location` or `ticket_type`. Indexed. |
 | `value` | text | no | | |
 | `position` | integer | no | `0` | Display order within a kind. |
 | `created_at` | timestamptz | no | `now()` | |
@@ -123,7 +130,7 @@ pruned.
 
 | Name | What it enforces |
 | --- | --- |
-| `ck_label_option_kind` | `category`, `bag` or `location`. |
+| `ck_label_option_kind` | `category`, `bag`, `location` or `ticket_type`. |
 | `uq_label_option_kind_value` | Unique on the **pair**, so "day bag" can be both a category and a bag — they are different facts. |
 
 Deleting an option leaves the items using it untouched; renaming one rewrites
@@ -199,3 +206,57 @@ before `weekday`), then `time`.
 | `ck_transport_departure_day_type` | One of the two day types. |
 | `uq_transport_departure_option_day_time` | Unique on (`option_id`, `day_type`, `time`). The API checks first for a readable `409`; this is what holds under a race. |
 | `fk_transport_departure_transport_option` | `ON DELETE CASCADE`, at the database level. |
+
+## `trip`
+
+A named group of journeys, such as a round trip. It holds no dates of its own;
+they belong to its legs.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | identity | |
+| `name` | text | no | | |
+| `notes` | text | yes | | |
+| `created_at` | timestamptz | no | `now()` | |
+| `updated_at` | timestamptz | no | `now()` | |
+
+## `trip_leg`
+
+One booked journey — the sheet's This time row. Times are timestamps with a
+zone; they are entered and shown in Asia/Taipei. The relationship orders legs
+by `departs_at`.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | identity | |
+| `trip_id` | integer | no | | FK to `trip.id`, `ON DELETE CASCADE`. Indexed. |
+| `from_place` | text | no | | |
+| `to_place` | text | no | | |
+| `departs_at` | timestamptz | no | | |
+| `arrives_at` | timestamptz | no | | Always after `departs_at`. |
+| `service` | text | yes | | For example 火車 - 自強. |
+| `service_number` | text | yes | | Text: an identifier, not a quantity. |
+| `seat` | text | yes | | |
+| `price` | integer | yes | | |
+| `ticket_type` | text | yes | | Remembered as a `ticket_type` label option. |
+| `booked` | boolean | no | `false` | The three steps are recorded separately: paying without having collected the ticket is a real state. |
+| `paid` | boolean | no | `false` | |
+| `collected` | boolean | no | `false` | |
+| `booking_code` | text | yes | | Text, so a leading zero survives. |
+| `notes` | text | yes | | |
+| `packing_list_id` | integer | yes | | FK to `packing_list.id`, `ON DELETE SET NULL`. Unique. |
+| `created_at` | timestamptz | no | `now()` | |
+| `updated_at` | timestamptz | no | `now()` | |
+
+The link lives on the leg rather than on the list or the trip because a leg is
+the thing with a departure, and a trip-level link could not say which of a
+pair's two lists belongs to which journey.
+
+**Constraints**
+
+| Name | What it enforces |
+| --- | --- |
+| `ck_trip_leg_arrives_after_departs` | `arrives_at > departs_at`. |
+| `uq_trip_leg_packing_list_id` | A list is linked from at most one leg. The API checks first for a readable `409`; this holds under a race. |
+| `fk_trip_leg_trip` | `ON DELETE CASCADE`, at the database level. |
+| `fk_trip_leg_packing_list` | `ON DELETE SET NULL`: deleting a list must not delete a booking. |
