@@ -27,17 +27,18 @@ the migration wins and this page is wrong.
 flowchart TD
     L["packing_list"] -->|list_id, ON DELETE CASCADE| I["packing_item"]
     L -.->|pair_id, same value on both| L
-    O["label_option"] -.->|suggests values for<br/>category, bag and location| I
+    O["label_option"] -.->|suggests values for<br/>category, bag, location and ticket_type| I
     R["transport_route"] -->|route_id, ON DELETE CASCADE| T["transport_option"]
     T -->|option_id, ON DELETE CASCADE| D["transport_departure"]
     P["trip"] -->|trip_id, ON DELETE CASCADE| G["trip_leg"]
-    G -.->|packing_list_id, ON DELETE SET NULL, unique| L
+    G -->|packing_list_id, ON DELETE SET NULL, unique| L
 ```
 
-Two of the three edges are dotted because they are not foreign keys. A
-round-trip pair is two `packing_list` rows sharing a `pair_id` value, and an
-item's `category`, `bag` and `location` are free text that `label_option` merely suggests.
-Neither is enforced, and both are deliberate — see `notes/decisions.md`.
+Solid edges are foreign keys; the two dotted ones are not. A round-trip pair is
+two `packing_list` rows sharing a `pair_id` value, and the free-text `category`,
+`bag`, `location` and `ticket_type` fields are values that `label_option` merely
+suggests. Neither is enforced, and both are deliberate — see `notes/decisions.md`.
+`trip_leg` to `packing_list` is a real foreign key, `ON DELETE SET NULL`.
 
 A list's date comes from the leg that links it, when one does: the link is
 `trip_leg.packing_list_id`, unique, so a list belongs to at most one leg. The
@@ -113,8 +114,8 @@ has looked at the expiry date. One mutually-exclusive field cannot say that.
 
 ## `label_option`
 
-A suggestion, not a reference. Items store their `category`, `bag` and `location` as text;
-these rows exist so a value need not be typed twice, and so a typo can be
+A suggestion, not a reference. Items store their `category`, `bag` and `location`,
+and trip legs their `ticket_type`, as text; these rows exist so a value need not be typed twice, and so a typo can be
 pruned.
 
 | Column | Type | Null | Default | Notes |

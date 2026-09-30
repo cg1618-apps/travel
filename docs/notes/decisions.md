@@ -220,13 +220,14 @@ easiest.
 
 ### Entities
 
-Module 1 is built; `data-model.md` is the description of what exists and this
-sketch no longer restates it. The four below are still sketches.
+Modules 1 to 3 are built (packing lists, trips, transport); `data-model.md` is
+the description of what exists and this sketch no longer restates them. The
+three below are still sketches, or were superseded.
 
-- **Trip** — names, dates, destination, notes.
+- **Trip** — built as a name, notes and legs; see "Sheet parity" below.
 - **BuyingItem** — name, a `bought` flag, notes, optionally attached to a trip.
 - **Rule** — text and tags.
-- **TransportNote** — text and tags, general or attached to a trip.
+- **TransportNote** — superseded by routes, options and departures; see "Sheet parity" below.
 
 ### The decisions behind that shape
 
@@ -342,3 +343,92 @@ The rejected alternatives, which the shipped code cannot show on its own.
 
 Itineraries and day-by-day plans. Bookings, flights and reservations. Expenses.
 Anything multi-user beyond the eventual read-only share of one trip.
+
+## Sheet parity
+
+The owner plans in a Google Sheet; the app was extended until it could hold
+the four tabs in scope (`彰化回台北`, `台北去彰化`, `Transportation`,
+`This time`) and then loaded them. Each decision as it ended up.
+
+- **An item is a name plus a detail, not a parent with child items and not one
+  folded name.** `鑰匙` + `家鑰匙` and `鑰匙` + `宿舍鑰匙` are two ordinary rows
+  sharing a name and differing in `detail`. Rejected: parent and child items,
+  which adds a tree to a list that is a flat sheet, with its own ordering,
+  deletion and check-off rules; and folding the variant into the name
+  (`鑰匙 家鑰匙`), which cannot be grouped, cannot be shown the way the sheet
+  shows it, and cannot be suggested. The sheet UI groups by equal runs of
+  category and name only under position order; any other sort shows full names,
+  because a blank cell under a foreign order is ambiguous. `+ 變化` inserts a
+  row directly below with `after_id`, shifting later positions in one
+  transaction.
+
+- **`need` is closed, `location` is open.** `need` (`need`, `bring`, `buy`) is a
+  small set the application branches over and is a `CheckConstraint` with an
+  explicit null arm; `location` is where something is got and grows with use, so
+  it is free text suggested by `label_option` (kind `location`), like `category`.
+
+- **Departures are rows, not four text columns per day type.** The sheet's
+  早 / 中 / 下午 / 晚 columns are a display of clock times, so each time is a
+  `transport_departure` row with a day type and an `irregular` flag, unique per
+  option, day type and time, and the screen buckets by the clock (12:00, 14:00,
+  18:00). Rejected: storing the four cells as text, which cannot be asked for
+  the next departure and lets a time sit in the wrong column unnoticed. The
+  importer checks each time against the column it came from and reports
+  mismatches.
+
+- **A leg links the list; a trip does not own the pair, and `packing_list` has
+  no `trip_id`.** `trip_leg.packing_list_id` is a nullable, unique foreign key,
+  `ON DELETE SET NULL`, so deleting a list keeps the leg. A linked list takes its
+  date from the leg (the Taipei calendar day). Rejected: a trip owning the
+  outbound and return pair, which fixes every trip to two legs and two lists;
+  and `packing_list.trip_id`, which the first packing revision's docstring
+  intended. That intention is superseded: a trip with several legs needs to say
+  *which journey* a list is for, and only the leg knows.
+
+- **The current trip is the one with the soonest leg still ahead, and it
+  switches trips mid-journey.** While one trip's leg is in progress, a trip with
+  a later leg is already current. This is a known, accepted consequence of
+  "soonest leg still ahead". The alternative, treating a trip as current until
+  its last leg arrives, needs an arbitrary rule for two overlapping trips; the
+  simple rule is predictable and overlapping trips are rare.
+
+- **Status is stored as three values and tapped as two.** `no_need` stays in
+  the data because a decision not to pack is not the same as forgetting, and
+  folding it into `not_packed` would erase that. One tap toggles not packed and
+  packed; `no_need` is a long-press or the row menu, and one tap returns it to
+  not packed. Double Check lives on the same menu so the tick only means packed.
+
+- **A reset leaves `no_need` alone.** 重設狀態 sets packed items back to not
+  packed, clears the packed count and Double Check confirmation, and skips
+  `no_need`, because that is a choice about the list rather than progress
+  through it. It is the copy rule's reset half minus `no_need`.
+
+- **The UI speaks the sheet's own words; stored values are English.** Headers
+  and values such as 未打包 and 出發前晚 are the sheet's, so the owner reads the
+  same vocabulary in both places. Only the sheet's own English (`Double Check`,
+  `Transportation`, `This time`) stays English. Every display string lives in
+  `frontend/src/lib/labels.js` and a test asserts each stored value has one.
+
+- **A required field cannot be nulled through `PATCH`; an explicit null is a
+  422.** The update schemas type every field `X | None = None` so omitted means
+  leave alone, which also let a caller send null for a NOT NULL column and reach
+  the database as a 500 (or a misleading departure collision).
+  `NonNullableUpdate` in `app/schemas/base.py` names the required fields and
+  refuses them. Nullable fields still accept null to clear them.
+
+- **The importer defaults blank status cells and says so.** A blank 打包狀態,
+  Double Check or 打包時機 becomes 未打包, 不需確認 or 隨時, and the row is
+  reported naming which columns were blank. Rejected: refusing the import,
+  which blocks on a cell the owner does not think of as missing; and defaulting
+  silently. An unknown word, by contrast, is refused.
+
+- **The importer ships in the runtime image.** `scripts/import_sheet.py` and
+  `openpyxl` are in the production container, so the box is loaded from inside
+  it by the manager session rather than from a developer machine that cannot
+  reach it. It refuses, writing nothing, when any list, route or trip it would
+  create already exists, and it runs once per database rather than as a sync.
+
+- **`bag` is kept and not shown.** The sheet has no bag column, so the sheet UI
+  does not render one, but the column, its option kind and the copy rule stay.
+  Removing it would be a destructive migration for a field the owner may want
+  back, and leaving it costs nothing.

@@ -7,9 +7,11 @@ the three-list cap, what eviction destroys, what a copy carries, and how the
 status and check fields relate. Column-level facts live in `data-model.md`; why a rule is shaped
 this way lives in `notes/decisions.md`.
 
-These live in `app/services/domain/packing.py`, not in the routers. A router
-owns wiring and status codes; a rule reimplemented in a second endpoint is a
-rule with two answers.
+These live in `app/services/domain/`, not in the routers: the cap, copy and
+reset rules in `packing.py`, the common-options rules in `labels.py` and the
+current-trip rule in `trip.py`. The sheet importer is `app/services/sheet_import/`.
+A router owns wiring and status codes; a rule reimplemented in a second endpoint
+is a rule with two answers.
 
 ## The three-list cap
 
@@ -118,6 +120,10 @@ The trip with the soonest leg still ahead of now is current. With nothing
 ahead, the trip whose legs ended most recently is. Ties go to the newer trip
 (the higher id), and a trip with no legs is never current. With no trips, or
 only leg-less ones, there is no current trip.
+
+The rule looks at the soonest *future* leg, so it can switch trips mid-journey:
+while one trip's leg is under way, a trip with a leg still ahead is current. That
+is accepted; see `notes/decisions.md`.
 
 ## Departure source
 

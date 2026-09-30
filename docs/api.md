@@ -175,7 +175,8 @@ different requests.
 | `DELETE` | `/api/label-options/{id}` | none | `204`. The items using it are left alone. |
 
 There is no `POST`. Options are **learned**: writing an item records its
-`category`, `bag` and `location`, on create and on any `PATCH` that changes them.
+`category`, `bag` and `location`, and writing a leg records its `ticket_type`, on
+create and on any `PATCH` that changes them.
 
 Each option carries a `usage_count` — how many items currently hold that value
 — so a rename screen can say what it is about to rewrite before it does it.
