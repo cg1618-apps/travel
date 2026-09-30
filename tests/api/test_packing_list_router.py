@@ -427,3 +427,11 @@ def test_a_reset_unpacks_clears_counts_and_checks_but_leaves_no_need_alone(clien
 
 def test_resetting_a_missing_list_is_a_404(client):
     assert client.post("/api/packing-lists/999999/reset").status_code == 404
+
+
+def test_a_null_for_a_required_list_field_is_a_422(client):
+    lst = client.post("/api/packing-lists", json={"name": "彰化回台北", "saved": True}).json()
+    assert client.patch(f"/api/packing-lists/{lst['id']}", json={"saved": None}).status_code == 422
+    # Mirror: the list's own date is nullable, and null clears it.
+    cleared = client.patch(f"/api/packing-lists/{lst['id']}", json={"departure_at": None})
+    assert cleared.status_code == 200

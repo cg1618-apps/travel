@@ -268,3 +268,10 @@ def test_every_declared_trip_visibility_is_accepted(db_session):
     for visibility in Visibility:
         db_session.add(Trip(name=f"trip {visibility}", visibility=visibility))
     db_session.flush()
+
+
+def test_a_leg_patch_remembers_its_ticket_type(client, trip):
+    leg = add_leg(client, trip).json()
+    assert client.patch(f"/api/trip-legs/{leg['id']}", json={"ticket_type": "紙本"}).status_code == 200
+    values = [row["value"] for row in client.get("/api/label-options?kind=ticket_type").json()]
+    assert values == ["紙本"]

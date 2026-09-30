@@ -76,6 +76,11 @@ Every read of a list carries `departure_at` as the **effective** date, and
 `trip_leg`; otherwise both are the list's own. A `PATCH` of `departure_at` writes
 the list's own date, which stays hidden behind the leg until the link is removed.
 
+**A `PATCH` cannot null a required field.** `name`, `saved` and `template`
+answer `422` when sent as `null`; `departure_at`, `leg` and `pair_id` accept it
+and clear. `evict_confirmed` is not a column but a plain boolean, and refuses
+`null` the same way.
+
 ### The index
 
 `GET /api/packing-lists` returns four fields, all arrays of list summaries:
@@ -165,6 +170,11 @@ positions across lists.
 Sending `null` clears a nullable field. The router uses `exclude_unset`, not
 `exclude_none`, so "remove this category" and "leave the category alone" are
 different requests.
+
+**A `PATCH` cannot null a required field.** `name`, `quantity_packed`,
+`status`, `timing`, `needs_double_check`, `double_checked` and `position` answer
+`422` when sent as `null`; nullable fields such as `notes`, `need` and
+`location` accept it and clear.
 
 ## Common options — `/api/label-options`
 

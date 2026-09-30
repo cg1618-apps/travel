@@ -300,3 +300,21 @@ def test_inserting_after_the_last_item_appends(client, packing_list):
         ("b", None, 1),
         ("c", None, 2),
     ]
+
+
+def test_a_null_for_a_required_item_field_is_a_422(client, packing_list):
+    item = add_item(client, packing_list).json()
+    assert client.patch(f"/api/packing-items/{item['id']}", json={"name": None}).status_code == 422
+    assert client.patch(f"/api/packing-items/{item['id']}", json={"status": None}).status_code == 422
+    # Mirror: a nullable field on the same item takes null and clears.
+    assert client.patch(f"/api/packing-items/{item['id']}", json={"notes": None}).status_code == 200
+
+
+def test_a_patch_can_clear_need_and_location(client, packing_list):
+    item = add_item(client, packing_list, need="bring", location="彰化").json()
+    response = client.patch(
+        f"/api/packing-items/{item['id']}", json={"need": None, "location": None}
+    )
+    assert response.status_code == 200
+    stored = client.get(f"/api/packing-lists/{packing_list.id}").json()["items"][0]
+    assert (stored["need"], stored["location"]) == (None, None)

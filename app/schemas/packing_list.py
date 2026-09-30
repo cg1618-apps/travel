@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants import Leg
+from app.schemas.base import NonNullableUpdate
 from app.schemas.packing_item import PackingItemResponse
 
 
@@ -28,7 +29,11 @@ class PackingListCreate(PackingListBase):
     evict_confirmed: bool = False
 
 
-class PackingListUpdate(BaseModel):
+class PackingListUpdate(NonNullableUpdate):
+    # `evict_confirmed` is not a column, and is a plain bool, so it needs no
+    # entry: pydantic already refuses null for it.
+    non_nullable = ("name", "saved", "template")
+
     name: str | None = Field(default=None, min_length=1)
     departure_at: date | None = None
     saved: bool | None = None

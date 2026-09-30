@@ -3,6 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants import Need, Status, Timing
+from app.schemas.base import NonNullableUpdate
 
 
 class PackingItemBase(BaseModel):
@@ -32,8 +33,18 @@ class PackingItemCreate(PackingItemBase):
     after_id: int | None = None
 
 
-class PackingItemUpdate(BaseModel):
+class PackingItemUpdate(NonNullableUpdate):
     """Every field optional: PATCH changes what it names and nothing else."""
+
+    non_nullable = (
+        "name",
+        "quantity_packed",
+        "status",
+        "timing",
+        "needs_double_check",
+        "double_checked",
+        "position",
+    )
 
     name: str | None = Field(default=None, min_length=1)
     detail: str | None = None
