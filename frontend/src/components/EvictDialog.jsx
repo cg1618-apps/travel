@@ -4,9 +4,22 @@
  * The 409 is not an error toast. It is a decision, and the safe option is
  * listed first and styled as the primary one: a destructive confirm whose
  * safe option is missing, or buried, gets clicked through.
+ *
+ * The body is this dialog's own words, not the refusal's `detail`: that is the
+ * API's English contract, and the names it carries arrive as `evicting` from
+ * `evict_next` on the index anyway.
  */
 
-export function EvictDialog({ message, evicting, onSaveInstead, onConfirm, onCancel }) {
+const CREATE_BODY = '已有 3 份進行中的清單。建立新的清單會刪除最舊的：'
+
+export function EvictDialog({
+  body = CREATE_BODY,
+  confirmLabel = '刪除並建立',
+  evicting,
+  onSaveInstead,
+  onConfirm,
+  onCancel,
+}) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 p-0 sm:items-center sm:p-4"
@@ -16,9 +29,9 @@ export function EvictDialog({ message, evicting, onSaveInstead, onConfirm, onCan
     >
       <div className="w-full max-w-md rounded-t-2xl border border-border bg-surface p-5 sm:rounded-2xl">
         <h2 id="evict-title" className="m-0 text-base font-semibold">
-          This will delete a list
+          這會刪除一份清單
         </h2>
-        <p className="mt-2 text-sm text-text-muted">{message}</p>
+        <p className="mt-2 text-sm text-text-muted">{body}</p>
 
         {evicting?.length > 0 && (
           <ul className="mt-3 list-none space-y-1 rounded-md bg-surface-2 p-3 text-sm">
@@ -35,7 +48,7 @@ export function EvictDialog({ message, evicting, onSaveInstead, onConfirm, onCan
               onClick={onSaveInstead}
               className="rounded-md bg-brand px-4 font-medium text-on-brand"
             >
-              Save it instead, then continue
+              改為保存它
             </button>
           )}
           <button
@@ -43,10 +56,10 @@ export function EvictDialog({ message, evicting, onSaveInstead, onConfirm, onCan
             onClick={onConfirm}
             className="rounded-md border border-danger px-4 text-danger"
           >
-            Delete it and continue
+            {confirmLabel}
           </button>
           <button type="button" onClick={onCancel} className="px-4 text-text-muted">
-            Cancel
+            取消
           </button>
         </div>
       </div>

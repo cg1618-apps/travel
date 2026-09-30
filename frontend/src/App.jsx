@@ -17,16 +17,27 @@ const queryClient = new QueryClient({
   },
 })
 
+// The sheet's own tab names where it has them (Transportation, This time);
+// Traditional Chinese for the rest.
+const NAV_LINKS = [
+  ['/', '打包清單'],
+  ['/transport', 'Transportation'],
+  ['/trip', 'This time'],
+  ['/options', '選項'],
+]
+
 function Nav() {
   return (
     <nav className="border-b border-border bg-ink text-ink-text">
-      <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
-        <Link to="/" className="font-semibold text-ink-text no-underline">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
+        <Link to="/" className="mr-2 font-semibold text-ink-text no-underline">
           travel
         </Link>
-        <Link to="/options" className="text-sm text-ink-text/70 no-underline">
-          Options
-        </Link>
+        {NAV_LINKS.map(([to, label]) => (
+          <Link key={to} to={to} className="text-sm text-ink-text/70 no-underline">
+            {label}
+          </Link>
+        ))}
       </div>
     </nav>
   )

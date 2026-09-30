@@ -1,5 +1,6 @@
 /**
- * The remembered category and bag values: rename, reorder, prune.
+ * The remembered values for every label kind — category, bag, location and
+ * ticket type: rename, prune.
  *
  * Renaming says how many items it will rewrite before it does, because these
  * are suggestions rather than references and a rename is a bulk edit of real
@@ -12,6 +13,7 @@ import { Link } from 'react-router-dom'
 import { endpoints } from '../api/endpoints'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
+import { LABEL_KIND_LABELS } from '../lib/labels'
 
 const KEY = ['label-options']
 
@@ -24,11 +26,11 @@ function Option({ option, onRename, onDelete }) {
       <input
         value={value}
         onChange={(event) => setValue(event.target.value)}
-        aria-label={`Rename ${option.value}`}
+        aria-label={`重新命名「${option.value}」`}
         className="min-w-0 flex-1 rounded-md border border-border bg-canvas px-3 py-2 text-base"
       />
-      <span className="w-16 shrink-0 text-right text-xs text-text-faint">
-        {option.usage_count} {option.usage_count === 1 ? 'item' : 'items'}
+      <span className="w-20 shrink-0 text-right text-xs text-text-faint">
+        用了 {option.usage_count} 次
       </span>
       {changed ? (
         <button
@@ -36,13 +38,13 @@ function Option({ option, onRename, onDelete }) {
           onClick={() => onRename(option, value.trim())}
           className="rounded-md bg-brand px-3 text-sm text-on-brand"
         >
-          Rename
+          改名
         </button>
       ) : (
         <button
           type="button"
           onClick={() => onDelete(option)}
-          aria-label={`Remove ${option.value} from the suggestions`}
+          aria-label={`從建議中移除「${option.value}」`}
           className="px-3 text-text-faint"
         >
           ✕
@@ -59,7 +61,7 @@ function Group({ title, options, onRename, onDelete }) {
         {title}
       </h2>
       {options.length === 0 ? (
-        <EmptyState>Nothing remembered yet. Type one on an item and it appears here.</EmptyState>
+        <EmptyState>還沒有記下任何值。輸入過一次，它就會出現在這裡。</EmptyState>
       ) : (
         <ul className="list-none border-y border-border bg-surface p-0">
           {options.map((option) => (
@@ -97,7 +99,7 @@ export default function Options() {
     mutationFn: (id) => send(endpoints.labelOptions.detail(id), 'DELETE'),
   })
 
-  if (options.isLoading) return <LoadingState label="Loading options…" />
+  if (options.isLoading) return <LoadingState label="載入選項中…" />
   if (options.isError) return <ErrorState error={options.error} onRetry={options.refetch} />
 
   const onRename = (option, value) => {
@@ -106,8 +108,8 @@ export default function Options() {
     )
     setNotice(
       collision
-        ? `Merged into “${value}”. ${option.usage_count} item(s) rewritten.`
-        : `Renamed. ${option.usage_count} item(s) rewritten.`,
+        ? `已合併到「${value}」，改寫了 ${option.usage_count} 筆資料。`
+        : `已改名，改寫了 ${option.usage_count} 筆資料。`,
     )
     rename.mutate({ id: option.id, value })
   }
@@ -118,12 +120,11 @@ export default function Options() {
     <main className="mx-auto max-w-2xl pb-16">
       <div className="px-4 pt-6">
         <Link to="/" className="text-sm text-text-faint no-underline">
-          ← All lists
+          ← 所有清單
         </Link>
-        <h1 className="mt-2 mb-1 text-xl font-semibold">Common options</h1>
+        <h1 className="mt-2 mb-1 text-xl font-semibold">常用選項</h1>
         <p className="m-0 text-sm text-text-faint">
-          Suggestions for category and bag, remembered from what you type. Removing one
-          leaves your items alone.
+          類別、包包、取得地點和車票類型的建議值，從你輸入過的內容記下來。移除建議值不會動到任何資料。
         </p>
       </div>
 
@@ -133,8 +134,15 @@ export default function Options() {
         </p>
       )}
 
-      <Group title="Category" options={byKind('category')} onRename={onRename} onDelete={(option) => remove.mutate(option.id)} />
-      <Group title="Bag" options={byKind('bag')} onRename={onRename} onDelete={(option) => remove.mutate(option.id)} />
+      {Object.entries(LABEL_KIND_LABELS).map(([kind, title]) => (
+        <Group
+          key={kind}
+          title={title}
+          options={byKind(kind)}
+          onRename={onRename}
+          onDelete={(option) => remove.mutate(option.id)}
+        />
+      ))}
     </main>
   )
 }
