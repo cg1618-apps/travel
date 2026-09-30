@@ -111,7 +111,12 @@ means *packed*:
   greyed and struck through, returns to 未打包 on one tap.
 - **不需打包 is one step further**: a long-press (500 ms) on the pill or the
   tick, or the row's ⋯, opens `RowMenu`. `useLongPress` makes sure the click
-  that follows a long-press does nothing, so one gesture never does both.
+  that follows a long-press does nothing, so one gesture never does both. A
+  keyboard click (Enter or Space) is never swallowed. The menu itself ignores
+  clicks until it has seen a pointer down or a key of its own, because the
+  click that ends a long-press touch lands wherever the finger is — on iOS
+  Safari, the backdrop or a menu item — and must neither close the menu nor
+  pick from it.
 
 The row menu is built once, by `rowActions` in `lib/rowMenu.js`, so both views
 offer the same things: 設為不需打包 (or 改回未打包), 新增變化, and 刪除 — the

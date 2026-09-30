@@ -6,6 +6,15 @@
  * by the thumb. It renders into `document.body` so the sheet's horizontal
  * scroll container cannot clip it; a marker left in place is what it measures
  * its position from.
+ *
+ * A long-press opens it while the finger is still down, and the click that
+ * ends that touch lands wherever the finger is — on iOS Safari, on the
+ * backdrop or on an item of the sheet. So neither the backdrop nor an item
+ * acts on a click until the menu has seen a gesture of its own since it
+ * opened: a pointer down (which only a new touch or click produces) or a key.
+ * A click outside still closes it, Escape still closes it, and closing on the
+ * click rather than the pointer down keeps that click from falling through
+ * to the cell beneath.
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -27,6 +36,7 @@ function placeBeside(marker) {
 export function RowMenu({ open, onClose, actions }) {
   const marker = useRef(null)
   const menu = useRef(null)
+  const armed = useRef(false)
   const [place, setPlace] = useState(null)
 
   useLayoutEffect(() => {
@@ -35,13 +45,27 @@ export function RowMenu({ open, onClose, actions }) {
 
   useEffect(() => {
     if (!open) return undefined
+    armed.current = false
     menu.current?.querySelector('[role="menuitem"]')?.focus()
+    const arm = () => {
+      armed.current = true
+    }
     const onKeyDown = (event) => {
+      arm()
       if (event.key === 'Escape') onClose()
     }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
+    // Capture, so the arming happens before the item's own handlers run.
+    document.addEventListener('pointerdown', arm, true)
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      document.removeEventListener('pointerdown', arm, true)
+      document.removeEventListener('keydown', onKeyDown, true)
+    }
   }, [open, onClose])
+
+  const guarded = (handler) => () => {
+    if (armed.current) handler()
+  }
 
   return (
     <>
@@ -51,7 +75,7 @@ export function RowMenu({ open, onClose, actions }) {
           <div className="fixed inset-0 z-50">
             <div
               className="absolute inset-0 bg-ink/50 sm:bg-transparent"
-              onClick={onClose}
+              onClick={guarded(onClose)}
               aria-hidden="true"
             />
             <div
@@ -65,10 +89,10 @@ export function RowMenu({ open, onClose, actions }) {
                   key={action.label}
                   type="button"
                   role="menuitem"
-                  onClick={() => {
+                  onClick={guarded(() => {
                     onClose()
                     action.onSelect()
-                  }}
+                  })}
                   className={`block w-full rounded-sm px-3 text-left text-sm hover:bg-surface-2 focus:bg-surface-2 focus:outline-none ${
                     action.danger ? 'text-danger' : 'text-text'
                   }`}

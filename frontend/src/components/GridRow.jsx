@@ -44,8 +44,8 @@ function StatusCell({ item, onPatch, onMenu }) {
     <button
       type="button"
       {...press.handlers}
-      onClick={() => {
-        if (press.consumeClick()) return
+      onClick={(event) => {
+        if (press.consumeClick(event)) return
         onPatch(item.id, { status: tapStatus(item.status) })
       }}
       aria-label={`${itemTitle(item)}：${STATUS_LABELS[item.status]}，點一下切換`}
