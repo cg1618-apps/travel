@@ -1,6 +1,6 @@
 # Business rules
 
-Last verified: 2026-09-30
+Last verified: 2026-10-01
 
 **What this is for.** The rules that are not visible in the schema — what fills
 the three-list cap, what eviction destroys, what a copy carries, and how the
@@ -57,8 +57,9 @@ second template.
 ## Status, and the count that does not set it
 
 `status` is one of `not_packed`, `packed`, `no_need`, and **it is always set
-explicitly**. Reaching the target quantity offers to flip it; it never flips on
-its own.
+explicitly** — by a tap on the status cell, the row menu, or a reset. Nothing
+reads `quantity_packed` to set it: reaching the target quantity changes the
+count and nothing else, and falling short only colours the 已打包數量 cell.
 
 An item may be marked `packed` while short. Sometimes three of five is what you
 are taking, and a status derived from the count would force you to edit the
@@ -98,20 +99,20 @@ survives too; only whether the check actually happened is cleared.
 ## Packing timing
 
 Every item carries one of `whenever`, `night_before`, `day_of`, `just_before`.
-**It is an attribute, not a mode.** The sheet shows it as the `When` column and
-sorts by it in that escalating order rather than alphabetically, which is the
+**It is an attribute, not a mode.** The sheet shows it as the 打包時機 column
+and sorts by it in that escalating order rather than alphabetically, which is the
 only special handling it gets.
 
 It used to drive the layout: the list screen grouped by it and highlighted
 whichever groups were "due", computed from `departure_at`. That was removed —
 see `notes/decisions.md`. The escalating order in
 `frontend/src/lib/timing.js` is what survives, along with `daysUntil`, which
-turns a departure date into "leaving tomorrow". That still runs on the frontend
+turns a departure date into 明天出發 ("leaving tomorrow"). That still runs on the frontend
 because the viewer's calendar day is the one that matters and the server's is
 not necessarily the same one.
 
-**A list without a departure date is normal, not incomplete.** It reads "No
-date set" and everything else works. A list's date is its own `departure_at`
+**A list without a departure date is normal, not incomplete.** It reads 未設定日期
+and everything else works. A list's date is its own `departure_at`
 unless a trip leg links it; see "Departure source".
 
 ## The current trip
@@ -138,19 +139,19 @@ A list no leg links keeps its own date. Reads report which one applied as
 
 `label_option` rows are suggestions for the free-text `category`, `bag` and
 `location` fields of an item and the `ticket_type` of a trip leg, learned from
-what gets typed. An item may always carry a value that is
-not among them.
+what gets typed. An item or leg may always carry a value that is not among
+them.
 
-- **Saving an item records its `category`, `bag` and `location`** as options, if they are
-  not already there.
-- **Renaming an option rewrites every item using the old value**, because the
-  item holds the text itself — a rename that touched only the option row would
-  leave the screen showing both spellings.
-- **Renaming onto an existing option merges**: items are rewritten, then the
+- **Saving an item records its `category`, `bag` and `location`**, and saving a
+  leg its `ticket_type`, as options, if they are not already there.
+- **Renaming an option rewrites every row using the old value** (items, or legs
+  for `ticket_type`), because the row holds the text itself — a rename that
+  touched only the option row would leave the screen showing both spellings.
+- **Renaming onto an existing option merges**: rows are rewritten, then the
   source row is deleted. The unique constraint on (`kind`, `value`) would
   otherwise refuse the rename outright.
-- **Deleting an option leaves the items alone.** Pruning a typo out of the
-  suggestions must not blank the field on an item legitimately using it.
+- **Deleting an option leaves the rows alone.** Pruning a typo out of the
+  suggestions must not blank the field on an item or leg legitimately using it.
 
 An option's `kind` scopes its uniqueness, so "day bag" can be both a category
 and a bag. They are different facts.

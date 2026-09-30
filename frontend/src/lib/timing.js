@@ -10,7 +10,7 @@
  * tests can stand on a boundary instead of waiting for one.
  */
 
-/** The four timings, in escalating order — how the `When` column sorts. */
+/** The four timings, in escalating order — how the 打包時機 column sorts. */
 export const TIMINGS = ['whenever', 'night_before', 'day_of', 'just_before']
 
 /**

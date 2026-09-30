@@ -33,9 +33,9 @@ export async function fetchJson(url, options = {}) {
   const data = await parse(response)
 
   if (!response.ok) {
-    // `detail` is a plain string on every endpoint - see docs/api.md. A 422
-    // from a schema is the one exception: FastAPI returns a list there, so it
-    // is flattened rather than rendered as [object Object].
+    // `detail` is a plain string on every refusal a router raises - see
+    // docs/api.md. A 422 from a schema is the one exception: FastAPI returns a
+    // list there, so it is flattened rather than rendered as [object Object].
     const detail = data?.detail
     const message = Array.isArray(detail)
       ? detail.map((part) => part.msg).join('; ')

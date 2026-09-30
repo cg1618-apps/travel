@@ -1,6 +1,6 @@
 # API
 
-Last verified: 2026-09-30
+Last verified: 2026-10-01
 
 **What this is for.** Every HTTP endpoint this application serves. The
 authority is FastAPI's own route table — if a row here and the dump disagree,
@@ -31,7 +31,7 @@ question only a probe from the open internet answers, and the platform's
 
 | Convention | Where | Behaviour |
 | --- | --- | --- |
-| Error shape | every endpoint | `{"detail": "a sentence"}`. A plain string, never a structured object — the frontend's `fetchJson` reads `detail` and shows it. Anything a caller needs to *act* on arrives as data on a normal response, not inside an error. |
+| Error shape | every endpoint | A refusal a router raises is `{"detail": "a sentence"}`, a plain English string. A `422` from schema validation — a missing or empty required field, an unknown enum value, a time with no offset, an explicit `null` on a required field — is FastAPI's own shape, where `detail` is a list of `{loc, msg, type}` objects. The frontend's `fetchJson` flattens that list into one message (the `msg`s joined), but no screen renders either kind: pages branch on the status code and show their own zh-TW text (`frontend.md`). Anything a caller needs to *act* on arrives as data on a normal response, not inside an error. |
 | Create | every `POST` | `201` with the created object. |
 | Update | every `PATCH` | `200` with the updated object. Only the fields present in the body change; omitting a field leaves it alone. |
 | Delete | every `DELETE` | `204` with no body. |
@@ -181,23 +181,25 @@ different requests.
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/label-options` | none | Every option, in `position` order. `?kind=category`, `?kind=bag`, `?kind=location` or `?kind=ticket_type` narrows it. |
-| `PATCH` | `/api/label-options/{id}` | none | Rename or reorder. A rename rewrites the items using it; renaming onto an existing value **merges**. |
-| `DELETE` | `/api/label-options/{id}` | none | `204`. The items using it are left alone. |
+| `PATCH` | `/api/label-options/{id}` | none | Rename or reorder. A rename rewrites the rows using it (items, or legs for `ticket_type`); renaming onto an existing value **merges**. |
+| `DELETE` | `/api/label-options/{id}` | none | `204`. The rows using it are left alone. |
 
 There is no `POST`. Options are **learned**: writing an item records its
 `category`, `bag` and `location`, and writing a leg records its `ticket_type`, on
 create and on any `PATCH` that changes them.
 
-Each option carries a `usage_count` — how many items currently hold that value
-— so a rename screen can say what it is about to rewrite before it does it.
+Each option carries a `usage_count` — how many rows currently hold that value
+in the option's column: items for `category`, `bag` and `location`, trip legs
+for `ticket_type` — so a rename screen can say what it is about to rewrite
+before it does it.
 
 **A rename can delete the row you addressed.** Renaming onto a value that
-already exists merges the two: the items are rewritten either way, then the
+already exists merges the two: the rows are rewritten either way, then the
 source row is removed, because the unique constraint on (`kind`, `value`) would
 refuse the update outright. The response is the **surviving** option, not the
 one named in the path — the rename succeeded, so a `404` would be a lie.
 
-**Deleting prunes a suggestion and nothing else.** Items keep the value, and
+**Deleting prunes a suggestion and nothing else.** Items and legs keep the value, and
 typing it again brings the option back. These rows are autocomplete, not
 records.
 
@@ -245,9 +247,11 @@ A leg response carries `packing_list_name`, the linked list's name or `null`.
 **Times carry a zone.** `departs_at` and `arrives_at` are ISO 8601 with an
 offset, for example `2026-09-24T18:06:00+08:00`; a time without one is a `422`.
 
-**`arrives_at` must be after `departs_at`**, else `422`. A `PATCH` is checked
-against the merged values, so moving only one of the two is judged against the
-stored other.
+**`arrives_at` must be after `departs_at`**, else `422`. On create the schema
+checks it, so the `422` is FastAPI's list (its `msg` is `Value error, arrives_at
+must be after departs_at`). A `PATCH` is checked by the router against the
+merged values, so moving only one of the two is judged against the stored
+other, and its `422` is the plain string `arrives_at must be after departs_at`.
 
 **Linking a list.** `packing_list_id` naming no list is a `404`. A list already
 linked from another leg is a `409` with `That packing list is already linked to

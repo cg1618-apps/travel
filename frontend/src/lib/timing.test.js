@@ -34,7 +34,7 @@ describe('daysUntil', () => {
 })
 
 describe('TIMINGS', () => {
-  test('is in escalating order, which is how the When column sorts', () => {
+  test('is in escalating order, which is how the 打包時機 column sorts', () => {
     expect(TIMINGS).toEqual(['whenever', 'night_before', 'day_of', 'just_before'])
   })
 })

@@ -1,6 +1,6 @@
 # Frontend
 
-Last verified: 2026-09-30
+Last verified: 2026-10-01
 
 **What this is for.** How the React app is laid out, where each kind of thing
 lives, and the decisions a new screen has to follow. The endpoints it calls are
@@ -13,7 +13,7 @@ in `api.md`; the rules it renders are in `business-rules.md`.
 | `src/api/` | `client.js` — the only place that calls `fetch()`. `endpoints.js` — every URL in one map. |
 | `src/hooks/` | `useApiQuery.js` — TanStack Query over `fetchJson`, plus `useApiMutation` and `send`. `useLongPress.js` — a long-press that never also fires the click. |
 | `src/pages/` | One file per screen, PascalCase, default export. |
-| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `Checklist`, `Cell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `States`. |
+| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `States`. |
 | `src/lib/` | Pure modules with no React in them. Tests sit beside them. |
 
 Routes are declared in `src/App.jsx`. Every screen is editable, so every one of
@@ -209,7 +209,8 @@ its leg.
 
 - **No trip.** `/api/trips/current` answers 404, which the page treats as an
   answer rather than an error: 還沒有行程。 with a name field. A trip with no
-  legs is never current, so a new trip opens at `/trips/{id}`.
+  legs is never current, so a new trip opens at `/trips/{id}`. A
+  `/trips/{id}` that answers 404 reads 找不到這個行程。
 - **Header.** The name is a cell that cannot be emptied, then 備註; ⋯ 刪除行程
   asks first.
 - **Legs** are cards in `departs_at` order. The top line is 起點 → 終點, each

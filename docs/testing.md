@@ -100,11 +100,20 @@ cd frontend && npm run test:watch
 
 It needs no lock and no database. CI runs it after the frontend lint.
 
-What belongs here is logic with no server behind it, and the due-now
-boundaries in `src/lib/timing.js` are the case that justified the runner: they
-are a date comparison that is only wrong on the evening it matters. Both dates
-are parameters rather than a `new Date()` inside the function, so a test can
+What belongs here is logic with no server behind it, and date boundaries are
+the case that justifies the runner: a date comparison is only wrong on the
+evening it matters. `daysUntil` in `src/lib/timing.js` takes both dates as
+parameters rather than calling `new Date()` inside, and `dayTypeOf` and
+`nextDeparture` in `src/lib/departures.js` take the instant, so a test can
 stand on a boundary instead of waiting for one.
+
+**A test of Taipei time must not depend on the machine's zone.** The
+departures and trips helpers read the weekday and the clock in Asia/Taipei, so
+their tests pass UTC instants whose Taipei time is known —
+`2026-09-26T00:00:00Z` is Saturday 08:00 in Taipei — and include one on each
+side of a Taipei midnight that is not a UTC one. A test written with a local
+`new Date(2026, 8, 26, 8, 0)` passes on a machine set to Taipei and fails
+everywhere else.
 
 ## A refusal test has to be able to fail
 

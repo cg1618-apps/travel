@@ -111,7 +111,7 @@ reader can tell a decision from an accident.
 - **Packing timing became an ordinary column.** It was designed to drive the
   layout, with groups highlighted as they fell due. In practice the highlight
   competed with the list for attention and the grouping hid things. It is now
-  the `When` column, sorted in escalating rather than alphabetical order. The
+  the 打包時機 column, sorted in escalating rather than alphabetical order. The
   `dueTimings` function and its boundary tests were deleted; `daysUntil`
   survives, because "leaving tomorrow" is still worth saying and is still a
   date boundary worth testing.
@@ -231,10 +231,13 @@ three below are still sketches, or were superseded.
 
 ### The decisions behind that shape
 
-- **A packing list does not require a trip.** `trip_id` is nullable because the
-  list is the thing being used and creating a trip first is ceremony. Attaching
-  one later is a single edit. The same instinct as `food`'s ingredient stubs:
-  the app must never demand bookkeeping before it is useful.
+- **A packing list does not require a trip.** The list is the thing being used
+  and creating a trip first is ceremony, so a list stands on its own and
+  `packing_list` has no `trip_id` at all. A list joins a trip only by a leg
+  linking it — see "A leg links the list" under "Sheet parity" below, which
+  superseded the nullable `trip_id` this sketch first proposed. The same
+  instinct as `food`'s ingredient stubs: the app must never demand bookkeeping
+  before it is useful.
 - **Lists are disposable; templates are kept.** The three most recent lists
   stay available to copy from, older ones fall away, and a list worth keeping
   is promoted to a template explicitly. Without that, "copy a previous list"
@@ -324,7 +327,8 @@ The rejected alternatives, which the shipped code cannot show on its own.
   modelled honestly.
 
 - **Eviction refuses before it deletes, and the refusal is a plain string.**
-  `detail` is a plain string on every endpoint, matching media, so the ids the
+  `detail` is a plain string on every refusal a router raises, matching media
+  (only FastAPI's own schema `422` is a list), so the ids the
   confirmation dialog needs arrive as `evict_next` on the index instead — data
   on a normal response rather than structure smuggled into an error.
 
