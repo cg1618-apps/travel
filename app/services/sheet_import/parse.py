@@ -172,6 +172,17 @@ def _rows(ws):
             yield number, row
 
 
+DEFAULTED = (("打包狀態", "未打包"), ("Double Check", "不需確認"), ("打包時機", "隨時"))
+
+
+def _report_defaults(row, columns, where: str, name: str, report: list[str]) -> None:
+    """Say which of the three vocabulary cells were blank and so took their default."""
+    blank = [f"{header} became {default}" for header, default in DEFAULTED
+             if _text(row, columns, header) is None]
+    if blank:
+        report.append(f"{where}: {name} left {', '.join(blank)}")
+
+
 def _parse_packing(ws, report: list[str]) -> ParsedList:
     header = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
     columns = _header_index(header)
@@ -182,10 +193,13 @@ def _parse_packing(ws, report: list[str]) -> ParsedList:
     for number, row in _rows(ws):
         category = _text(row, columns, "類別") or category
         name = _text(row, columns, "項目") or name
+        if name is None:
+            raise ValueError(f"{ws.title} row {number}: no 項目 here or above")
         if name == "無":
             report.append(f"{ws.title} row {number}: 無 under {category} skipped")
             continue
         where = f"{ws.title} row {number}"
+        _report_defaults(row, columns, where, name, report)
         check = _lookup(DOUBLE_CHECK, _text(row, columns, "Double Check"), (False, False), where)
         parsed.items.append(ParsedItem(
             category=category,
@@ -247,7 +261,10 @@ def _parse_departures(row, columns, option: ParsedOption, where: str, report: li
     for prefix, day_type in DAY_COLUMNS:
         for bucket, _, _ in BUCKETS:
             cell = _get(row, columns, f"{prefix}班次 ({bucket})")
-            times = _parse_time_cell(cell)
+            try:
+                times = _parse_time_cell(cell)
+            except ValueError as error:
+                raise ValueError(f"{where}: cannot read {prefix}班次 ({bucket}) {cell!r}") from error
             if times is None:
                 unknown.append(f"{prefix} {bucket} 班次未知")
                 continue
@@ -310,7 +327,8 @@ def _next_on_or_after(day: date, weekday: int) -> date:
     return day + timedelta(days=(weekday - day.weekday()) % 7)
 
 
-def _leg_times(text: str | None, day: date | None, trip_start: date, where: str):
+def _leg_times(text: str | None, day: date | None, trip_start: date, where: str,
+               report: list[str]):
     match = _TIME_RANGE.match(text or "")
     if not match or match.group(1) not in WEEKDAYS:
         raise ValueError(f"{where}: cannot read 時間 {text!r}")
@@ -320,8 +338,11 @@ def _leg_times(text: str | None, day: date | None, trip_start: date, where: str)
     day = _next_on_or_after(day or trip_start, weekday)
     departs = datetime.combine(day, time(int(match.group(2)), int(match.group(3))), TAIPEI)
     arrives = datetime.combine(day, time(int(match.group(4)), int(match.group(5))), TAIPEI)
-    if arrives <= departs:
+    if arrives == departs:
+        raise ValueError(f"{where}: 時間 {text!r} arrives when it departs")
+    if arrives < departs:
         arrives += timedelta(days=1)
+        report.append(f"{where}: arrives before it departs, so it arrives the next day")
     return day, departs, arrives
 
 
@@ -333,11 +354,11 @@ def _booking_flags(text: str | None, where: str) -> dict[str, bool]:
     return flags
 
 
-def _link(leg: ParsedLeg, lists: list[ParsedList], linked: set[str]) -> str | None:
+def _link(leg: ParsedLeg, lists: list[ParsedList]) -> str | None:
     for candidate in lists:
         a, b = re.split("[去回]", candidate.name, maxsplit=1)
         if leg.from_place.startswith(a) and leg.to_place.startswith(b):
-            return None if candidate.name in linked else candidate.name
+            return candidate.name
     return None
 
 
@@ -349,7 +370,7 @@ def _parse_this_time(ws, trip_start: date, trip_name: str, lists: list[ParsedLis
     day = None
     for number, row in _rows(ws):
         where = f"{THIS_TIME_TAB} row {number}"
-        day, departs, arrives = _leg_times(_text(row, columns, "時間"), day, trip_start, where)
+        day, departs, arrives = _leg_times(_text(row, columns, "時間"), day, trip_start, where, report)
         leg = ParsedLeg(
             from_place=_text(row, columns, "出發地點"), to_place=_text(row, columns, "目的地"),
             departs_at=departs, arrives_at=arrives,
@@ -359,11 +380,14 @@ def _parse_this_time(ws, trip_start: date, trip_name: str, lists: list[ParsedLis
             booking_code=_text(row, columns, "訂票代碼"), notes=_text(row, columns, "備註"),
             **_booking_flags(_text(row, columns, "訂票狀態"), where),
         )
-        leg.packing_list_name = _link(leg, lists, linked)
-        if leg.packing_list_name:
-            linked.add(leg.packing_list_name)
-        else:
+        name = _link(leg, lists)
+        if name is None:
             report.append(f"{where}: {leg.from_place} to {leg.to_place} has no packing list, left unlinked")
+        elif name in linked:
+            report.append(f"{where}: {name} is already linked to another leg, left unlinked")
+        else:
+            linked.add(name)
+            leg.packing_list_name = name
         legs.append(leg)
     return ParsedTrip(trip_name, legs)
 

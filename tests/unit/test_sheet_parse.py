@@ -129,3 +129,66 @@ def test_an_unknown_status_is_refused_not_guessed():
     wb["彰化回台北"]["F2"] = "半打包"
     with pytest.raises(ValueError, match="半打包"):
         parse_workbook(wb, trip_start=date(2026, 9, 24), trip_name="x")
+
+
+def _parse(wb):
+    return parse_workbook(wb, trip_start=date(2026, 9, 24), trip_name="x")
+
+
+def test_blank_vocabulary_cells_take_defaults_and_are_reported(sheet):
+    item = _list(sheet, "台北去彰化").items[1]
+    assert item.name == "餅乾"
+    assert (item.status, item.needs_double_check, item.double_checked, item.timing) == (
+        "not_packed", False, False, "whenever")
+    line = next(line for line in sheet.report if "餅乾" in line)
+    assert line.startswith("台北去彰化 row 3:")
+    assert all(word in line for word in ("打包狀態 became 未打包", "Double Check became 不需確認",
+                                           "打包時機 became 隨時"))
+    assert not any("水果" in line for line in sheet.report)
+
+
+def test_an_overnight_leg_arrives_the_next_day_and_is_reported():
+    wb = workbook()
+    wb["This time"]["C3"] = "Mon 23:30-00:10"
+    leg = _parse(wb)
+    assert leg.trip.legs[1].arrives_at == datetime(2026, 9, 29, 0, 10, tzinfo=TAIPEI)
+    assert any("This time row 3" in line and "next day" in line for line in leg.report)
+
+
+def test_a_leg_that_arrives_when_it_departs_is_refused():
+    wb = workbook()
+    wb["This time"]["C2"] = "Thu 18:06-18:06"
+    with pytest.raises(ValueError, match="This time row 2"):
+        _parse(wb)
+
+
+def test_a_malformed_departure_time_is_refused_naming_the_cell():
+    wb = workbook()
+    wb["Transportation"]["T2"] = "7:3x"
+    with pytest.raises(ValueError, match="Transportation row 2.*7:3x"):
+        _parse(wb)
+
+
+def test_a_first_row_without_an_item_name_is_refused():
+    wb = workbook()
+    wb["彰化回台北"]["B2"] = None
+    with pytest.raises(ValueError, match="彰化回台北 row 2"):
+        _parse(wb)
+
+
+def test_a_time_listed_twice_is_kept_once_and_reported():
+    wb = workbook()
+    wb["Transportation"]["T2"] = "7:30, 7:30"
+    parsed = _parse(wb)
+    option = _option(parsed, "彰化客運6933A")
+    assert [d.time for d in option.departures if d.time.hour == 7] == [time(7, 30)]
+    assert any("listed twice" in line for line in parsed.report)
+
+
+def test_a_second_leg_for_a_linked_list_is_left_unlinked_and_reported():
+    wb = workbook()
+    wb["This time"]["A3"] = "彰化火車站"
+    wb["This time"]["B3"] = "台北車站"
+    parsed = _parse(wb)
+    assert [leg.packing_list_name for leg in parsed.trip.legs] == ["彰化回台北", None]
+    assert any("already linked to another leg" in line for line in parsed.report)

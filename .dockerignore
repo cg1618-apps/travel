@@ -20,7 +20,6 @@ credentials.json
 # Not needed at runtime
 tests/
 docs/
-scripts/
 .github/
 .superpowers/
 *.md

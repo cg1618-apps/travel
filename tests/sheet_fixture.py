@@ -26,6 +26,7 @@ def workbook():
     there = wb.create_sheet("台北去彰化")
     there.append(PACK_HEADER)
     there.append(["食物", "水果", None, 2.0, 1.0, "未打包", "不需確認", "出發當天", "需買", "新北", None])
+    there.append(["食物", "餅乾"])
     wb.create_sheet("Ignored tab").append(["anything"])
     transport = wb.create_sheet("Transportation")
     transport.append(TRANSPORT_HEADER)

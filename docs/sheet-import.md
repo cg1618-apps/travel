@@ -62,5 +62,9 @@ Everything skipped is printed as a `note:` line.
 | A time listed twice for one option and day type | Kept once, and reported. |
 | A departure cell that is a time, a date-time or a day fraction | Read as a time of day. A `*` prefix on a text time marks it irregular. |
 | Identifiers such as `車號` and `訂票代碼` stored as numbers | Kept as text (`5158.0` becomes `5158`). |
-| A leg with no matching packing list | Left unlinked and reported. |
+| A leg with no matching packing list, or whose list another leg already took | Left unlinked and reported. |
+| A blank `打包狀態`, `Double Check` or `打包時機` | Becomes 未打包, 不需確認 or 隨時 respectively, and the row is reported naming which columns were blank. |
+| A leg whose arrival time is before its departure | Arrives the next day, and is reported. Equal times are refused. |
+| A packing row with no `項目` and none above it | Refused with an error naming the tab and row. |
+| A departure cell with an unreadable time | Refused with an error naming the tab, row, column and value. |
 | An unknown status, timing, need, Double Check or booking word | Refused with an error naming the tab, row and value. |
