@@ -29,9 +29,8 @@ Decided by the owner in conversation:
 
 One branch, one PR. The new packing columns land in the sheet UI that
 `refactor/spreadsheet-ui` introduced, which has not been merged and which the
-owner has not yet seen running. **Before building on it, the app is started on
-this branch and the owner looks at the sheet UI.** If it is rejected, this spec
-is revisited before anything else is built on it.
+owner had not seen running. The owner looked at it on 2026-09-30 and accepted
+it as the base, with the changes in §1a.
 
 ## 1. Packing items
 
@@ -63,9 +62,56 @@ bought, at `location`; `need` — needed, with bring-or-buy not yet decided.
 - Copying a list carries `detail`, `need` and `location` (definition), and
   resets packed state as today.
 - `bag` stays; the sheet does not use it.
-- The sheet UI gains **Detail**, **Need** and **Location** columns. The
-  checklist shows `name · detail` on the first line and need and location on
-  its quiet second line.
+- The sheet UI gains the 需求 and 取得地點 columns and shows `detail` as a
+  variant row (§1a). The checklist shows need and location on an item's quiet
+  second line.
+
+## 1a. The sheet UI, as reviewed by the owner
+
+**Wording.** The UI uses the Google Sheet's own words, untranslated: column
+headers 類別, 項目, 數量, 已打包數量, 打包狀態, Double Check, 打包時機, 需求,
+取得地點, 備註, and values 未打包 / 已打包 / 不需打包, 未確認 / 確認 / 不需確認,
+隨時 / 出發前晚 / 出發當天 / 出發前, 需要 / 需帶 / 需買. Where the sheet itself is
+English it stays English (`Double Check`, `Transportation`, `This time`); every
+other label, button, empty state and message is Traditional Chinese. Stored
+values stay the English enum text; the mapping to display text lives in one
+frontend module and nowhere else.
+
+**Column order.** 類別 first, then 項目, then the rest in the sheet's order,
+with 需求 and 取得地點 after 打包時機.
+
+**Variants, split but grouped.** Every row is its own item. Under the default
+(position) order the sheet renders like the Google Sheet: 類別 shows only on
+the first row of a run of equal categories and 項目 only on the first row of a
+run of equal names, the following rows' cells blank and the variant (`detail`)
+indented beneath. Each row has a **+ 變化** action that inserts a new item
+directly below it carrying the same `category` and `name`. Sorting by any other
+column turns grouping off and every row shows its full name — a blank cell
+under a foreign sort order would be ambiguous. The checklist shows a group's
+name once with its variants beneath, each with its own tick.
+
+Inserting mid-list needs `after_id` on item create: the new item takes
+`after.position + 1` and every later item in that list shifts by one, in one
+transaction.
+
+**打包狀態: three stored, two tapped.** All three values stay in the data —
+不需打包 is a decision, and folding it into 未打包 would make it
+indistinguishable from forgetting.
+
+- One tap toggles 未打包 ⇄ 已打包: the checklist's tick, and a single tap on the
+  status cell in the sheet.
+- 不需打包 is one step further away: a long-press on the tick, or the row's ⋯
+  menu, in both views. A 不需打包 row renders greyed and struck through; one tap
+  on it returns it to 未打包.
+- The same long-press / ⋯ menu holds Double Check, so the tick only ever means
+  packed.
+
+**重設狀態 (reset all status).** A button in the list header, behind a
+confirmation. It sets 已打包 → 未打包, `quantity_packed` → 0 and
+`double_checked` → false for every item in the list. **不需打包 is left
+alone** — it is a choice about the list, not progress through it. The rule is
+the copy rule's reset half minus `no_need`, and lives beside it in
+`app/services/domain/packing.py`.
 
 ## 2. Transportation
 
@@ -204,7 +250,9 @@ Routers follow the existing packing routers' shape and error conventions.
   trip, or 404 when there is none.
 - `/api/trip-legs` — create, update, delete. Linking a list already linked
   elsewhere is a 409.
-- `/api/packing-items` accepts `detail`, `need`, `location`.
+- `/api/packing-items` accepts `detail`, `need`, `location`; item create
+  accepts `after_id` (§1a), 404 when it names an item on another list or none.
+- `POST /api/packing-lists/{id}/reset` — the 重設狀態 rule; returns the list.
 - `/api/packing-lists` responses carry the effective `departure_at` and
   `departure_source`.
 
@@ -222,10 +270,20 @@ TDD throughout, full runs under the machine-wide pytest lock.
 - Departure source: linked uses the leg's Taipei date (a leg at 00:30 Taipei is
   the previous UTC day — the test that makes the timezone bite); unlinked uses
   its own.
+- Reset: packed items return to not packed with counts and checks cleared,
+  **and a `no_need` item on the same list stays `no_need`** — the fixture must
+  hold one, or the test cannot tell "left alone" from "never there". Items on
+  another list are untouched.
+- `after_id` insertion: the new item lands directly after the named one and
+  later positions shift; positions on other lists do not move; an `after_id`
+  from another list is refused.
 - The migration runs from zero against the scratch database, and downgrades.
 - The importer against an `.xlsx` built inside the test carrying every quirk in
   §4's table, asserted field by field.
-- Vitest: the 早/中/下午/晚 bucketing at its boundaries, and duration display.
+- Vitest: the 早/中/下午/晚 bucketing at its boundaries, duration display, the
+  grouping rule (blank repeated 類別/項目 under position order only), the
+  one-tap status toggle (not_packed ⇄ packed, no_need → not_packed), and that
+  every stored enum value has a display string.
 
 ## 7. Docs
 
