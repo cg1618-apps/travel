@@ -22,4 +22,11 @@ export const endpoints = {
     departures: (optionId) => `/api/transport-options/${optionId}/departures`,
     departure: (id) => `/api/transport-departures/${id}`,
   },
+  trips: {
+    index: () => '/api/trips',
+    current: () => '/api/trips/current',
+    detail: (id) => `/api/trips/${id}`,
+    legs: (tripId) => `/api/trips/${tripId}/legs`,
+    leg: (id) => `/api/trip-legs/${id}`,
+  },
 }

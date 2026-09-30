@@ -13,6 +13,7 @@ import { ApiError } from '../api/client'
 import { endpoints } from '../api/endpoints'
 import { TextCell } from '../components/Cell'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { PriceCell } from '../components/PriceCell'
 import { RowMenu } from '../components/RowMenu'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
@@ -23,8 +24,9 @@ import {
   nextDeparture,
   parseDepartureInput,
 } from '../lib/departures'
+import { keysFor } from '../lib/keys'
 import { ADVANCE_TICKET_LABELS, BUCKET_LABELS, DAY_TYPE_LABELS } from '../lib/labels'
-import { DAY_TYPES, formatPrice, groupByDayType, parsePrice } from '../lib/transport'
+import { DAY_TYPES, groupByDayType } from '../lib/transport'
 
 const KEY = ['transport-routes']
 const REFRESH_MS = 60_000
@@ -51,60 +53,6 @@ function useTransportMutation(mutationFn) {
 /** Shared by every cell that cannot be blank: an emptied cell keeps its value. */
 const required = (commit) => (value) => {
   if (value) commit(value)
-}
-
-/** Enter commits, Escape reverts: the bargain every cell makes. */
-const keysFor = (commit, revert) => (event) => {
-  if (event.key === 'Enter') {
-    event.preventDefault()
-    commit()
-  } else if (event.key === 'Escape') {
-    event.preventDefault()
-    revert()
-  }
-}
-
-function PriceCell({ price, onCommit }) {
-  const [editing, setEditing] = useState(false)
-  const [text, setText] = useState('')
-
-  const finish = (save) => {
-    setEditing(false)
-    if (!save) return
-    const next = parsePrice(text)
-    if (next !== undefined && next !== price) onCommit(next)
-  }
-
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          setText(price === null ? '' : String(price))
-          setEditing(true)
-        }}
-        className="w-full bg-transparent px-2 py-1.5 text-left text-sm tabular-nums outline-none"
-      >
-        {formatPrice(price) ?? <span className="text-text-faint">—</span>}
-      </button>
-    )
-  }
-  return (
-    <input
-      autoFocus
-      inputMode="numeric"
-      aria-label="價錢"
-      value={text}
-      onFocus={(event) => event.target.select()}
-      onChange={(event) => setText(event.target.value)}
-      onBlur={() => finish(true)}
-      onKeyDown={keysFor(
-        () => finish(true),
-        () => finish(false),
-      )}
-      className="w-full bg-surface px-2 py-1.5 text-sm tabular-nums outline-none ring-1 ring-brand"
-    />
-  )
 }
 
 /** A link that opens in a new tab once set, with a ✎ to change where it goes. */

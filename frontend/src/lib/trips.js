@@ -34,3 +34,30 @@ export function taipeiInputValue(iso) {
 export function fromTaipeiInput(value) {
   return `${value}:00+08:00`
 }
+
+function taipeiDay(iso) {
+  return taipeiInputValue(iso).slice(0, 10)
+}
+
+/** The arrival under a leg's departure: the clock alone when it is the same Taipei day. */
+export function formatArrival(departsAt, arrivesAt) {
+  return taipeiDay(departsAt) === taipeiDay(arrivesAt)
+    ? taipeiInputValue(arrivesAt).slice(11)
+    : formatTaipei(arrivesAt)
+}
+
+/** "09/24" for a trip's first day, "09/24 – 09/28" across days; null with no legs. */
+export function tripDateRange(legs) {
+  if (legs.length === 0) return null
+  const first = legs.reduce((a, b) => (new Date(b.departs_at) < new Date(a.departs_at) ? b : a))
+  const last = legs.reduce((a, b) => (new Date(b.arrives_at) > new Date(a.arrives_at) ? b : a))
+  const short = (iso) => taipeiDay(iso).slice(5).replace('-', '/')
+  const start = short(first.departs_at)
+  const end = short(last.arrives_at)
+  return start === end ? start : `${start} – ${end}`
+}
+
+/** Legs in the order they happen. */
+export function sortLegs(legs) {
+  return [...legs].sort((a, b) => new Date(a.departs_at) - new Date(b.departs_at))
+}

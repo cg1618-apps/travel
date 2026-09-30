@@ -193,6 +193,37 @@ journey is a card under it.
 - **Empty.** 還沒有路線。 with the add-route form; with routes present the same
   form sits at the bottom of the page.
 
+## This time
+
+`/trip` is the sheet's This time tab (`pages/Trip.jsx`): the current trip, leg
+by leg. `/trips/:tripId` shows any other trip through the same component. Reads
+live under `['trips', ...]` (`current`, `detail`, `index`); every write also
+refreshes the packing-list queries, because a linked list's date comes from
+its leg.
+
+- **No trip.** `/api/trips/current` answers 404, which the page treats as an
+  answer rather than an error: 還沒有行程。 with a name field. A trip with no
+  legs is never current, so a new trip opens at `/trips/{id}`.
+- **Header.** The name is a cell, then 備註; ⋯ 刪除行程 asks first.
+- **Legs** are cards in `departs_at` order. The top line is 起點 → 終點; under
+  it the departure, the arrival (the clock alone when it is the same Taipei
+  day, `formatArrival`) and the duration. ✎ opens two `datetime-local` inputs
+  in Taipei time; a 422 shows 抵達時間要晚於出發時間.
+- **Fields.** 車種, 車號, 座位, 價錢 (the shared `PriceCell`) and 車票類型,
+  with the remembered `ticket_type` values suggested, all commit like a cell.
+- **訂票代碼** is large and monospaced. Tapping copies it and shows 已複製 for
+  two seconds; a refused clipboard shows 無法複製. ✎ edits it.
+- **已訂票 / 付款 / 取票** are three toggles, each its own field.
+- **Packing list.** A linked list shows as `打包清單：{name}`, a link to it; ✎
+  opens a select of every list (recent, saved and templates, each once) and
+  （不連結）. A 409 shows 這份清單已經連到別的行程段. The list's own header then
+  reads 由 This time 行程設定 for its date.
+- **Adding and deleting.** + 新增一段 takes the places and two Taipei times;
+  ⋯ 刪除這段 asks first.
+- **過去的行程** lists every other trip with its date range
+  (`tripDateRange`) and links to it; the heading is omitted when there are
+  none.
+
 ## Mobile first
 
 Checklist is the mobile view; the sheet scrolls horizontally. Build at 375px
