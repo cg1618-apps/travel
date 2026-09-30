@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatPrice, groupByDayType, parsePrice } from './transport'
+import { formatPrice, groupByDayType } from './transport'
 
 describe('formatPrice', () => {
   it('shows a price with its currency', () => {
@@ -11,21 +11,6 @@ describe('formatPrice', () => {
   })
   it('leaves an unset price unset', () => {
     expect(formatPrice(null)).toBeNull()
-  })
-})
-
-describe('parsePrice', () => {
-  it('reads a whole number', () => {
-    expect(parsePrice(' 22 ')).toBe(22)
-    expect(parsePrice('0')).toBe(0)
-  })
-  it('reads an empty cell as clearing the price', () => {
-    expect(parsePrice('  ')).toBeNull()
-  })
-  it('refuses what is not a whole number', () => {
-    expect(parsePrice('NT$22')).toBeUndefined()
-    expect(parsePrice('-5')).toBeUndefined()
-    expect(parsePrice('2.5')).toBeUndefined()
   })
 })
 

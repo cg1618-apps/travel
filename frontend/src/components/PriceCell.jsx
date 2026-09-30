@@ -3,7 +3,8 @@
 import { useState } from 'react'
 
 import { keysFor } from '../lib/keys'
-import { formatPrice, parsePrice } from '../lib/transport'
+import { parseWholeNumber } from '../lib/numbers'
+import { formatPrice } from '../lib/transport'
 
 export function PriceCell({ price, onCommit }) {
   const [editing, setEditing] = useState(false)
@@ -12,7 +13,7 @@ export function PriceCell({ price, onCommit }) {
   const finish = (save) => {
     setEditing(false)
     if (!save) return
-    const next = parsePrice(text)
+    const next = parseWholeNumber(text)
     if (next !== undefined && next !== price) onCommit(next)
   }
 

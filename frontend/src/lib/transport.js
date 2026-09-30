@@ -1,6 +1,7 @@
 /**
- * Transport display logic that is not a component: prices, and a route's
- * departures split by day type.
+ * Transport display logic that is not a component: how a price is shown, and
+ * a route's departures split by day type. Typing a price is `parseWholeNumber`
+ * in `numbers.js`.
  */
 
 export const DAY_TYPES = ['weekday', 'holiday']
@@ -8,17 +9,6 @@ export const DAY_TYPES = ['weekday', 'holiday']
 /** 22 → "NT$22"; null stays null so the cell can show its placeholder. */
 export function formatPrice(price) {
   return price === null || price === undefined ? null : `NT$${price}`
-}
-
-/**
- * What typing in the price cell means: '' clears it, a whole number sets it,
- * anything else is refused (undefined) so a typo never reaches the API.
- */
-export function parsePrice(text) {
-  const trimmed = text.trim()
-  if (trimmed === '') return null
-  if (!/^\d+$/.test(trimmed)) return undefined
-  return Number(trimmed)
 }
 
 /**

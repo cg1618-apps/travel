@@ -8,6 +8,8 @@
 
 import { useState } from 'react'
 
+import { parseWholeNumber } from '../lib/numbers'
+
 const base =
   'w-full bg-transparent px-2 py-1.5 text-left text-sm outline-none focus:bg-brand-soft'
 
@@ -112,7 +114,10 @@ function QuantityInput({ item, onCommit, onDone }) {
 
   const commit = () => {
     onDone()
-    const quantity = target === '' ? null : Number(target)
+    const quantity = parseWholeNumber(target)
+    // Not a whole number: the cell reverts and sends nothing, unit included,
+    // the way 價錢 refuses a typo — "1.5" would only come back as a 422.
+    if (quantity === undefined) return
     const nextUnit = unit.trim() || null
     if (quantity !== item.quantity || nextUnit !== (item.unit ?? null)) {
       onCommit({ quantity, unit: nextUnit })
@@ -138,8 +143,10 @@ function QuantityInput({ item, onCommit, onDone }) {
     >
       <input
         autoFocus
-        type="number"
-        min="0"
+        // Text with a numeric keypad, as 價錢 is: a number input reports
+        // anything it cannot parse as '', which would clear the quantity
+        // instead of refusing the typo.
+        inputMode="numeric"
         value={target}
         onChange={(event) => setTarget(event.target.value)}
         onKeyDown={onKeyDown}
