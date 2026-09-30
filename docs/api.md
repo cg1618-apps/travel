@@ -201,5 +201,9 @@ child is created under its parent and addressed on its own afterwards.
 **A departure is unique per option, day type and time.** Creating one that
 already exists, or a `PATCH` that would make one collide, is a `409` with
 `That departure already exists for this option.` The same time on the other day
-type is a different departure. A departure reads back ordered by day type, then
-time, and `time` is serialised as `HH:MM:SS`.
+type is a different departure. Departures read back ordered by `day_type` (alphabetically, so `holiday` before
+`weekday`), then `time`, and `time` is serialised as `HH:MM:SS`.
+
+**A `PATCH` cannot null a required field.** `from_place`, `to_place`, `mode`,
+`advance_ticket`, `day_type`, `time`, `irregular` and `position` answer `422`
+when sent as `null`; nullable fields such as `notes` accept it and clear.

@@ -179,6 +179,8 @@ One way of doing a route — a bus line, a train service.
 
 One scheduled time. The sheet's 早 / 中 / 下午 / 晚 columns are not stored; they
 are computed from `time`, so they cannot drift from it.
+The relationship orders departures by `day_type` (alphabetically, so `holiday`
+before `weekday`), then `time`.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
