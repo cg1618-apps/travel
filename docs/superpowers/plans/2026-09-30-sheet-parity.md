@@ -2064,3 +2064,45 @@ Requirements:
 - [ ] **Step 8: Full verification** — `PYTEST tests/ -q`, `venv/Scripts/ruff check .`, `cd frontend && npm run lint && npm test && npm run build`, `venv/Scripts/python.exe -m alembic heads` (exactly one: `t1rip0000001`). All green; report the counts.
 - [ ] **Step 9: Commit** `docs: record the sheet-parity decisions and retire the spec and plan` — exact paths including the two deletions (`git rm` them).
 - [ ] **Step 10: Push** `git push`. Opening the PR into `dev` is done by the main session, not by a subagent.
+
+---
+
+## Outstanding: final review fix wave
+
+Tasks 1-10 are complete and reviewed (HEAD 9ed108d; the local `travel` database holds the imported sheet at revision `t1rip0000001`). The whole-branch review returned "ready with fixes". Fix all of the following in one pass, re-review that diff, then open the PR into `dev`.
+
+Branch feat/sheet-parity, HEAD 9ed108d. Spec: docs/superpowers/specs/2026-09-30-sheet-parity-design.md.
+
+## Important
+
+1. **No way to create a second trip from the UI.** `frontend/src/pages/Trip.jsx` shows `CreateTrip` only when `/api/trips/current` is 404; once any trip exists (the imported 彰化 ⇄ 台北 stays current), no page offers a new trip. Add a `+ 新增行程` control on the trip view (header or beside the other-trips list) that creates a trip and navigates to `/trips/{id}`. Document it in `docs/frontend.md`.
+
+2. **Trip has no `visibility` column.** travel/CLAUDE.md: "Shareable entities carry a visibility field from the first migration", and a single trip's information is named as the thing to be shared. Ruling: add a NEW Alembic revision `t2rip0000002` (down_revision `t1rip0000001`) that adds `trip.visibility` text NOT NULL server_default 'private' with `ck_trip_visibility` built from the `Visibility` enum (same shape as `ck_packing_list_visibility`); downgrade drops both. Model: `app/models/trip.py` mirrors `PackingList.visibility` (reuse `in_clause`, `Visibility`). Do NOT expose it in the API/UI (nothing reads it yet, same as packing_list). Docs: data-model.md trip table + constraint row. Test: a model-level test that an invalid visibility is refused by the constraint and the default is 'private'. Then apply it to the LOCAL `travel` database: `venv/Scripts/python.exe -m alembic upgrade head` (the imported data must survive — verify the counts after: 2 lists, 85 items, 4 routes, 5 options, 38 departures, 1 trip, 2 legs).
+
+3. **Explicit null on required packing fields is still a 500.** `app/schemas/packing_item.py` `PackingItemUpdate` and `app/schemas/packing_list.py` `PackingListUpdate` must subclass `NonNullableUpdate` (`app/schemas/base.py`) listing their NOT NULL fields (read the models: e.g. item name, quantity_packed, status, timing, needs_double_check, double_checked, position; list name, saved, template — check each against the model, and remember `evict_confirmed` is not a column). Tests: `{"name": null}` on an item → 422, `{"status": null}` → 422, mirror `{"notes": null}` → 200; list `{"saved": null}` → 422, mirror `{"departure_at": null}` → 200. Also add the two tests the review asked for: PATCH clearing `need` and `location` to null → 200 and reads back null; a leg PATCH that sets `ticket_type` remembers it as a label option. Extend the api.md note on the null rule to cover packing.
+
+4. **App CLAUDE.md status is stale.** `travel/CLAUDE.md` lines ~25-31 say packing is the only built module and there is no trip or transport. Rewrite that paragraph to match `docs/README.md`'s status (packing lists, transport and trips built; the sheet is importable; no buying list and no rules yet). Change nothing else in CLAUDE.md.
+
+5. **Stale doc claims** — fix each, and grep each claim across docs/ and CLAUDE.md for second copies:
+   - `docs/notes/decisions.md` ~234: "`trip_id` is nullable … Attaching one later is a single edit" contradicts ~380-386 (no `trip_id`; the leg links the list). Make the earlier passage say what ended up true (or mark it superseded, pointing at the later section).
+   - `docs/business-rules.md` ~101 "the `When` column" → 打包時機 column.
+   - `docs/business-rules.md` ~113 "No date set" → 未設定日期.
+   - `docs/business-rules.md` ~60 "Reaching the target quantity offers to flip it" — nothing in the UI offers that now; state what is true (the count never sets status; status is set explicitly).
+   - `docs/api.md` ~181 `usage_count` "how many items" → how many rows carry the value (items, or legs for `ticket_type`).
+   - `docs/api.md` ~34 "`detail` is a plain string, never a structured object" — a schema 422 is FastAPI's list; state the actual convention (refusals the routers raise are strings; schema validation 422s are FastAPI's list, which the frontend client flattens). Check whether the leg PATCH's router-raised 422 string vs the create's schema 422 list is described accurately.
+   - `docs/testing.md`: mention the downgrade round-trip test alongside the from-zero and one-head tests.
+
+## Minor, folded in by ruling
+
+6. `tests/test_migrations_build_the_schema.py` round-trip runs on an empty DB, so the `DELETE FROM label_option WHERE kind = …` downgrade steps never meet rows. After the first upgrade, insert one `location` and one `ticket_type` label_option (plain SQL via the scratch URL), then downgrade base and upgrade head, asserting success.
+7. `frontend/src/lib/departures.js` `dayTypeOf` / `nextDeparture` use the device clock (`getDay`, `getHours`). Compute weekday and minutes in Asia/Taipei via `Intl.DateTimeFormat` (as `lib/trips.js` does). Update the tests so they pass regardless of the machine TZ (use UTC instants whose Taipei time is known, e.g. 2026-09-26T00:00:00Z is Sat 08:00 Taipei).
+8. `frontend/src/pages/Trip.jsx` heading 過去的行程 lists every other trip, including future ones → rename to 其他行程 (and the docs/frontend.md mention).
+9. `frontend/src/pages/Trip.jsx` a leg's 起點/終點 are plain text → make them `TextCell`s like the other fields (blank refused client-side, as Transport does with `required()`).
+10. `.gitignore` and `.dockerignore`: add `*.xlsx` and `backups/` to both (check each isn't already covered).
+11. Docstrings still say "category and bag" only: `app/models/label_option.py` (module + class) and `app/routers/label_option.py` module docstring → name all four kinds or say "the free-text fields".
+12. `app/services/sheet_import/parse.py` `as_int` raises a bare ValueError on a non-numeric 數量/價錢 — wrap at the call sites so the error names tab, row and value (as `_parse_departures` does). Test with a fixture cell `"兩個"` in 數量.
+13. `frontend/src/components/Cell.jsx` QuantityCell sends `Number("1.5")` which the API rejects silently. Refuse non-integer input client-side (keep the editor open or revert, consistent with how the other cells refuse bad input) and add a vitest for the parsing helper if you extract one.
+
+## Also
+
+14. Delete `docs/superpowers/specs/2026-09-30-sheet-parity-design.md` and `docs/superpowers/plans/2026-09-30-sheet-parity.md` (`git rm`), in the last commit. Before deleting, confirm nothing durable in them is missing from docs/ (decisions.md, business-rules.md, data-model.md, api.md, frontend.md, sheet-import.md); move anything missing first.
