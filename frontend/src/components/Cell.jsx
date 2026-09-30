@@ -190,7 +190,12 @@ export function PackedCountCell({ item, onCommit }) {
   return (
     <PackedCountInput
       value={String(item.quantity_packed ?? 0)}
-      onCommit={(next) => onCommit(Number(next) || 0)}
+      onCommit={(next) => {
+        // An emptied cell is 0 (the field cannot be null); anything that is
+        // not a whole number reverts, as 數量 does.
+        const packed = parseWholeNumber(next)
+        if (packed !== undefined) onCommit(packed ?? 0)
+      }}
       onDone={() => setEditing(false)}
     />
   )
@@ -201,8 +206,7 @@ function PackedCountInput({ value, onCommit, onDone }) {
   return (
     <input
       autoFocus
-      type="number"
-      min="0"
+      inputMode="numeric"
       onFocus={(event) => event.target.select()}
       value={cell.value}
       onChange={(event) => cell.setValue(event.target.value)}

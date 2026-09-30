@@ -1,5 +1,5 @@
 /**
- * Typing a count into a cell: 價錢, and 數量 on a packing item.
+ * Typing a count into a cell: 價錢, and 數量 and 已打包數量 on a packing item.
  *
  * '' clears the value (null), a whole number sets it, and anything else is
  * refused (undefined) so a typo such as "1.5" never reaches the API, which

@@ -156,8 +156,8 @@ has to be told it:
 數量 is one cell holding the target and its unit — "5 雙" is one fact.
 The number must be whole: anything else (`1.5`, `兩`) reverts the cell and
 sends nothing, unit included, the way 價錢 refuses a typo; an emptied number
-clears it. Both cells read their text with `parseWholeNumber` in
-`lib/numbers.js`.
+clears it. 已打包數量 refuses the same way, and an emptied one is 0. All three
+cells read their text with `parseWholeNumber` in `lib/numbers.js`.
 已打包數量 is its own cell, as in the sheet, and turns amber when it is short
 of 數量, because being short is the failure a packing list exists to catch.
 
