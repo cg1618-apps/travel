@@ -10,7 +10,8 @@
 
 import { useState } from 'react'
 
-import { TIMINGS, TIMING_LABELS } from '../lib/timing'
+import { TIMINGS } from '../lib/timing'
+import { TIMING_LABELS } from '../lib/labels'
 import { QuantityCell, SelectCell, TextCell } from './Cell'
 
 const STATUS_ORDER = ['not_packed', 'packed', 'no_need']

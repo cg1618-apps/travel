@@ -13,13 +13,6 @@
 /** The four timings, in escalating order — how the `When` column sorts. */
 export const TIMINGS = ['whenever', 'night_before', 'day_of', 'just_before']
 
-export const TIMING_LABELS = {
-  whenever: 'Whenever',
-  night_before: 'Night before',
-  day_of: 'Day of',
-  just_before: 'Just before',
-}
-
 /**
  * Parse a YYYY-MM-DD date into a UTC midnight timestamp.
  *
