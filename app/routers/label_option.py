@@ -1,4 +1,5 @@
-"""The category and bag suggestions: listing them, tidying them, pruning them.
+"""The suggestions behind the free-text fields - category, bag, location and
+ticket type: listing them, tidying them, pruning them.
 
 These are suggestions, not references. Everything here follows from that one
 fact - see `docs/business-rules.md`.
