@@ -13,10 +13,11 @@ in `notes/`.
 | `business-rules.md` | What fills the three-list cap, what a copy carries, when an item is due, and how the common options behave. |
 | `data-model.md` | Every table, what each column means, and which rules the database itself enforces. |
 | `testing.md` | How the tests are laid out, what each fixture gives you, and what a refusal test has to set up before it can fail. |
+| `sheet-import.md` | How the owner's Google Sheet export is loaded into an empty database, what each tab becomes, and what is skipped or refused. |
 | `logging.md` | What a log line looks like, why uvicorn's loggers are taken over, and why an inbound `X-Request-ID` is validated even though this app is gated. travel's half of a platform contract. |
 | `superpowers/` | Where a spec and a plan live **while a task is in progress**, and nowhere else. Both are deleted when that task ends, with anything durable moved into a real page first — so the directory is absent between tasks, which is its normal state. |
 
-Packing lists are built. There is still no trip, no buying list, no rules and
+Packing lists are built, and the owner's sheet can be loaded with `scripts/import_sheet.py`. There is still no trip, no buying list, no rules and
 no transport information. Under the feature sits the skeleton:
 config read once from the environment, a `/api/health` endpoint that checks
 the database's Alembic revision against the code's, the Alembic chain, a

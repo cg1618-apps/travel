@@ -6,3 +6,5 @@ psycopg2-binary==2.9.10
 pydantic-settings==2.7.0
 # zoneinfo's database; Windows has none of its own
 tzdata==2025.2
+# scripts/import_sheet.py; in the runtime image so production can be loaded from inside the container
+openpyxl==3.1.5
