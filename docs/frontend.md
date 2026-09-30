@@ -210,10 +210,13 @@ its leg.
 - **No trip.** `/api/trips/current` answers 404, which the page treats as an
   answer rather than an error: 還沒有行程。 with a name field. A trip with no
   legs is never current, so a new trip opens at `/trips/{id}`.
-- **Header.** The name is a cell, then 備註; ⋯ 刪除行程 asks first.
-- **Legs** are cards in `departs_at` order. The top line is 起點 → 終點; under
-  it the departure, the arrival (the clock alone when it is the same Taipei
-  day, `formatArrival`) and the duration. ✎ opens two `datetime-local` inputs
+- **Header.** The name is a cell that cannot be emptied, then 備註; ⋯ 刪除行程
+  asks first.
+- **Legs** are cards in `departs_at` order. The top line is 起點 → 終點, each
+  a cell; an emptied one keeps its value (`required` in `lib/cells.js`, as on
+  Transportation and the trip's name). Under it the departure, the arrival
+  (the clock alone when it is the same Taipei day, `formatArrival`) and the
+  duration. ✎ opens two `datetime-local` inputs
   in Taipei time; a 422 shows 抵達時間要晚於出發時間.
 - **Fields.** 車種, 車號, 座位, 價錢 (the shared `PriceCell`) and 車票類型,
   with the remembered `ticket_type` values suggested, all commit like a cell.
@@ -226,9 +229,13 @@ its leg.
   reads 由 This time 行程設定 for its date.
 - **Adding and deleting.** + 新增一段 takes the places and two Taipei times;
   ⋯ 刪除這段 asks first.
-- **過去的行程** lists every other trip with its date range
-  (`tripDateRange`) and links to it; the heading is omitted when there are
-  none.
+- **其他行程** lists every other trip — earlier and later ones alike — with
+  its date range (`tripDateRange`) and links to it. On a trip's page the
+  heading carries **+ 新增行程**, which opens a name field; creating the trip
+  goes to `/trips/{id}`. It is the only way to a second trip, because once any
+  trip has legs `/trip` shows one rather than the empty state. With no current
+  trip the empty state offers the name field instead, and the heading is
+  omitted when there are no trips to list.
 
 ## Mobile first
 

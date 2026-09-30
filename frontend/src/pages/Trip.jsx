@@ -19,6 +19,7 @@ import { PriceCell } from '../components/PriceCell'
 import { RowMenu } from '../components/RowMenu'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
+import { required } from '../lib/cells'
 import { keysFor } from '../lib/keys'
 import { BOOKING_LABELS } from '../lib/labels'
 import {
@@ -306,8 +307,22 @@ function LegCard({ leg, ticketTypes, actions }) {
     <article className="rounded-md border border-border bg-surface p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <h3 className="m-0 text-lg font-semibold">
-            {leg.from_place} → {leg.to_place}
+          <h3 className="m-0 flex flex-wrap items-center text-lg font-semibold">
+            <span className="[&_button]:w-auto [&_input]:w-32">
+              <TextCell
+                value={leg.from_place}
+                placeholder="起點"
+                onCommit={required((from_place) => patch({ from_place }))}
+              />
+            </span>
+            <span aria-hidden="true">→</span>
+            <span className="[&_button]:w-auto [&_input]:w-32">
+              <TextCell
+                value={leg.to_place}
+                placeholder="終點"
+                onCommit={required((to_place) => patch({ to_place }))}
+              />
+            </span>
           </h3>
           <p className="m-0 flex items-center gap-1 text-sm text-text-muted">
             <span>
@@ -512,33 +527,71 @@ function AddLeg({ onAdd }) {
   )
 }
 
-function CreateTrip({ onCreate }) {
+/** A name field and + 新增行程. With `onCancel`, Escape and 取消 close it. */
+function CreateTrip({ onCreate, onCancel, autoFocus = false, className = 'justify-center' }) {
   const [name, setName] = useState('')
   const submit = () => {
     if (name.trim()) onCreate(name.trim())
   }
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2">
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
       <input
+        autoFocus={autoFocus}
         aria-label="行程名稱"
         placeholder="行程名稱"
         value={name}
         onChange={(event) => setName(event.target.value)}
-        onKeyDown={keysFor(submit, () => setName(''))}
+        onKeyDown={keysFor(submit, onCancel ?? (() => setName('')))}
         className={`${inputClass} w-48`}
       />
       <button type="button" disabled={!name.trim()} onClick={submit} className={smallButton}>
         + 新增行程
       </button>
+      {onCancel && (
+        <button type="button" onClick={onCancel} className={smallButton}>
+          取消
+        </button>
+      )}
     </div>
   )
 }
 
-function PastTrips({ trips }) {
-  if (trips.length === 0) return null
+/**
+ * + 新增行程 on a trip's own page. Once any trip exists /trip always shows one,
+ * so this is the only way to a second.
+ */
+function NewTrip({ onCreate }) {
+  const [open, setOpen] = useState(false)
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className={smallButton}>
+        + 新增行程
+      </button>
+    )
+  }
+  return (
+    <CreateTrip
+      autoFocus
+      className="mt-2 w-full"
+      onCreate={onCreate}
+      onCancel={() => setOpen(false)}
+    />
+  )
+}
+
+/**
+ * Every trip but the one on screen — past and future alike, so not "past".
+ * With `onCreate` the section is shown even with no other trips, to hold
+ * + 新增行程.
+ */
+function OtherTrips({ trips, onCreate }) {
+  if (trips.length === 0 && !onCreate) return null
   return (
     <section className="mt-10 border-t border-border pt-4">
-      <h2 className="m-0 text-base font-semibold">過去的行程</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="m-0 text-base font-semibold">其他行程</h2>
+        {onCreate && <NewTrip onCreate={onCreate} />}
+      </div>
       <ul className="m-0 mt-2 list-none p-0">
         {trips.map((trip) => (
           <li key={trip.id}>
@@ -555,7 +608,7 @@ function PastTrips({ trips }) {
   )
 }
 
-function TripView({ trip, pastTrips, ticketTypes, actions, onDeleted }) {
+function TripView({ trip, otherTrips, ticketTypes, actions, onCreateTrip, onDeleted }) {
   const [confirming, setConfirming] = useState(false)
   const legs = sortLegs(trip.legs)
   const patchTrip = (changes) => actions.patchTrip.mutate({ id: trip.id, changes })
@@ -567,7 +620,7 @@ function TripView({ trip, pastTrips, ticketTypes, actions, onDeleted }) {
           <TextCell
             value={trip.name}
             placeholder="行程名稱"
-            onCommit={(name) => name && patchTrip({ name })}
+            onCommit={required((name) => patchTrip({ name }))}
           />
         </h1>
         <DeleteMenu
@@ -586,7 +639,7 @@ function TripView({ trip, pastTrips, ticketTypes, actions, onDeleted }) {
         <AddLeg onAdd={(payload) => actions.addLeg.mutateAsync({ tripId: trip.id, payload })} />
       </div>
 
-      <PastTrips trips={pastTrips} />
+      <OtherTrips trips={otherTrips} onCreate={onCreateTrip} />
 
       {confirming && (
         <ConfirmDialog
@@ -630,6 +683,14 @@ export default function Trip() {
   )
   const deleteLeg = useTripMutation((id) => send(endpoints.trips.leg(id), 'DELETE'))
 
+  const openNewTrip = (name) =>
+    createTrip.mutate(
+      { name },
+      // A trip with no legs is never the current one, so the new trip is
+      // opened by its own address.
+      { onSuccess: (created) => navigate(`/trips/${created.id}`) },
+    )
+
   if (trip.isLoading) return <LoadingState label="載入行程中…" />
 
   const shell = (children) => (
@@ -645,22 +706,11 @@ export default function Trip() {
       <>
         <h1 className="m-0 text-xl font-semibold">This time</h1>
         <EmptyState
-          action={
-            <CreateTrip
-              onCreate={(name) =>
-                createTrip.mutate(
-                  { name },
-                  // A trip with no legs is never the current one, so the new
-                  // trip is opened by its own address.
-                  { onSuccess: (created) => navigate(`/trips/${created.id}`) },
-                )
-              }
-            />
-          }
+          action={<CreateTrip onCreate={openNewTrip} />}
         >
           還沒有行程。
         </EmptyState>
-        <PastTrips trips={all.data ?? []} />
+        <OtherTrips trips={all.data ?? []} />
       </>,
     )
   }
@@ -668,16 +718,17 @@ export default function Trip() {
   const ticketTypes = (options.data || [])
     .filter((row) => row.kind === 'ticket_type')
     .map((row) => row.value)
-  const pastTrips = (all.data ?? []).filter((other) => other.id !== trip.data.id)
+  const otherTrips = (all.data ?? []).filter((other) => other.id !== trip.data.id)
   const actions = { patchTrip, deleteTrip, addLeg, patchLeg, deleteLeg }
 
   return shell(
     <TripView
       key={trip.data.id}
       trip={trip.data}
-      pastTrips={pastTrips}
+      otherTrips={otherTrips}
       ticketTypes={ticketTypes}
       actions={actions}
+      onCreateTrip={openNewTrip}
       onDeleted={() => navigate('/trip')}
     />,
   )

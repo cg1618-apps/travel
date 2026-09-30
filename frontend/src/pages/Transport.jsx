@@ -17,6 +17,7 @@ import { PriceCell } from '../components/PriceCell'
 import { RowMenu } from '../components/RowMenu'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
+import { required } from '../lib/cells'
 import {
   BUCKETS,
   formatDeparture,
@@ -48,11 +49,6 @@ function useNow() {
 /** Every write on this page refreshes the one query the page reads. */
 function useTransportMutation(mutationFn) {
   return useApiMutation({ invalidate: [KEY], mutationFn })
-}
-
-/** Shared by every cell that cannot be blank: an emptied cell keeps its value. */
-const required = (commit) => (value) => {
-  if (value) commit(value)
 }
 
 /** A link that opens in a new tab once set, with a ✎ to change where it goes. */
