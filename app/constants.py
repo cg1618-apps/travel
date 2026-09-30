@@ -80,4 +80,11 @@ class LabelKind(StrEnum):
     LOCATION = "location"
 
 
+class DayType(StrEnum):
+    """The sheet's 平日 / 假日 split. Public holidays are not modelled."""
+
+    WEEKDAY = "weekday"
+    HOLIDAY = "holiday"
+
+
 TIMING_ORDER: tuple[Timing, ...] = tuple(Timing)

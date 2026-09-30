@@ -45,6 +45,7 @@ question only a probe from the open internet answers, and the platform's
 - [Packing lists — `/api/packing-lists`](#packing-lists--apipacking-lists)
 - [Packing items — `/api/packing-items`](#packing-items--apipacking-items)
 - [Common options — `/api/label-options`](#common-options--apilabel-options)
+- [Transport — `/api/transport-routes`](#transport--apitransport-routes)
 
 ## Health — `/api/health`
 
@@ -181,3 +182,24 @@ one named in the path — the rename succeeded, so a `404` would be a lie.
 **Deleting prunes a suggestion and nothing else.** Items keep the value, and
 typing it again brings the option back. These rows are autocomplete, not
 records.
+
+## Transport — `/api/transport-routes`
+
+A route owns options, and an option owns departures. Like packing items, a
+child is created under its parent and addressed on its own afterwards.
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/transport-routes` | none | Every route by `position`, then `id`, with its options and their departures nested. |
+| `POST` | `/api/transport-routes` | none | `201`. `from_place` and `to_place` are required and non-empty. |
+| `GET` / `PATCH` / `DELETE` | `/api/transport-routes/{id}` | none | `404` when missing. Deleting takes the options and departures with it. |
+| `POST` | `/api/transport-routes/{route_id}/options` | none | `201`. `mode` is required and non-empty. The option is appended after the route's last one. |
+| `PATCH` / `DELETE` | `/api/transport-options/{id}` | none | Deleting takes the option's departures with it. |
+| `POST` | `/api/transport-options/{option_id}/departures` | none | `201`. `day_type` is `weekday` or `holiday`; `time` is `HH:MM`. `irregular` defaults to `false`. |
+| `PATCH` / `DELETE` | `/api/transport-departures/{id}` | none | |
+
+**A departure is unique per option, day type and time.** Creating one that
+already exists, or a `PATCH` that would make one collide, is a `409` with
+`That departure already exists for this option.` The same time on the other day
+type is a different departure. A departure reads back ordered by day type, then
+time, and `time` is serialised as `HH:MM:SS`.

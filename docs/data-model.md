@@ -15,6 +15,9 @@ the migration wins and this page is wrong.
 - [`packing_list`](#packing_list) — a named set of things to pack
 - [`packing_item`](#packing_item) — one line on a list
 - [`label_option`](#label_option) — remembered values for the free-text fields
+- [`transport_route`](#transport_route) — getting from one place to another
+- [`transport_option`](#transport_option) — one way of doing a route
+- [`transport_departure`](#transport_departure) — one scheduled time of an option
 
 ## The shape
 
@@ -23,6 +26,8 @@ flowchart TD
     L["packing_list"] -->|list_id, ON DELETE CASCADE| I["packing_item"]
     L -.->|pair_id, same value on both| L
     O["label_option"] -.->|suggests values for<br/>category, bag and location| I
+    R["transport_route"] -->|route_id, ON DELETE CASCADE| T["transport_option"]
+    T -->|option_id, ON DELETE CASCADE| D["transport_departure"]
 ```
 
 Two of the three edges are dotted because they are not foreign keys. A
@@ -123,3 +128,72 @@ pruned.
 
 Deleting an option leaves the items using it untouched; renaming one rewrites
 them. See `business-rules.md`.
+
+## `transport_route`
+
+Getting from one place to another. The places are free text.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | identity | |
+| `from_place` | text | no | | |
+| `to_place` | text | no | | |
+| `notes` | text | yes | | |
+| `position` | integer | no | `0` | Display order among routes. |
+| `created_at` | timestamptz | no | `now()` | |
+| `updated_at` | timestamptz | no | `now()` | |
+
+## `transport_option`
+
+One way of doing a route — a bus line, a train service.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | identity | |
+| `route_id` | integer | no | | FK to `transport_route.id`, `ON DELETE CASCADE`. Indexed. |
+| `mode` | text | no | | The line or service name. |
+| `advance_ticket` | boolean | no | `false` | A ticket has to be bought ahead. |
+| `route_map_url` | text | yes | | |
+| `timetable_url` | text | yes | | |
+| `live_url` | text | yes | | |
+| `direction` | text | yes | | |
+| `line_from` | text | yes | | The line's own terminal. |
+| `line_to` | text | yes | | The line's other terminal. |
+| `board_at` | text | yes | | Where you actually get on. A bus from 台中 to 鹿港 is boarded at 彰化, which is why both pairs exist. |
+| `alight_at` | text | yes | | Where you actually get off. |
+| `price` | integer | yes | | |
+| `duration` | text | yes | | Text, because the values are ranges such as `2h-2h30m`. |
+| `headway` | text | yes | | Text, for the same reason. |
+| `notes` | text | yes | | |
+| `position` | integer | no | `0` | Order within its own route. |
+| `created_at` | timestamptz | no | `now()` | |
+| `updated_at` | timestamptz | no | `now()` | |
+
+**Constraints**
+
+| Name | What it enforces |
+| --- | --- |
+| `fk_transport_option_transport_route` | `ON DELETE CASCADE`, at the database level. |
+
+## `transport_departure`
+
+One scheduled time. The sheet's 早 / 中 / 下午 / 晚 columns are not stored; they
+are computed from `time`, so they cannot drift from it.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | identity | |
+| `option_id` | integer | no | | FK to `transport_option.id`, `ON DELETE CASCADE`. Indexed. |
+| `day_type` | text | no | | `weekday` or `holiday`. Public holidays are not modelled. |
+| `time` | time | no | | |
+| `irregular` | boolean | no | `false` | The sheet's `*`: not every day has this departure. |
+| `created_at` | timestamptz | no | `now()` | |
+| `updated_at` | timestamptz | no | `now()` | |
+
+**Constraints**
+
+| Name | What it enforces |
+| --- | --- |
+| `ck_transport_departure_day_type` | One of the two day types. |
+| `uq_transport_departure_option_day_time` | Unique on (`option_id`, `day_type`, `time`). The API checks first for a readable `409`; this is what holds under a race. |
+| `fk_transport_departure_transport_option` | `ON DELETE CASCADE`, at the database level. |
