@@ -14,4 +14,12 @@ export const endpoints = {
     index: (kind) => (kind ? `/api/label-options?kind=${kind}` : '/api/label-options'),
     detail: (id) => `/api/label-options/${id}`,
   },
+  transport: {
+    routes: () => '/api/transport-routes',
+    route: (id) => `/api/transport-routes/${id}`,
+    options: (routeId) => `/api/transport-routes/${routeId}/options`,
+    option: (id) => `/api/transport-options/${id}`,
+    departures: (optionId) => `/api/transport-options/${optionId}/departures`,
+    departure: (id) => `/api/transport-departures/${id}`,
+  },
 }

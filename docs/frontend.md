@@ -164,6 +164,35 @@ option (—) stores null; `SelectCell` treats `''` as null for any column that
 may be unset. 取得地點 is free text with the remembered `location` values
 suggested.
 
+## Transportation
+
+`/transport` is the sheet's Transportation tab as an editable page
+(`pages/Transport.jsx`, one query, `['transport-routes']`, invalidated by every
+write). Each route is a section headed 起點 → 終點; each way of making the
+journey is a card under it.
+
+- **Cells.** Every field on a card is a cell with the sheet's rules: Enter or
+  blur commits, Escape reverts, no Save button. 價錢 is a whole number shown as
+  `NT$22`; anything else typed there is dropped rather than sent. The names
+  that cannot be blank (交通方式, 起點, 終點) ignore an emptied cell and keep
+  their value. 提前買票 is a toggle showing 需要 / 不需要. 路線圖, 時刻表 and
+  即時動態 open in a new tab once set, and a ✎ beside each edits the URL.
+- **Departures.** Two rows per card, 平日 then 假日, grouped client-side by
+  `day_type` (`groupByDayType`) because the API reads holiday first. Inside a
+  row the times fall under 早 / 中 / 下午 / 晚 (`groupByBucket`). An irregular
+  time is a dashed chip titled 「不一定有這班」. The chip that
+  `nextDeparture` picks for the current time is filled and followed by 下一班;
+  the page's clock moves on once a minute.
+- **Adding a time.** The input at the end of each row takes the sheet's
+  notation, `*13:40` for an irregular one. Unparseable input shows 時間格式不對
+  and sends nothing; a 409 shows 這班已經有了, rendered from the status, not
+  from the API's `detail`.
+- **Deleting.** ⋯ on a route or a card opens 刪除路線 / 刪除交通方式 behind a
+  confirmation, which says the options and departures go with it. A chip's ✕
+  deletes one time without asking.
+- **Empty.** 還沒有路線。 with the add-route form; with routes present the same
+  form sits at the bottom of the page.
+
 ## Mobile first
 
 Checklist is the mobile view; the sheet scrolls horizontally. Build at 375px

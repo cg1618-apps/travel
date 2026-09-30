@@ -38,3 +38,4 @@ export const LABEL_KIND_LABELS = {
   category: '類別', bag: '包包', location: '取得地點', ticket_type: '車票類型',
 }
 export const BOOKING_LABELS = { booked: '已訂票', paid: '付款', collected: '取票' }
+export const ADVANCE_TICKET_LABELS = { true: '需要', false: '不需要' }

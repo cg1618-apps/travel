@@ -4,6 +4,7 @@ import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 import Options from './pages/Options'
 import PackingList from './pages/PackingList'
 import PackingLists from './pages/PackingLists'
+import Transport from './pages/Transport'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +52,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<PackingLists />} />
           <Route path="/lists/:listId" element={<PackingList />} />
+          <Route path="/transport" element={<Transport />} />
           <Route path="/options" element={<Options />} />
           {/* The server's catch-all serves the bundle for any non-/api path,
               so an unknown URL reaches the router rather than a 404. */}
