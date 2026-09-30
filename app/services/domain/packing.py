@@ -5,7 +5,7 @@ Nothing here raises `HTTPException`. The router decides what a refusal looks
 like over HTTP; these functions only answer questions and perform changes.
 """
 
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import String, cast, func, select, update
 from sqlalchemy.orm import Session
 
 from app.constants import Status
@@ -111,5 +111,40 @@ def copy_items(db: Session, source: PackingList, target: PackingList) -> None:
                 double_checked=False,
             )
         )
+    db.flush()
+
+
+def insert_after(db: Session, after: PackingItem) -> int:
+    """Make room directly after `after` on its own list; return that position.
+
+    Every later item on the SAME list shifts down by one, in the caller's
+    transaction, so positions stay contiguous and a variant lands under the
+    row it was added from.
+    """
+    db.execute(
+        update(PackingItem)
+        .where(PackingItem.list_id == after.list_id, PackingItem.position > after.position)
+        .values(position=PackingItem.position + 1)
+    )
+    return after.position + 1
+
+
+def reset_list(db: Session, packing_list: PackingList) -> None:
+    """重設狀態: the copy rule's reset half, minus `no_need`.
+
+    `no_need` is a choice about the list rather than progress through it, so
+    it survives. `needs_double_check` is definition and survives too; only
+    whether the check happened is cleared.
+    """
+    db.execute(
+        update(PackingItem)
+        .where(PackingItem.list_id == packing_list.id)
+        .values(quantity_packed=0, double_checked=False)
+    )
+    db.execute(
+        update(PackingItem)
+        .where(PackingItem.list_id == packing_list.id, PackingItem.status == Status.PACKED)
+        .values(status=Status.NOT_PACKED)
+    )
     db.flush()
 

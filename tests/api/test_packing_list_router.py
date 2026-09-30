@@ -395,3 +395,35 @@ def test_the_counts_are_per_list_not_across_all_of_them(client, db_session):
     by_name = {row["name"]: row for row in client.get("/api/packing-lists").json()["recent"]}
     assert by_name["Hanoi"]["item_count"] == 1
     assert by_name["Seoul"]["item_count"] == 2
+
+
+# --------------------------------------------------------------------------
+# Reset
+# --------------------------------------------------------------------------
+
+
+def test_a_reset_unpacks_clears_counts_and_checks_but_leaves_no_need_alone(client):
+    lst = client.post("/api/packing-lists", json={"name": "r", "saved": True}).json()
+    url = f"/api/packing-lists/{lst['id']}/items"
+    client.post(url, json={"name": "packed", "status": "packed", "quantity": 2,
+                           "quantity_packed": 2, "needs_double_check": True, "double_checked": True})
+    # Load-bearing: without a no_need item the test cannot tell "left alone"
+    # from "never there".
+    client.post(url, json={"name": "skip", "status": "no_need"})
+    other = client.post("/api/packing-lists", json={"name": "o", "saved": True}).json()
+    client.post(f"/api/packing-lists/{other['id']}/items", json={"name": "keep", "status": "packed"})
+
+    response = client.post(f"/api/packing-lists/{lst['id']}/reset")
+    assert response.status_code == 200
+    by_name = {item["name"]: item for item in response.json()["items"]}
+    assert by_name["packed"]["status"] == "not_packed"
+    assert by_name["packed"]["quantity_packed"] == 0
+    assert by_name["packed"]["double_checked"] is False
+    assert by_name["packed"]["needs_double_check"] is True  # definition, not state
+    assert by_name["skip"]["status"] == "no_need"
+    other_items = client.get(f"/api/packing-lists/{other['id']}").json()["items"]
+    assert other_items[0]["status"] == "packed"
+
+
+def test_resetting_a_missing_list_is_a_404(client):
+    assert client.post("/api/packing-lists/999999/reset").status_code == 404

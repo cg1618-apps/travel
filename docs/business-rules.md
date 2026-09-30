@@ -79,6 +79,20 @@ field cannot express.
 **and every item needing a double-check has had one.** A short count does not
 hold the list open; an unverified item does.
 
+## 重設狀態 (Resetting packing progress)
+
+Resetting a list clears the state recorded from a packing pass, so the list may
+be repacked from the start. **Definition carries; state resets**, mirroring the
+copy rule.
+
+| Unchanged | Cleared |
+| --- | --- |
+| `name`, `detail`, `category`, `bag`, `location`, `need`, `quantity`, `unit`, `timing`, `needs_double_check`, `notes` | `status` → `not_packed` (except `no_need`, which survives), `quantity_packed` → 0, `double_checked` → `false` |
+
+`no_need` is a choice about the list rather than progress through it, so it
+survives the reset. `needs_double_check` is definition, not state, so it
+survives too; only whether the check actually happened is cleared.
+
 ## Packing timing
 
 Every item carries one of `whenever`, `night_before`, `day_of`, `just_before`.

@@ -29,7 +29,7 @@ class PackingItemBase(BaseModel):
 
 
 class PackingItemCreate(PackingItemBase):
-    pass
+    after_id: int | None = None
 
 
 class PackingItemUpdate(BaseModel):

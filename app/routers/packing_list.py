@@ -24,6 +24,7 @@ from app.services.domain.packing import (
     count_slots,
     evict,
     oldest_slot,
+    reset_list,
 )
 
 router = APIRouter(prefix="/api/packing-lists", tags=["Packing lists"])
@@ -165,6 +166,15 @@ def update(list_id: int, payload: PackingListUpdate, db: Session = Depends(get_d
     db.commit()
     db.refresh(packing_list)
     return packing_list
+
+
+@router.post("/{list_id}/reset", response_model=PackingListResponse)
+def reset(list_id: int, db: Session = Depends(get_db)):
+    packing_list = _get(db, list_id)
+    reset_list(db, packing_list)
+    db.commit()
+    db.expire_all()
+    return read(list_id, db)
 
 
 @router.delete("/{list_id}", status_code=204)

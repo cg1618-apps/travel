@@ -65,6 +65,7 @@ serve.
 | `POST` | `/api/packing-lists` | none | Create a list, optionally copying another's items. `409` if it would evict. |
 | `GET` | `/api/packing-lists/{id}` | none | One list with its items, in `position` order. |
 | `PATCH` | `/api/packing-lists/{id}` | none | Change any of `name`, `departure_at`, `saved`, `template`, `leg`, `pair_id`. `409` if un-saving would evict. |
+| `POST` | `/api/packing-lists/{id}/reset` | none | Reset the list's packing progress. Unpacks `packed` items, clears `quantity_packed` and `double_checked`, but leaves `no_need` and `needs_double_check` definition alone. |
 | `DELETE` | `/api/packing-lists/{id}` | none | `204`. Items go with it. |
 
 ### The index
@@ -126,7 +127,7 @@ save-then-unsave holds five working lists with nothing complaining.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `POST` | `/api/packing-lists/{list_id}/items` | none | Add an item. It lands at the end of **that** list. |
+| `POST` | `/api/packing-lists/{list_id}/items` | none | Add an item. It lands at the end of **that** list, or directly after `after_id` on that list, shifting later items. |
 | `PATCH` | `/api/packing-items/{id}` | none | Change any field. `null` clears a nullable one. |
 | `DELETE` | `/api/packing-items/{id}` | none | `204`. |
 
@@ -137,10 +138,13 @@ Beyond the name, an item's text fields are `detail`, `category`, `bag` and
 `location`; `need` is one of `need`, `bring`, `buy` or `null`, and any other
 value is a `422`.
 
-`position` is assigned by the server as one past the end of that list, and is
-counted **per list rather than globally** — a shared counter would leave a new
-list's first item at position 400, sorting correctly by accident until
-something compared positions across lists.
+`position` is assigned by the server. By default, it lands one past the end of
+that list. Pass `after_id` — the id of an item on **that same list** — to
+insert directly after it instead, shifting every later item down by one. An
+`after_id` naming no item on that list is a `404`. Positions are counted **per
+list rather than globally** — a shared counter would leave a new list's first
+item at position 400, sorting correctly by accident until something compared
+positions across lists.
 
 ### What does not happen automatically
 

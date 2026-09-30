@@ -240,3 +240,44 @@ def test_saving_an_item_remembers_its_location(client, packing_list):
     add_item(client, packing_list, location="新北")
     values = [row["value"] for row in client.get("/api/label-options?kind=location").json()]
     assert values == ["新北"]
+
+
+# --------------------------------------------------------------------------
+# Insert after
+# --------------------------------------------------------------------------
+
+
+def positions(client, packing_list):
+    items = client.get(f"/api/packing-lists/{packing_list.id}").json()["items"]
+    return [(item["name"], item.get("detail"), item["position"]) for item in items]
+
+
+def test_after_id_inserts_directly_after_and_shifts_later_items(client, packing_list):
+    keys = add_item(client, packing_list, name="鑰匙", detail="家鑰匙").json()
+    add_item(client, packing_list, name="眼鏡")
+    add_item(client, packing_list, name="鑰匙", detail="宿舍鑰匙", after_id=keys["id"])
+    assert positions(client, packing_list) == [
+        ("鑰匙", "家鑰匙", 0),
+        ("鑰匙", "宿舍鑰匙", 1),
+        ("眼鏡", None, 2),
+    ]
+
+
+def test_after_id_does_not_move_another_lists_items(client, db_session, packing_list):
+    other = PackingList(name="other")
+    db_session.add(other)
+    db_session.commit()
+    add_item(client, other, name="far")
+    first = add_item(client, packing_list, name="a").json()
+    add_item(client, packing_list, name="b", after_id=first["id"])
+    assert positions(client, other) == [("far", None, 0)]
+
+
+def test_after_id_from_another_list_is_a_404(client, db_session, packing_list):
+    other = PackingList(name="other")
+    db_session.add(other)
+    db_session.commit()
+    foreign = add_item(client, other, name="far").json()
+    assert add_item(client, packing_list, name="x", after_id=foreign["id"]).status_code == 404
+    # Mirror: the same id on its own list is accepted.
+    assert add_item(client, other, name="y", after_id=foreign["id"]).status_code == 201
