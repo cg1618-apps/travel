@@ -64,14 +64,25 @@ one place the drift is invisible.
 `alembic_version`, which `create_all` never writes. If someone simplifies the
 fixture back, that test is what goes red.
 
-Two further claims are checked in `tests/test_migrations_build_the_schema.py`,
-and they are not the same claim:
+`tests/test_migrations_build_the_schema.py` checks three further claims:
 
 - **The chain builds from nothing** — `alembic upgrade head` run as a real
-  subprocess against a scratch database created for the test. This is the
+  subprocess against a scratch database created for the test, then read back
+  for the head revision and every table the models declare. This is the
   from-zero proof.
-- **An incremental upgrade succeeds** — a run against a database that already
-  holds the earlier revisions. It proves the last step only.
+- **There is exactly one head** — `alembic heads` prints one line, and it is
+  the revision nothing else names as its parent. Two branches that each add a
+  revision on the same parent merge cleanly in git and fail here.
+- **The chain downgrades to base and back** — upgrade head, `downgrade base`,
+  upgrade head again, on a scratch database. Before the downgrade it inserts a
+  `location` and a `ticket_type` label option: the downgrades that narrow
+  `ck_label_option_kind` delete those rows first, and on an empty database that
+  step would meet nothing and a downgrade missing it would still pass. The
+  seeded rows are what make it bite.
+
+None of those is the same claim as **an incremental upgrade succeeds** — a run
+against a database that already holds the earlier revisions, such as the
+development database. That proves the last step only.
 
 Say which one you ran. The weaker claim stated honestly is worth more than the
 stronger one rounded up.
