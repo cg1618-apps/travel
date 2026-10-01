@@ -1,4 +1,9 @@
-"""Trips and their legs, and which trip is current."""
+"""Trips and their legs, which trip is current, and the 自動保存 queue.
+
+Which moves between kinds are allowed and what fills or drops a 自動保存 slot
+live in `app.services.domain.auto_save`; this router only translates its
+refusals into 422 and 409.
+"""
 
 from datetime import datetime, timezone
 
@@ -7,18 +12,27 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.constants import LabelKind
+from app.constants import Kind, LabelKind, Usage
 from app.database import get_db
 from app.models import PackingList, Trip, TripLeg
 from app.schemas.trip import (
     ARRIVAL_BEFORE_DEPARTURE,
     TripCreate,
     TripCreated,
+    TripIds,
+    TripIndex,
     TripLegBase,
     TripLegResponse,
     TripLegUpdate,
     TripResponse,
     TripUpdate,
+)
+from app.services.domain.auto_save import (
+    AUTO_SAVE_LIMIT,
+    AutoSaveFull,
+    KindRefused,
+    apply_kind,
+    evict_next,
 )
 from app.services.domain.labels import remember_label
 from app.services.domain.trip import copy_legs, current_trip
@@ -80,14 +94,28 @@ def _commit(db: Session) -> None:
         raise HTTPException(status_code=409, detail=LIST_ALREADY_LINKED) from None
 
 
+def _refusal(slot: list[Trip]) -> str:
+    """A plain string naming what would go; the ids come from `evict_next`."""
+    names = " and ".join(f'"{trip.name}"' for trip in slot)
+    return (
+        f"Auto-save already holds {AUTO_SAVE_LIMIT[Trip]} trips. Marking this one "
+        f"past would delete {names}, the oldest. Save it first if you want to keep "
+        f"it, or confirm to replace it."
+    )
+
+
+def _responses(trips) -> list[TripResponse]:
+    return [TripResponse.model_validate(trip) for trip in trips]
+
+
 # --- trips ------------------------------------------------------------------
 
 
-@router.get("/api/trips", response_model=list[TripResponse])
+@router.get("/api/trips", response_model=TripIndex)
 def list_trips(db: Session = Depends(get_db)):
     trips = db.scalars(_trips_query()).all()
     # Newest first by latest departure; a trip with no legs goes last.
-    return sorted(
+    ordered = sorted(
         trips,
         key=lambda trip: (
             bool(trip.legs),
@@ -96,6 +124,35 @@ def list_trips(db: Session = Depends(get_db)):
         ),
         reverse=True,
     )
+    auto_saved = sorted(
+        (trip for trip in trips if trip.kind == Kind.FREE and trip.usage == Usage.PAST),
+        key=lambda trip: (trip.auto_saved_at, trip.id),
+        reverse=True,
+    )
+    return TripIndex(
+        free=_responses(t for t in ordered if t.kind == Kind.FREE and t.usage != Usage.PAST),
+        auto_saved=_responses(auto_saved),
+        saved=_responses(t for t in ordered if t.kind == Kind.SAVED),
+        templates=_responses(t for t in ordered if t.kind == Kind.TEMPLATE),
+        evict_next=_responses(evict_next(db, Trip)),
+    )
+
+
+@router.post("/api/trips/bulk-delete", status_code=204)
+def bulk_delete_trips(payload: TripIds, db: Session = Depends(get_db)):
+    """All or nothing: one missing id refuses the whole request.
+
+    Legs go by cascade; a linked packing list is kept and unlinked, as on any
+    trip delete.
+    """
+    ids = set(payload.ids)
+    trips = db.scalars(select(Trip).where(Trip.id.in_(ids))).all() if ids else []
+    if len(trips) != len(ids):
+        raise HTTPException(status_code=404, detail=TRIP_NOT_FOUND)
+    for trip in trips:
+        db.delete(trip)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # Declared before /{trip_id}, which would otherwise read "current" as an id.
@@ -138,7 +195,16 @@ def read_trip(trip_id: int, db: Session = Depends(get_db)):
 @router.patch("/api/trips/{trip_id}", response_model=TripResponse)
 def update_trip(trip_id: int, payload: TripUpdate, db: Session = Depends(get_db)):
     trip = _get_trip(db, trip_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True, exclude={"evict_confirmed"})
+    try:
+        apply_kind(
+            db, trip, changes, confirmed=payload.evict_confirmed, now=datetime.now(timezone.utc)
+        )
+    except KindRefused as refused:
+        raise HTTPException(status_code=422, detail=str(refused)) from None
+    except AutoSaveFull as full:
+        raise HTTPException(status_code=409, detail=_refusal(full.slot)) from None
+    for field, value in changes.items():
         setattr(trip, field, value)
     db.commit()
     db.expire_all()
