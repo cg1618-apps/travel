@@ -8,8 +8,8 @@ like over HTTP; these functions only answer questions and perform changes.
 from sqlalchemy import String, cast, func, select, update
 from sqlalchemy.orm import Session
 
-from app.constants import LabelKind, Status
-from app.models import LabelOption, PackingItem, PackingList
+from app.constants import Status
+from app.models import PackingItem, PackingList
 
 #: How many working lists may exist at once. Saved lists and templates are
 #: exempt, so this is a cap on clutter rather than on how much you may keep.
@@ -94,8 +94,11 @@ def copy_items(db: Session, source: PackingList, target: PackingList) -> None:
                 list_id=target.id,
                 # Carried: what the item IS.
                 name=item.name,
+                detail=item.detail,
                 category=item.category,
                 bag=item.bag,
+                location=item.location,
+                need=item.need,
                 quantity=item.quantity,
                 unit=item.unit,
                 timing=item.timing,
@@ -111,88 +114,37 @@ def copy_items(db: Session, source: PackingList, target: PackingList) -> None:
     db.flush()
 
 
-# --------------------------------------------------------------------------
-# Common options
-#
-# `label_option` rows are suggestions for the free-text `category` and `bag`
-# fields. An item holds the text itself and may always carry a value that is
-# not among them - which is what makes a rename a rewrite rather than a
-# repointing.
-# --------------------------------------------------------------------------
+def insert_after(db: Session, after: PackingItem) -> int:
+    """Make room directly after `after` on its own list; return that position.
 
-#: Which item column each kind of option suggests values for.
-_COLUMN_FOR_KIND = {LabelKind.CATEGORY: "category", LabelKind.BAG: "bag"}
+    Every later item on the SAME list shifts down by one, in the caller's
+    transaction, so positions stay contiguous and a variant lands under the
+    row it was added from.
+    """
+    db.execute(
+        update(PackingItem)
+        .where(PackingItem.list_id == after.list_id, PackingItem.position > after.position)
+        .values(position=PackingItem.position + 1)
+    )
+    return after.position + 1
 
 
-def remember_label(db: Session, kind: LabelKind, value: str | None) -> None:
-    """Record a typed value as a suggestion, if it is not one already."""
-    if not value:
-        return
-    already = db.execute(
-        select(LabelOption.id).where(
-            LabelOption.kind == kind, LabelOption.value == value
-        )
-    ).first()
-    if already:
-        return
+def reset_list(db: Session, packing_list: PackingList) -> None:
+    """重設狀態: the copy rule's reset half, minus `no_need`.
 
-    highest = db.execute(
-        select(func.max(LabelOption.position)).where(LabelOption.kind == kind)
-    ).scalar()
-    db.add(
-        LabelOption(
-            kind=kind, value=value, position=0 if highest is None else highest + 1
-        )
+    `no_need` is a choice about the list rather than progress through it, so
+    it survives. `needs_double_check` is definition and survives too; only
+    whether the check happened is cleared.
+    """
+    db.execute(
+        update(PackingItem)
+        .where(PackingItem.list_id == packing_list.id)
+        .values(quantity_packed=0, double_checked=False)
+    )
+    db.execute(
+        update(PackingItem)
+        .where(PackingItem.list_id == packing_list.id, PackingItem.status == Status.PACKED)
+        .values(status=Status.NOT_PACKED)
     )
     db.flush()
 
-
-def remember_item_labels(db: Session, item: PackingItem) -> None:
-    """Record both of an item's free-text values."""
-    remember_label(db, LabelKind.CATEGORY, item.category)
-    remember_label(db, LabelKind.BAG, item.bag)
-
-
-def count_items_using(db: Session, option: LabelOption) -> int:
-    """How many items carry this option's value, so a rename can say so first."""
-    column = getattr(PackingItem, _COLUMN_FOR_KIND[LabelKind(option.kind)])
-    return db.execute(
-        select(func.count()).select_from(PackingItem).where(column == option.value)
-    ).scalar_one()
-
-
-def rename_option(db: Session, option: LabelOption, new_value: str) -> int:
-    """Rename an option, rewriting every item that used it. Returns how many.
-
-    Renaming onto a value that already exists is a **merge**: the items are
-    rewritten either way, and then the source row is deleted rather than
-    updated, because the unique constraint on (kind, value) would refuse the
-    update outright. Merging is the useful reading of that collision - two
-    spellings of one thing is exactly what a rename is usually fixing.
-    """
-    if new_value == option.value:
-        return 0
-
-    column_name = _COLUMN_FOR_KIND[LabelKind(option.kind)]
-    column = getattr(PackingItem, column_name)
-    rewritten = db.execute(
-        update(PackingItem)
-        .where(column == option.value)
-        .values({column_name: new_value})
-    ).rowcount
-
-    collision = db.execute(
-        select(LabelOption).where(
-            LabelOption.kind == option.kind,
-            LabelOption.value == new_value,
-            LabelOption.id != option.id,
-        )
-    ).scalar_one_or_none()
-
-    if collision is not None:
-        db.delete(option)
-    else:
-        option.value = new_value
-
-    db.flush()
-    return rewritten

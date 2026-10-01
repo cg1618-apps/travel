@@ -1,15 +1,17 @@
 # Business rules
 
-Last verified: 2026-09-19
+Last verified: 2026-10-01
 
 **What this is for.** The rules that are not visible in the schema — what fills
-the three-list cap, what eviction destroys, what a copy carries, and when an
-item is due. Column-level facts live in `data-model.md`; why a rule is shaped
+the three-list cap, what eviction destroys, what a copy carries, and how the
+status and check fields relate. Column-level facts live in `data-model.md`; why a rule is shaped
 this way lives in `notes/decisions.md`.
 
-These live in `app/services/domain/packing.py`, not in the routers. A router
-owns wiring and status codes; a rule reimplemented in a second endpoint is a
-rule with two answers.
+These live in `app/services/domain/`, not in the routers: the cap, copy and
+reset rules in `packing.py`, the common-options rules in `labels.py` and the
+current-trip rule in `trip.py`. The sheet importer is `app/services/sheet_import/`.
+A router owns wiring and status codes; a rule reimplemented in a second endpoint
+is a rule with two answers.
 
 ## The three-list cap
 
@@ -42,7 +44,7 @@ alike. **The definition carries; the state resets.**
 
 | Carries | Resets |
 | --- | --- |
-| `name`, `category`, `quantity`, `unit`, `bag`, `timing`, `needs_double_check`, `notes`, `position` | `status` → `not_packed`, `quantity_packed` → 0, `double_checked` → `false` |
+| `name`, `detail`, `category`, `quantity`, `unit`, `bag`, `location`, `need`, `timing`, `needs_double_check`, `notes`, `position` | `status` → `not_packed`, `quantity_packed` → 0, `double_checked` → `false` |
 
 Nothing arrives pre-ticked. A duplicated list with its ticks intact is how you
 reach the airport certain you packed the charger.
@@ -55,8 +57,9 @@ second template.
 ## Status, and the count that does not set it
 
 `status` is one of `not_packed`, `packed`, `no_need`, and **it is always set
-explicitly**. Reaching the target quantity offers to flip it; it never flips on
-its own.
+explicitly** — by a tap on the status cell, the row menu, or a reset. Nothing
+reads `quantity_packed` to set it: reaching the target quantity changes the
+count and nothing else, and falling short only colours the 已打包數量 cell.
 
 An item may be marked `packed` while short. Sometimes three of five is what you
 are taking, and a status derived from the count would force you to edit the
@@ -79,43 +82,94 @@ field cannot express.
 **and every item needing a double-check has had one.** A short count does not
 hold the list open; an unverified item does.
 
+## 重設狀態 (Resetting packing progress)
+
+Resetting a list clears the state recorded from a packing pass, so the list may
+be repacked from the start. **Definition carries; state resets**, mirroring the
+copy rule.
+
+| Unchanged | Cleared |
+| --- | --- |
+| `name`, `detail`, `category`, `bag`, `location`, `need`, `quantity`, `unit`, `timing`, `needs_double_check`, `notes` | `status` → `not_packed` (except `no_need`, which survives), `quantity_packed` → 0, `double_checked` → `false` |
+
+`no_need` is a choice about the list rather than progress through it, so it
+survives the reset. `needs_double_check` is definition, not state, so it
+survives too; only whether the check actually happened is cleared.
+
 ## Packing timing
 
-Every item carries one of `whenever`, `night_before`, `day_of`, `just_before`,
-and the list screen groups by it. Which groups are *due* is computed from the
-list's `departure_at`:
+Every item carries one of `whenever`, `night_before`, `day_of`, `just_before`.
+**It is an attribute, not a mode.** The sheet shows it as the 打包時機 column
+and sorts by it in that escalating order rather than alphabetically, which is the
+only special handling it gets.
 
-| Group | Due when |
-| --- | --- |
-| `whenever` | always |
-| `night_before` | departure is tomorrow or sooner |
-| `day_of` | departure is today or past |
-| `just_before` | departure is today or past, and rendered last |
+It used to drive the layout: the list screen grouped by it and highlighted
+whichever groups were "due", computed from `departure_at`. That was removed —
+see `notes/decisions.md`. The escalating order in
+`frontend/src/lib/timing.js` is what survives, along with `daysUntil`, which
+turns a departure date into 明天出發 ("leaving tomorrow"). That still runs on the frontend
+because the viewer's calendar day is the one that matters and the server's is
+not necessarily the same one.
 
-**With no `departure_at`, nothing is due.** The four groups render in their
-fixed order and none is highlighted. A list without a departure date is normal,
-not incomplete.
+**A list without a departure date is normal, not incomplete.** It reads 未設定日期
+and everything else works. A list's date is its own `departure_at`
+unless a trip leg links it; see "Departure source".
 
-This is computed on the frontend, in `frontend/src/lib/timing.js`, because the
-viewer's calendar day is the one that matters and the server's is not
-necessarily the same one.
+## The current trip
+
+The trip with the soonest leg still ahead of now is current. With nothing
+ahead, the trip whose legs ended most recently is. Ties go to the newer trip
+(the higher id), and a trip with no legs is never current. With no trips, or
+only leg-less ones, there is no current trip.
+
+The rule looks at the soonest *future* leg, so it can switch trips mid-journey:
+while one trip's leg is under way, a trip with a leg still ahead is current. That
+is accepted; see `notes/decisions.md`.
+
+## The next departure
+
+The Transportation page marks, on each option, the next departure from now. It
+looks only at today's day type — `weekday` Monday to Friday, `holiday` Saturday
+and Sunday — and picks the earliest time at or after the current minute. Both
+the weekday and the minute are read in Asia/Taipei, whatever zone the device is
+in. With nothing left today, nothing is marked: the rule does not roll over to
+tomorrow's first run. Public holidays are not modelled, so a national holiday
+on a weekday reads the weekday row. The rule is `nextDeparture` in
+`frontend/src/lib/departures.js`.
+
+## Departure source
+
+A list linked from a trip leg takes that leg's departure as its date: the
+calendar day in Asia/Taipei, not the server's and not UTC's, so a 00:30 Taipei
+departure is that day and not the previous one. The list's own `departure_at`
+is ignored while the link exists and is used again, unchanged, once it is gone.
+A list no leg links keeps its own date. Reads report which one applied as
+`departure_source`.
 
 ## Common options
 
-`label_option` rows are suggestions for the free-text `category` and `bag`
-fields, learned from what gets typed. An item may always carry a value that is
-not among them.
+`label_option` rows are suggestions for the free-text `category`, `bag` and
+`location` fields of an item and the `ticket_type` of a trip leg, learned from
+what gets typed. An item or leg may always carry a value that is not among
+them.
 
-- **Saving an item records its `category` and `bag`** as options, if they are
-  not already there.
-- **Renaming an option rewrites every item using the old value**, because the
-  item holds the text itself — a rename that touched only the option row would
-  leave the screen showing both spellings.
-- **Renaming onto an existing option merges**: items are rewritten, then the
+- **Saving an item records its `category`, `bag` and `location`**, and saving a
+  leg its `ticket_type`, as options, if they are not already there.
+- **Renaming an option rewrites every row using the old value** (items, or legs
+  for `ticket_type`), because the row holds the text itself — a rename that
+  touched only the option row would leave the screen showing both spellings.
+- **Renaming onto an existing option merges**: rows are rewritten, then the
   source row is deleted. The unique constraint on (`kind`, `value`) would
   otherwise refuse the rename outright.
-- **Deleting an option leaves the items alone.** Pruning a typo out of the
-  suggestions must not blank the field on an item legitimately using it.
+- **Deleting an option leaves the rows alone.** Pruning a typo out of the
+  suggestions must not blank the field on an item or leg legitimately using it.
 
 An option's `kind` scopes its uniqueness, so "day bag" can be both a category
 and a bag. They are different facts.
+
+## Need and location
+
+`need` says why an item is on the list, and is null where the question does
+not apply. `bring` is already owned and taken from the item's `location`; `buy`
+has to be bought, at that location; `need` is needed with bring-or-buy not yet
+decided. `location` is free text, suggested like `category` and `bag`.

@@ -2,13 +2,17 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.constants import Status, Timing
+from app.constants import Need, Status, Timing
+from app.schemas.base import NonNullableUpdate
 
 
 class PackingItemBase(BaseModel):
     name: str = Field(min_length=1)
+    detail: str | None = None
     category: str | None = None
     bag: str | None = None
+    location: str | None = None
+    need: Need | None = None
     # `ge=0` on both: a negative count is not a state, and the database has no
     # constraint saying so. Over-packing deliberately IS allowed, so there is
     # no check that `quantity_packed <= quantity`.
@@ -26,15 +30,28 @@ class PackingItemBase(BaseModel):
 
 
 class PackingItemCreate(PackingItemBase):
-    pass
+    after_id: int | None = None
 
 
-class PackingItemUpdate(BaseModel):
+class PackingItemUpdate(NonNullableUpdate):
     """Every field optional: PATCH changes what it names and nothing else."""
 
+    non_nullable = (
+        "name",
+        "quantity_packed",
+        "status",
+        "timing",
+        "needs_double_check",
+        "double_checked",
+        "position",
+    )
+
     name: str | None = Field(default=None, min_length=1)
+    detail: str | None = None
     category: str | None = None
     bag: str | None = None
+    location: str | None = None
+    need: Need | None = None
     quantity: int | None = Field(default=None, ge=0)
     quantity_packed: int | None = Field(default=None, ge=0)
     unit: str | None = None

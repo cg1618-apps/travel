@@ -227,3 +227,12 @@ def test_patching_an_option_that_does_not_exist_is_a_404(client):
 
 def test_deleting_an_option_that_does_not_exist_is_a_404(client):
     assert client.delete("/api/label-options/9999").status_code == 404
+
+
+def test_renaming_a_location_rewrites_the_items_using_it(client, packing_list):
+    add_item(client, packing_list, name="a", location="新北")
+    option = options(client, "location")[0]
+    assert option["usage_count"] == 1
+    client.patch(f"/api/label-options/{option['id']}", json={"value": "台北"})
+    items = client.get(f"/api/packing-lists/{packing_list.id}").json()["items"]
+    assert items[0]["location"] == "台北"

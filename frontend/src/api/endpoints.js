@@ -5,6 +5,7 @@ export const endpoints = {
     index: () => '/api/packing-lists',
     detail: (id) => `/api/packing-lists/${id}`,
     items: (id) => `/api/packing-lists/${id}/items`,
+    reset: (id) => `/api/packing-lists/${id}/reset`,
   },
   packingItems: {
     detail: (id) => `/api/packing-items/${id}`,
@@ -12,5 +13,20 @@ export const endpoints = {
   labelOptions: {
     index: (kind) => (kind ? `/api/label-options?kind=${kind}` : '/api/label-options'),
     detail: (id) => `/api/label-options/${id}`,
+  },
+  transport: {
+    routes: () => '/api/transport-routes',
+    route: (id) => `/api/transport-routes/${id}`,
+    options: (routeId) => `/api/transport-routes/${routeId}/options`,
+    option: (id) => `/api/transport-options/${id}`,
+    departures: (optionId) => `/api/transport-options/${optionId}/departures`,
+    departure: (id) => `/api/transport-departures/${id}`,
+  },
+  trips: {
+    index: () => '/api/trips',
+    current: () => '/api/trips/current',
+    detail: (id) => `/api/trips/${id}`,
+    legs: (tripId) => `/api/trips/${tripId}/legs`,
+    leg: (id) => `/api/trip-legs/${id}`,
   },
 }

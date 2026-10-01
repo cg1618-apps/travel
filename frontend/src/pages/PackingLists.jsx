@@ -1,47 +1,103 @@
 /**
- * The three shelves, and creating a list.
+ * Every list, as a sheet of lists.
  *
- * `evict_next` comes from the index rather than from the 409, because the
- * refusal's detail is a plain string and the dialog needs the list's id to
- * offer "save it instead". See docs/api.md.
+ * Three sections rather than three tabs, because there are rarely more than a
+ * handful and scrolling past two short tables beats deciding which tab to look
+ * in. Creating one is behind a button: the form used to sit open at the top of
+ * the page, which made the first thing you saw a form rather than your lists.
  */
 
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
-import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { EvictDialog } from '../components/EvictDialog'
+import { ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
+import { LEG_LABELS } from '../lib/labels'
+import { daysUntil } from '../lib/timing'
 
 const INDEX_KEY = ['packing-lists']
 
-function Shelf({ title, note, lists, empty }) {
+function when(departureAt) {
+  if (!departureAt) return '—'
+  const days = daysUntil(departureAt, new Date())
+  if (days === 0) return '今天'
+  if (days === 1) return '明天'
+  if (days < 0) return departureAt
+  return `${days} 天後`
+}
+
+function Table({ title, count, rows, empty, onFlag }) {
   return (
-    <section className="mt-6">
+    <section className="mt-8">
       <h2 className="mx-4 mb-2 text-xs font-semibold uppercase tracking-wide text-text-faint">
         {title}
-        {note && <span className="ml-2 font-normal normal-case">{note}</span>}
+        {count && <span className="ml-2 font-normal normal-case">{count}</span>}
       </h2>
-      {lists.length === 0 ? (
-        <EmptyState>{empty}</EmptyState>
+
+      {rows.length === 0 ? (
+        <p className="px-4 py-6 text-center text-sm text-text-muted">{empty}</p>
       ) : (
-        <ul className="list-none border-y border-border bg-surface p-0">
-          {lists.map((row) => (
-            <li key={row.id} className="border-b border-border last:border-b-0">
-              <Link
-                to={`/lists/${row.id}`}
-                className="flex items-center justify-between px-4 py-3 no-underline"
-              >
-                <span className="text-text">{row.name}</span>
-                <span className="text-xs text-text-faint">
-                  {row.departure_at || '—'}
-                  {row.leg ? ` · ${row.leg}` : ''}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-y border-border bg-surface-2 text-xs tracking-wide text-text-muted">
+              <th scope="col" className="px-4 py-2 text-left font-semibold">
+                清單
+              </th>
+              <th scope="col" className="w-28 px-2 py-2 text-left font-semibold">
+                出發
+              </th>
+              <th scope="col" className="w-28 px-2 py-2 text-left font-semibold">
+                已處理
+              </th>
+              <th scope="col" className="w-16 px-2 py-2 text-center font-semibold">
+                保存
+              </th>
+              <th scope="col" className="w-20 px-2 py-2 text-center font-semibold">
+                範本
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id} className="border-b border-border bg-surface">
+                <td className="px-4 py-2">
+                  <Link to={`/lists/${row.id}`} className="text-text no-underline">
+                    {row.name}
+                  </Link>
+                  {row.leg && (
+                    <span className="ml-2 text-xs text-text-faint">{LEG_LABELS[row.leg]}</span>
+                  )}
+                </td>
+                <td className="px-2 py-2 text-text-muted">{when(row.departure_at)}</td>
+                <td className="px-2 py-2 tabular-nums text-text-muted">
+                  {row.settled_count} / {row.item_count}
+                </td>
+                <td className="px-2 py-2 text-center">
+                  <input
+                    type="checkbox"
+                    checked={row.saved}
+                    onChange={(event) => onFlag(row, { saved: event.target.checked })}
+                    aria-label={`保存「${row.name}」，不受三份清單的上限影響`}
+                    title="保存這份清單，不受三份清單的上限影響"
+                    className="size-4 align-middle"
+                  />
+                </td>
+                <td className="px-2 py-2 text-center">
+                  <input
+                    type="checkbox"
+                    checked={row.template}
+                    onChange={(event) => onFlag(row, { template: event.target.checked })}
+                    aria-label={`把「${row.name}」當作新清單的範本`}
+                    title="新清單可以從這份開始"
+                    className="size-4 align-middle"
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </section>
   )
@@ -49,130 +105,170 @@ function Shelf({ title, note, lists, empty }) {
 
 export default function PackingLists() {
   const index = useApiQuery(INDEX_KEY, endpoints.packingLists.index())
-  const [name, setName] = useState('')
-  const [departureAt, setDepartureAt] = useState('')
-  const [copyFromId, setCopyFromId] = useState('')
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState({ name: '', departure_at: '', copy_from_id: '' })
+  // Which 409 is on screen: creating a list, or un-saving (or un-templating)
+  // one, which moves it back under the cap. Each is retried
+  // confirmed differently, and says so in its own words.
   const [refusal, setRefusal] = useState(null)
 
   const create = useApiMutation({
     invalidate: [INDEX_KEY],
     mutationFn: (payload) => send(endpoints.packingLists.index(), 'POST', payload),
     onSuccess: () => {
-      setName('')
-      setDepartureAt('')
-      setCopyFromId('')
+      setDraft({ name: '', departure_at: '', copy_from_id: '' })
+      setOpen(false)
       setRefusal(null)
     },
     onError: (error) => {
-      // 409 is a decision to put to the user, not a failure to report.
-      if (error.status === 409) setRefusal(error.message)
+      // A 409 is a decision to put to the person, not a failure to report.
+      if (error.status === 409) setRefusal({ kind: 'create' })
     },
   })
 
-  const saveList = useApiMutation({
+  const flag = useApiMutation({
     invalidate: [INDEX_KEY],
-    mutationFn: (id) => send(endpoints.packingLists.detail(id), 'PATCH', { saved: true }),
+    mutationFn: ({ id, changes }) =>
+      send(endpoints.packingLists.detail(id), 'PATCH', changes),
+    onError: (error, variables) => {
+      if (error.status === 409) setRefusal({ kind: 'unsave', ...variables })
+    },
   })
 
-  if (index.isLoading) return <LoadingState label="Loading your lists…" />
+  if (index.isLoading) return <LoadingState label="載入清單中…" />
   if (index.isError) return <ErrorState error={index.error} onRetry={index.refetch} />
 
   const { recent, saved, templates, evict_next: evictNext } = index.data
-  const copyable = [...templates, ...saved, ...recent]
 
+  const copyable = [...templates, ...saved, ...recent]
   const payload = () => ({
-    name: name.trim(),
-    departure_at: departureAt || null,
-    copy_from_id: copyFromId ? Number(copyFromId) : null,
+    name: draft.name.trim(),
+    departure_at: draft.departure_at || null,
+    copy_from_id: draft.copy_from_id ? Number(draft.copy_from_id) : null,
   })
 
-  const submit = (event) => {
-    event.preventDefault()
-    if (!name.trim()) return
-    create.mutate(payload())
-  }
+  const onFlag = (row, changes) => flag.mutate({ id: row.id, changes })
 
   return (
-    <main className="mx-auto max-w-2xl pb-16">
-      <h1 className="px-4 pt-6 text-xl font-semibold">Packing</h1>
-
-      <form onSubmit={submit} className="mt-4 border-y border-border bg-surface px-4 py-4">
-        <label className="block text-xs font-semibold uppercase tracking-wide text-text-faint">
-          New list
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Where to?"
-            className="mt-1 block w-full rounded-md border border-border bg-canvas px-3 py-2 text-base font-normal normal-case text-text"
-          />
-        </label>
-
-        <div className="mt-3 flex flex-wrap gap-3">
-          <label className="flex-1 text-xs text-text-faint">
-            Leaving
-            <input
-              type="date"
-              value={departureAt}
-              onChange={(event) => setDepartureAt(event.target.value)}
-              className="mt-1 block w-full rounded-md border border-border bg-canvas px-3 py-2 text-base text-text"
-            />
-          </label>
-          <label className="flex-1 text-xs text-text-faint">
-            Start from
-            <select
-              value={copyFromId}
-              onChange={(event) => setCopyFromId(event.target.value)}
-              className="mt-1 block w-full rounded-md border border-border bg-canvas px-3 py-2 text-base text-text"
-            >
-              <option value="">Nothing</option>
-              {copyable.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name}
-                  {row.template ? ' (template)' : ''}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
+    <main className="mx-auto max-w-4xl pb-16">
+      <div className="flex items-center justify-between px-4 pt-6">
+        <h1 className="m-0 text-xl font-semibold">打包清單</h1>
         <button
-          type="submit"
-          disabled={!name.trim() || create.isPending}
-          className="mt-4 w-full rounded-md bg-brand px-4 font-medium text-on-brand disabled:opacity-40"
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="rounded-md bg-brand px-4 text-sm font-medium text-on-brand"
         >
-          Create list
+          {open ? '取消' : '+ 新增清單'}
         </button>
+      </div>
 
-        {create.isError && create.error.status !== 409 && (
-          <p className="mt-2 text-sm text-danger">{create.error.message}</p>
-        )}
-      </form>
+      {open && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (draft.name.trim()) create.mutate(payload())
+          }}
+          className="mx-4 mt-4 rounded-md border border-border bg-surface p-4"
+        >
+          <div className="flex flex-wrap gap-3">
+            <label className="min-w-40 flex-1 text-xs text-text-faint">
+              名稱
+              <input
+                autoFocus
+                value={draft.name}
+                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                placeholder="札幌"
+                className="mt-1 block w-full rounded-md border border-border bg-canvas px-3 py-2 text-base text-text"
+              />
+            </label>
+            <label className="text-xs text-text-faint">
+              出發日期
+              <input
+                type="date"
+                value={draft.departure_at}
+                onChange={(event) =>
+                  setDraft({ ...draft, departure_at: event.target.value })
+                }
+                className="mt-1 block rounded-md border border-border bg-canvas px-3 py-2 text-base text-text"
+              />
+            </label>
+            <label className="text-xs text-text-faint">
+              從哪份清單複製項目
+              <select
+                value={draft.copy_from_id}
+                onChange={(event) =>
+                  setDraft({ ...draft, copy_from_id: event.target.value })
+                }
+                className="mt-1 block rounded-md border border-border bg-canvas px-3 py-2 text-base text-text"
+              >
+                <option value="">空白開始</option>
+                {copyable.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
+                    {row.template ? '（範本）' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
 
-      <Shelf
-        title="Recent"
-        note={`${recent.length} of 3`}
-        lists={recent}
-        empty="No lists on the go."
+          <button
+            type="submit"
+            disabled={!draft.name.trim() || create.isPending}
+            className="mt-4 rounded-md bg-brand px-4 text-sm font-medium text-on-brand disabled:opacity-40"
+          >
+            建立
+          </button>
+          {create.isError && create.error.status !== 409 && (
+            <p className="mt-2 text-sm text-danger">無法建立清單，請再試一次。</p>
+          )}
+        </form>
+      )}
+
+      <Table
+        title="進行中"
+        count={`${recent.length} / 3`}
+        rows={recent}
+        empty="目前沒有進行中的清單。從上面新增一份。"
+        onFlag={onFlag}
       />
-      <Shelf title="Saved" lists={saved} empty="Nothing saved yet." />
-      <Shelf
-        title="Templates"
-        lists={templates}
-        empty="No templates. Mark a list as a template to start from it next time."
+      <Table
+        title="已保存"
+        rows={saved}
+        empty="在清單上勾選「保存」，它就不會被取代。"
+        onFlag={onFlag}
+      />
+      <Table
+        title="範本"
+        rows={templates}
+        empty="在清單上勾選「範本」，之後的新清單可以從它開始。"
+        onFlag={onFlag}
       />
 
-      {refusal && (
+      {refusal?.kind === 'create' && (
         <EvictDialog
-          message={refusal}
           evicting={evictNext}
           onSaveInstead={async () => {
-            // Save every list in the slot first, then retry unconfirmed - so
-            // the retry succeeds because there is room, not because it was
-            // forced through.
-            await Promise.all(evictNext.map((row) => saveList.mutateAsync(row.id)))
+            await Promise.all(
+              evictNext.map((row) =>
+                flag.mutateAsync({ id: row.id, changes: { saved: true } }),
+              ),
+            )
             create.mutate(payload())
           }}
           onConfirm={() => create.mutate({ ...payload(), evict_confirmed: true })}
+          onCancel={() => setRefusal(null)}
+        />
+      )}
+      {refusal?.kind === 'unsave' && (
+        <EvictDialog
+          body="已有 3 份進行中的清單。讓這份清單回到進行中會刪除最舊的："
+          confirmLabel="刪除並繼續"
+          evicting={evictNext}
+          onConfirm={() => {
+            setRefusal(null)
+            flag.mutate({ id: refusal.id, changes: { ...refusal.changes, evict_confirmed: true } })
+          }}
           onCancel={() => setRefusal(null)}
         />
       )}

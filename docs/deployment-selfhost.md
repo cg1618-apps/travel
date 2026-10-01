@@ -1,6 +1,6 @@
 # Deployment, and getting back from a bad one
 
-Last verified: 2026-09-19
+Last verified: 2026-10-01
 
 **What this is for.** What a release of `travel` does to the box, and what your
 options are when one fails. `bin/rollback` names this page when it freezes, so
@@ -43,16 +43,22 @@ data only in the dump.
 
 ### For `travel`, reversing the schema destroys data
 
-There is one revision in this app that creates anything: **`p1acking0001`**,
-which creates `packing_list`, `packing_item` and `label_option`. Downgrading
-past it **drops all three tables and everything in them** — every list, every
-item, every remembered option.
+Every revision after `0001_baseline` creates something, and downgrading past
+it **drops what it created and everything in it**. In chain order:
 
-So for a release that carried `p1acking0001`:
+| Revision | Downgrading past it drops |
+| --- | --- |
+| `p1acking0001` | `packing_list`, `packing_item` and `label_option` — every list, every item, every remembered option. |
+| `p2acking0002` | Each item's `detail`, `need` and `location`, and every remembered `location` option. |
+| `t1ransport01` | `transport_route`, `transport_option` and `transport_departure` — the whole Transportation page. |
+| `t1rip0000001` | `trip` and `trip_leg` — every trip and booking, and every remembered `ticket_type` option. The packing lists they linked survive. |
+| `t2rip0000002` | Each trip's `visibility`. Nothing reads it yet, so nothing visible is lost. |
+
+So for a release that carried any of them:
 
 | Option | What it costs |
 | --- | --- |
-| Let `bin/rollback` downgrade | Every packing list on the box, gone. |
+| Let `bin/rollback` downgrade | Whatever the table above says for every revision the release added. |
 | Restore the pre-deploy dump | The dump was taken **before** the release, so every write made since is gone. |
 | Fix forward | Nothing, if you can ship a fix. |
 
@@ -73,9 +79,10 @@ docker compose -f ~/cg1618/docker-compose.prod.yml exec -T db \
     "SELECT version_num FROM alembic_version"
 ```
 
-If it answers `0001_baseline`, the packing tables do not exist yet and a
-downgrade costs nothing — that revision is deliberately empty. If it answers
-`p1acking0001` or later, the tables exist and the table above applies.
+If it answers `0001_baseline`, nothing exists yet and a downgrade costs
+nothing — that revision is deliberately empty. Anything later has created the
+tables named above up to and including that revision, and a downgrade to the
+revision the rollback targets drops each one past it.
 
 **This page deliberately does not record what production is at.** That is a
 fact this repository cannot keep true, and an app file holding a platform fact
@@ -105,5 +112,5 @@ can adopt or destroy it.
 
 `media` splits this across `deploy/README.md` and
 `docs/deployment-selfhost.md`. This app is the smallest of the four and has one
-migration; a second page would be a second place to go stale. If `deploy/`
+migration hook; a second page would be a second place to go stale. If `deploy/`
 grows past the single hook, split it then.

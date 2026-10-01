@@ -244,6 +244,26 @@ def test_a_copy_carries_the_definition_and_resets_the_state(client, db_session):
     assert item["double_checked"] is False
 
 
+def test_a_copy_carries_detail_need_and_location(client):
+    source = client.post("/api/packing-lists", json={"name": "src", "saved": True}).json()
+    client.post(
+        f"/api/packing-lists/{source['id']}/items",
+        json={
+            "name": "鑰匙",
+            "detail": "家鑰匙",
+            "need": "bring",
+            "location": "彰化",
+            "status": "packed",
+        },
+    )
+    copy = client.post(
+        "/api/packing-lists", json={"name": "copy", "saved": True, "copy_from_id": source["id"]}
+    ).json()
+    item = copy["items"][0]
+    assert (item["detail"], item["need"], item["location"]) == ("家鑰匙", "bring", "彰化")
+    assert item["status"] == "not_packed"
+
+
 def test_a_copy_does_not_carry_the_source_list_s_own_fields(client, db_session):
     source = make_list(
         db_session, "winter", template=True, departure_at=None, leg="outbound"
@@ -332,3 +352,86 @@ def test_deleting_a_list_takes_its_items_with_it(client, db_session):
 
 def test_deleting_a_list_that_does_not_exist_is_a_404(client):
     assert client.delete("/api/packing-lists/9999").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# The index's per-list counts
+# --------------------------------------------------------------------------
+
+
+def test_the_index_counts_items_and_how_many_are_settled(client, db_session):
+    # The index renders "3 / 11" per list. The counts come from the server
+    # because the alternative is sending every item of every list so the client
+    # can length them - a page-sized payload to render one fraction.
+    packing_list = make_list(db_session, "Hanoi")
+    db_session.add(PackingItem(list_id=packing_list.id, name="a", status="packed"))
+    db_session.add(PackingItem(list_id=packing_list.id, name="b", status="no_need"))
+    db_session.add(PackingItem(list_id=packing_list.id, name="c"))
+    db_session.commit()
+
+    row = client.get("/api/packing-lists").json()["recent"][0]
+    assert row["item_count"] == 3
+    # `no_need` counts as settled: the question is what is left to deal with,
+    # and a thing deliberately left behind has been dealt with.
+    assert row["settled_count"] == 2
+
+
+def test_an_empty_list_counts_zero_of_zero(client, db_session):
+    make_list(db_session, "Hanoi")
+    db_session.commit()
+    row = client.get("/api/packing-lists").json()["recent"][0]
+    assert row["item_count"] == 0
+    assert row["settled_count"] == 0
+
+
+def test_the_counts_are_per_list_not_across_all_of_them(client, db_session):
+    first = make_list(db_session, "Hanoi", days=0)
+    second = make_list(db_session, "Seoul", days=1)
+    db_session.add(PackingItem(list_id=first.id, name="a"))
+    db_session.add(PackingItem(list_id=second.id, name="b"))
+    db_session.add(PackingItem(list_id=second.id, name="c"))
+    db_session.commit()
+
+    by_name = {row["name"]: row for row in client.get("/api/packing-lists").json()["recent"]}
+    assert by_name["Hanoi"]["item_count"] == 1
+    assert by_name["Seoul"]["item_count"] == 2
+
+
+# --------------------------------------------------------------------------
+# Reset
+# --------------------------------------------------------------------------
+
+
+def test_a_reset_unpacks_clears_counts_and_checks_but_leaves_no_need_alone(client):
+    lst = client.post("/api/packing-lists", json={"name": "r", "saved": True}).json()
+    url = f"/api/packing-lists/{lst['id']}/items"
+    client.post(url, json={"name": "packed", "status": "packed", "quantity": 2,
+                           "quantity_packed": 2, "needs_double_check": True, "double_checked": True})
+    # Load-bearing: without a no_need item the test cannot tell "left alone"
+    # from "never there".
+    client.post(url, json={"name": "skip", "status": "no_need"})
+    other = client.post("/api/packing-lists", json={"name": "o", "saved": True}).json()
+    client.post(f"/api/packing-lists/{other['id']}/items", json={"name": "keep", "status": "packed"})
+
+    response = client.post(f"/api/packing-lists/{lst['id']}/reset")
+    assert response.status_code == 200
+    by_name = {item["name"]: item for item in response.json()["items"]}
+    assert by_name["packed"]["status"] == "not_packed"
+    assert by_name["packed"]["quantity_packed"] == 0
+    assert by_name["packed"]["double_checked"] is False
+    assert by_name["packed"]["needs_double_check"] is True  # definition, not state
+    assert by_name["skip"]["status"] == "no_need"
+    other_items = client.get(f"/api/packing-lists/{other['id']}").json()["items"]
+    assert other_items[0]["status"] == "packed"
+
+
+def test_resetting_a_missing_list_is_a_404(client):
+    assert client.post("/api/packing-lists/999999/reset").status_code == 404
+
+
+def test_a_null_for_a_required_list_field_is_a_422(client):
+    lst = client.post("/api/packing-lists", json={"name": "彰化回台北", "saved": True}).json()
+    assert client.patch(f"/api/packing-lists/{lst['id']}", json={"saved": None}).status_code == 422
+    # Mirror: the list's own date is nullable, and null clears it.
+    cleared = client.patch(f"/api/packing-lists/{lst['id']}", json={"departure_at": None})
+    assert cleared.status_code == 200

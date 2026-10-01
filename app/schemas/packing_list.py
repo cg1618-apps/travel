@@ -1,10 +1,12 @@
 """What a list looks like going in and coming out."""
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants import Leg
+from app.schemas.base import NonNullableUpdate
 from app.schemas.packing_item import PackingItemResponse
 
 
@@ -27,7 +29,11 @@ class PackingListCreate(PackingListBase):
     evict_confirmed: bool = False
 
 
-class PackingListUpdate(BaseModel):
+class PackingListUpdate(NonNullableUpdate):
+    # `evict_confirmed` is not a column, and is a plain bool, so it needs no
+    # entry: pydantic already refuses null for it.
+    non_nullable = ("name", "saved", "template")
+
     name: str | None = Field(default=None, min_length=1)
     departure_at: date | None = None
     saved: bool | None = None
@@ -37,21 +43,35 @@ class PackingListUpdate(BaseModel):
     evict_confirmed: bool = False
 
 
-class PackingListSummary(BaseModel):
-    """A list without its items, for the index."""
+class PackingListFields(BaseModel):
+    """What every read of a list carries, whichever shape it is asked for."""
 
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str
-    departure_at: date | None
+    #: The EFFECTIVE date: a linked leg's Taipei day, else the list's own.
+    departure_at: date | None = Field(validation_alias="effective_departure_at")
+    departure_source: Literal["list", "trip_leg"] = "list"
     saved: bool
     template: bool
     leg: Leg | None
     pair_id: str | None
 
 
-class PackingListResponse(PackingListSummary):
+class PackingListSummary(PackingListFields):
+    """A list without its items, for the index.
+
+    The counts are here rather than on the items the caller does not get: the
+    index shows "3 / 11 packed" per list, and sending every item so the client
+    can count them would be a page-sized payload to render one fraction.
+    """
+
+    item_count: int = 0
+    settled_count: int = 0
+
+
+class PackingListResponse(PackingListFields):
     items: list[PackingItemResponse] = []
 
 

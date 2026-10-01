@@ -1,6 +1,6 @@
 # Testing
 
-Last verified: 2026-09-19
+Last verified: 2026-10-01
 
 **What this is for.** How this application's tests are laid out, what each
 fixture gives you, and the two rules that decide whether a test is worth
@@ -28,7 +28,7 @@ applications share one PostgreSQL, and concurrent runs produce
 breakage. Take the machine-wide lock:
 
 ```bash
-LOCK=/c/Users/cgent/AppData/Local/Temp/anime_site_pytest.lock
+LOCK=/c/Users/$USERNAME/AppData/Local/Temp/anime_site_pytest.lock
 until mkdir "$LOCK" 2>/dev/null; do sleep 10; done
 venv/Scripts/python.exe -m pytest tests/ -q; rc=$?
 rmdir "$LOCK"; exit $rc
@@ -47,6 +47,13 @@ Defined in `tests/api/conftest.py`.
 | `db_session` | function | A `Session` inside a transaction that is rolled back on teardown, so no test sees another's rows. |
 | `client` | function | A `TestClient` whose requests run inside that same transaction. |
 
+`tests/sheet_fixture.py` builds, in memory, a small workbook shaped like the
+owner's sheet — the four tabs with their real headers, one ignored tab, and
+rows carrying the sheet's quirks: inherited blank cells, an item named `無`,
+float numbers, a day-fraction time, `*` and `...` departure cells, a route with
+no end and one with no mode. The parser and writer tests share it, so no
+`.xlsx` is ever committed.
+
 `tests/conftest.py` holds `admin_url(database)`, which derives an
 administrative connection URL from the app's own settings rather than
 hardcoding a per-machine superuser password, and an autouse fixture that
@@ -64,14 +71,25 @@ one place the drift is invisible.
 `alembic_version`, which `create_all` never writes. If someone simplifies the
 fixture back, that test is what goes red.
 
-Two further claims are checked in `tests/test_migrations_build_the_schema.py`,
-and they are not the same claim:
+`tests/test_migrations_build_the_schema.py` checks three further claims:
 
 - **The chain builds from nothing** — `alembic upgrade head` run as a real
-  subprocess against a scratch database created for the test. This is the
+  subprocess against a scratch database created for the test, then read back
+  for the head revision and every table the models declare. This is the
   from-zero proof.
-- **An incremental upgrade succeeds** — a run against a database that already
-  holds the earlier revisions. It proves the last step only.
+- **There is exactly one head** — `alembic heads` prints one line, and it is
+  the revision nothing else names as its parent. Two branches that each add a
+  revision on the same parent merge cleanly in git and fail here.
+- **The chain downgrades to base and back** — upgrade head, `downgrade base`,
+  upgrade head again, on a scratch database. Before the downgrade it inserts a
+  `location` and a `ticket_type` label option: the downgrades that narrow
+  `ck_label_option_kind` delete those rows first, and on an empty database that
+  step would meet nothing and a downgrade missing it would still pass. The
+  seeded rows are what make it bite.
+
+None of those is the same claim as **an incremental upgrade succeeds** — a run
+against a database that already holds the earlier revisions, such as the
+development database. That proves the last step only.
 
 Say which one you ran. The weaker claim stated honestly is worth more than the
 stronger one rounded up.
@@ -89,11 +107,20 @@ cd frontend && npm run test:watch
 
 It needs no lock and no database. CI runs it after the frontend lint.
 
-What belongs here is logic with no server behind it, and the due-now
-boundaries in `src/lib/timing.js` are the case that justified the runner: they
-are a date comparison that is only wrong on the evening it matters. Both dates
-are parameters rather than a `new Date()` inside the function, so a test can
+What belongs here is logic with no server behind it, and date boundaries are
+the case that justifies the runner: a date comparison is only wrong on the
+evening it matters. `daysUntil` in `src/lib/timing.js` takes both dates as
+parameters rather than calling `new Date()` inside, and `dayTypeOf` and
+`nextDeparture` in `src/lib/departures.js` take the instant, so a test can
 stand on a boundary instead of waiting for one.
+
+**A test of Taipei time must not depend on the machine's zone.** The
+departures and trips helpers read the weekday and the clock in Asia/Taipei, so
+their tests pass UTC instants whose Taipei time is known —
+`2026-09-26T00:00:00Z` is Saturday 08:00 in Taipei — and include one on each
+side of a Taipei midnight that is not a UTC one. A test written with a local
+`new Date(2026, 8, 26, 8, 0)` passes on a machine set to Taipei and fails
+everywhere else.
 
 ## A refusal test has to be able to fail
 
@@ -111,6 +138,21 @@ setting; it is the only reason the cap's refusal can fail.
 
 Assert the mirror case with the same fixture. A green then proves the rule did
 the refusing, rather than an empty table doing it for free.
+
+The same holds for a rule that **leaves something alone**. Each of these has a
+row in its fixture that exists only so the test can fail, marked
+`Load-bearing` in a comment:
+
+- `test_a_reset_unpacks_clears_counts_and_checks_but_leaves_no_need_alone`
+  holds a `no_need` item; without one it cannot tell "left alone" from "never
+  there".
+- `test_after_id_does_not_move_another_lists_items` gives the other list
+  items past position 0, so a shift that leaked across lists would show.
+- `test_an_import_refuses_when_any_target_exists_and_writes_nothing` seeds one
+  route and nothing else, so the refusal has to come from the route check.
+- `test_a_linked_list_takes_the_taipei_date_of_its_leg` departs at 00:30
+  Taipei, which is the previous day in UTC; a daytime departure is the same
+  date in both zones and would pass with the zone read wrong.
 
 Two more of the same shape arrived with the logging contract, and both are
 easy to read as decoration:

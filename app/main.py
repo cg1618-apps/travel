@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import logging_config
 from app.request_context import RequestIdMiddleware
-from app.routers import health, label_option, packing_item, packing_list
+from app.routers import health, label_option, packing_item, packing_list, transport, trip
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DIST = BASE_DIR / "frontend_dist"
@@ -30,6 +30,8 @@ def create_app(dist: Path = DIST) -> FastAPI:
     app.include_router(packing_list.router)
     app.include_router(packing_item.router)
     app.include_router(label_option.router)
+    app.include_router(transport.router)
+    app.include_router(trip.router)
 
     if dist.is_dir():
         # Conditional: a bundle small enough for Vite to inline every asset
