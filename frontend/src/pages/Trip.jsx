@@ -15,8 +15,8 @@ import { ApiError } from '../api/client'
 import { endpoints } from '../api/endpoints'
 import { TextCell } from '../components/Cell'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { DeleteMenu } from '../components/DeleteMenu'
 import { PriceCell } from '../components/PriceCell'
-import { RowMenu } from '../components/RowMenu'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { required } from '../lib/cells'
@@ -52,29 +52,6 @@ function Field({ label, children }) {
     <>
       <dt className="self-center text-sm text-text-muted">{label}</dt>
       <dd className="m-0 min-w-0">{children}</dd>
-    </>
-  )
-}
-
-function DeleteMenu({ label, menuLabel, onSelect }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <button
-        type="button"
-        aria-label={menuLabel}
-        aria-haspopup="menu"
-        onClick={() => setOpen(true)}
-        className="px-2 text-text-faint hover:text-text"
-        style={{ minHeight: 0 }}
-      >
-        ⋯
-      </button>
-      <RowMenu
-        open={open}
-        onClose={() => setOpen(false)}
-        actions={[{ label, danger: true, onSelect }]}
-      />
     </>
   )
 }

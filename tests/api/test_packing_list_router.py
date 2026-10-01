@@ -331,6 +331,25 @@ def test_patching_changes_only_what_it_names(client, db_session):
     assert body["name"] == "Hanoi"
 
 
+def test_a_list_can_be_renamed(client, db_session):
+    packing_list = make_list(db_session, "Hanoi")
+    db_session.commit()
+
+    response = client.patch(f"/api/packing-lists/{packing_list.id}", json={"name": "Hue"})
+    assert response.status_code == 200
+    assert client.get(f"/api/packing-lists/{packing_list.id}").json()["name"] == "Hue"
+
+
+def test_a_list_cannot_be_renamed_to_nothing(client, db_session):
+    packing_list = make_list(db_session, "Hanoi")
+    db_session.commit()
+
+    for name in ("", None):
+        response = client.patch(f"/api/packing-lists/{packing_list.id}", json={"name": name})
+        assert response.status_code == 422
+    assert client.get(f"/api/packing-lists/{packing_list.id}").json()["name"] == "Hanoi"
+
+
 def test_an_unknown_leg_is_rejected_at_the_edge(client, db_session):
     packing_list = make_list(db_session, "Hanoi")
     db_session.commit()
