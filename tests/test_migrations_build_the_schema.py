@@ -116,7 +116,7 @@ def test_the_chain_downgrades_to_base_and_back(scratch_database):
 
 def test_the_kind_revision_maps_every_flag_combination_and_back(scratch_database):
     """Load-bearing seed: on an empty database the UPDATEs meet nothing and a
-    wrong CASE would still pass. One row per row of the spec's mapping table."""
+    wrong CASE would still pass. One row per flag combination the revision maps."""
     run_alembic(scratch_database, "upgrade", "t3rip0000003")
     engine = create_engine(scratch_database)
     with engine.begin() as conn:

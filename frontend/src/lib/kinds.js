@@ -38,6 +38,9 @@ export function everyRow(index) {
 
 export const templateName = (name) => `${name}（範本）`
 
-/** Whether a PATCH takes the trip on /trip out of being current. */
-export const leavesCurrent = (changes) =>
-  changes.kind === 'saved' || ('usage' in changes && !CURRENT.includes(changes.usage))
+/**
+ * Whether a PATCH may take the trip on /trip out of being current. Any usage
+ * change counts, not only one out of 使用中 / 未來使用: 使用中 -> 未來使用 hands
+ * /trip to another 使用中 trip, which would then appear under the click.
+ */
+export const leavesCurrent = (changes) => changes.kind === 'saved' || 'usage' in changes

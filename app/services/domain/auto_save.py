@@ -59,8 +59,9 @@ def oldest_slot(db: Session, model) -> list:
     """The auto-saved rows of the slot that would be dropped next.
 
     Ordered by the slot's earliest `auto_saved_at`, then its lowest id - the
-    tie-break is load-bearing, since `now()` is the transaction's start and
-    two rows stamped in one transaction carry the same time. Only the
+    tie-break is load-bearing, since two rows can carry the same stamp - one
+    `now` is taken per request, and rows written by hand or in tests share
+    whatever they were given. Only the
     auto-saved halves of a pair come back: a half still 使用中 is not part of
     the queue and is not dropped with it.
     """

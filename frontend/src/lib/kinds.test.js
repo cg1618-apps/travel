@@ -37,12 +37,14 @@ describe('everyRow', () => {
 
 describe('templateName and leavesCurrent', () => {
   it('suffixes 範本', () => expect(templateName('札幌')).toBe('札幌（範本）'))
-  it('is true for saving or a usage that is not current', () => {
+  it('is true for saving or any usage change', () => {
+    // 使用中 -> 未來使用 counts too: another 使用中 trip would take /trip over.
     expect(leavesCurrent({ kind: 'saved' })).toBe(true)
     expect(leavesCurrent({ usage: 'past' })).toBe(true)
     expect(leavesCurrent({ usage: 'unused' })).toBe(true)
-    expect(leavesCurrent({ usage: 'upcoming' })).toBe(false)
-    expect(leavesCurrent({ usage: 'in_use' })).toBe(false)
+    expect(leavesCurrent({ usage: 'upcoming' })).toBe(true)
+    expect(leavesCurrent({ usage: 'in_use' })).toBe(true)
     expect(leavesCurrent({ name: 'x' })).toBe(false)
+    expect(leavesCurrent({ archive_note: 'x' })).toBe(false)
   })
 })

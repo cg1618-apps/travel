@@ -288,9 +288,10 @@ its leg.
   same dates — the page sends the source's own first Taipei day as
   `start_date` — and opens it. On a saved or auto-saved trip, or whenever it
   has a remark, a **保存備註** cell sits under 備註.
-- **Leaving current.** On `/trip`, 保存 or a 狀態 other than 使用中 / 未來使用
+- **Leaving current.** On `/trip`, 保存 or any change of 狀態
   (`leavesCurrent` in `lib/kinds.js`) moves the page to `/trips/{id}` rather
-  than letting the trip vanish under the click. 過去使用 into a full
+  than letting the trip vanish under the click — 使用中 → 未來使用 included,
+  since another 使用中 trip would then take `/trip` over. 過去使用 into a full
   自動保存 opens `EvictDialog`.
 - **Legs** are cards in `departs_at` order. The top line is 起點 → 終點, each
   a cell; an emptied one keeps its value (`required` in `lib/cells.js`, as on
