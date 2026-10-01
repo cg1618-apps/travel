@@ -7,25 +7,26 @@ fixture runs the migrations precisely so that these tests are asking the
 shipped schema and not the ORM's opinion of it.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.constants import LabelKind, Status, Timing, Visibility
-from app.models import LabelOption, PackingItem, PackingList
+from app.constants import Kind, LabelKind, Status, Timing, Usage, Visibility
+from app.models import LabelOption, PackingItem, PackingList, Trip
 
 
 def a_list(**overrides) -> PackingList:
     return PackingList(name=overrides.pop("name", "Tokyo"), **overrides)
 
 
-def test_a_list_defaults_to_a_working_private_list(db_session):
+def test_a_list_defaults_to_a_free_private_list(db_session):
     packing_list = a_list()
     db_session.add(packing_list)
     db_session.flush()
 
-    assert packing_list.saved is False
-    assert packing_list.template is False
+    assert packing_list.kind == Kind.FREE
     assert packing_list.visibility == Visibility.PRIVATE
     assert packing_list.departure_at is None
     assert packing_list.pair_id is None
@@ -179,3 +180,72 @@ def test_an_unknown_option_kind_is_refused_by_the_database(db_session):
     db_session.add(LabelOption(kind="colour", value="red"))
     with pytest.raises(IntegrityError):
         db_session.flush()
+
+
+@pytest.mark.parametrize("model", [PackingList, Trip])
+def test_a_new_row_is_free_and_unused(db_session, model):
+    row = model(name="x")
+    db_session.add(row)
+    db_session.flush()
+    assert (row.kind, row.usage, row.auto_saved_at) == (Kind.FREE, Usage.UNUSED, None)
+
+
+@pytest.mark.parametrize("model", [PackingList, Trip])
+@pytest.mark.parametrize("kind", [Kind.TEMPLATE, Kind.SAVED])
+def test_a_template_or_saved_row_has_no_usage(db_session, model, kind):
+    row = model(name="x", kind=kind)
+    db_session.add(row)
+    db_session.flush()
+    assert row.usage is None
+
+
+@pytest.mark.parametrize("model", [PackingList, Trip])
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"kind": Kind.SAVED, "usage": Usage.UNUSED},  # usage on a non-free row
+        {"kind": Kind.FREE, "usage": Usage.PAST},  # past without auto_saved_at
+        {
+            "kind": Kind.FREE,
+            "usage": Usage.UNUSED,
+            "auto_saved_at": datetime(2026, 9, 1, tzinfo=timezone.utc),
+        },  # a stamp without past
+        {"kind": "archived"},  # unknown kind
+        {"usage": "someday"},  # unknown usage
+    ],
+)
+def test_the_database_refuses_impossible_combinations(db_session, model, fields):
+    db_session.add(model(name="x", **fields))
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+@pytest.mark.parametrize("model", [PackingList, Trip])
+def test_the_database_refuses_a_free_row_without_usage(db_session, model):
+    # Through an UPDATE, not the constructor: `usage=None` passed to a new free
+    # row is taken by the column's default as "not given" and becomes unused,
+    # so only an UPDATE can put the NULL in front of the check.
+    row = model(name="x")
+    db_session.add(row)
+    db_session.flush()
+    row.usage = None
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+@pytest.mark.parametrize("model", [PackingList, Trip])
+def test_a_past_row_with_its_stamp_is_accepted(db_session, model):
+    # The mirror of the refusals above: same columns, legal values.
+    row = model(
+        name="x", usage=Usage.PAST, auto_saved_at=datetime(2026, 9, 1, tzinfo=timezone.utc)
+    )
+    db_session.add(row)
+    db_session.flush()
+    assert row.id is not None
+
+
+def test_a_list_has_notes_and_an_archive_note(db_session):
+    row = PackingList(name="x", notes="帶傘", archive_note="下次少帶")
+    db_session.add(row)
+    db_session.flush()
+    assert (row.notes, row.archive_note) == ("帶傘", "下次少帶")
