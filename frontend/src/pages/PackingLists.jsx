@@ -1,9 +1,10 @@
 /**
- * Every list, as a sheet of lists.
+ * Every list, on four shelves: 一般, 自動保存（n / 5）, 保存 and 範本.
  *
- * Three sections rather than three tabs, because there are rarely more than a
- * handful and scrolling past two short tables beats deciding which tab to look
- * in. Creating one is behind a button: the form used to sit open at the top of
+ * Sections rather than tabs, because there are rarely more than a handful.
+ * Each row carries its own 狀態, 保存 and 當作範本; 過去使用 into a full
+ * 自動保存 is the one change that asks first, naming the list it would drop.
+ * Creating one is behind a button: the form used to sit open at the top of
  * the page, which made the first thing you saw a form rather than your lists.
  */
 
@@ -12,14 +13,19 @@ import { Link } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
 import { EvictDialog } from '../components/EvictDialog'
+import { KindControls } from '../components/KindControls'
 import { ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
-import { LEG_LABELS } from '../lib/labels'
+import { AUTO_SAVE_LIMIT, badgeFor, everyRow, templateName } from '../lib/kinds'
+import { AUTO_SAVED_LABEL, KIND_LABELS, LEG_LABELS } from '../lib/labels'
 import { departureLabel } from '../lib/timing'
+import { firstLine } from '../lib/trips'
 
 const INDEX_KEY = ['packing-lists']
+const BLANK_DRAFT = { name: '', departure_at: '', copy_from_id: '', kind: 'free' }
 
-function Table({ title, count, rows, empty, onFlag }) {
+/** `showNote` puts the first line of 保存備註 under the name, on the shelves where it matters. */
+function Table({ title, count, rows, empty, showNote = false, onPatch, onMakeTemplate }) {
   return (
     <section className="mt-8">
       <h2 className="mx-4 mb-2 text-xs font-semibold uppercase tracking-wide text-text-faint">
@@ -42,11 +48,8 @@ function Table({ title, count, rows, empty, onFlag }) {
               <th scope="col" className="w-28 px-2 py-2 text-left font-semibold">
                 已處理
               </th>
-              <th scope="col" className="w-16 px-2 py-2 text-center font-semibold">
-                保存
-              </th>
-              <th scope="col" className="w-20 px-2 py-2 text-center font-semibold">
-                範本
+              <th scope="col" className="px-2 py-2 text-left font-semibold">
+                <span className="sr-only">狀態與保存</span>
               </th>
             </tr>
           </thead>
@@ -60,29 +63,20 @@ function Table({ title, count, rows, empty, onFlag }) {
                   {row.leg && (
                     <span className="ml-2 text-xs text-text-faint">{LEG_LABELS[row.leg]}</span>
                   )}
+                  {showNote && row.archive_note && (
+                    <span className="block text-xs text-text-faint">{firstLine(row.archive_note)}</span>
+                  )}
                 </td>
                 <td className="px-2 py-2 text-text-muted">{departureLabel(row.departure_at, new Date())}</td>
                 <td className="px-2 py-2 tabular-nums text-text-muted">
                   {row.settled_count} / {row.item_count}
                 </td>
-                <td className="px-2 py-2 text-center">
-                  <input
-                    type="checkbox"
-                    checked={row.saved}
-                    onChange={(event) => onFlag(row, { saved: event.target.checked })}
-                    aria-label={`保存「${row.name}」，不受三份清單的上限影響`}
-                    title="保存這份清單，不受三份清單的上限影響"
-                    className="size-4 align-middle"
-                  />
-                </td>
-                <td className="px-2 py-2 text-center">
-                  <input
-                    type="checkbox"
-                    checked={row.template}
-                    onChange={(event) => onFlag(row, { template: event.target.checked })}
-                    aria-label={`把「${row.name}」當作新清單的範本`}
-                    title="新清單可以從這份開始"
-                    className="size-4 align-middle"
+                <td className="px-2 py-2">
+                  <KindControls
+                    row={row}
+                    noun="清單"
+                    onPatch={(changes) => onPatch(row, changes)}
+                    onMakeTemplate={() => onMakeTemplate(row)}
                   />
                 </td>
               </tr>
@@ -95,50 +89,54 @@ function Table({ title, count, rows, empty, onFlag }) {
 }
 
 export default function PackingLists() {
-  const index = useApiQuery(INDEX_KEY, endpoints.packingLists.index())
+  const indexQuery = useApiQuery(INDEX_KEY, endpoints.packingLists.index())
   const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState({ name: '', departure_at: '', copy_from_id: '' })
-  // Which 409 is on screen: creating a list, or un-saving (or un-templating)
-  // one, which moves it back under the cap. Each is retried
-  // confirmed differently, and says so in its own words.
+  const [draft, setDraft] = useState(BLANK_DRAFT)
+  // A refused 過去使用, as { id, changes }: a decision to put to the person.
   const [refusal, setRefusal] = useState(null)
+  const [madeTemplate, setMadeTemplate] = useState(null)
 
   const create = useApiMutation({
     invalidate: [INDEX_KEY],
     mutationFn: (payload) => send(endpoints.packingLists.index(), 'POST', payload),
     onSuccess: () => {
-      setDraft({ name: '', departure_at: '', copy_from_id: '' })
+      setDraft(BLANK_DRAFT)
       setOpen(false)
-      setRefusal(null)
-    },
-    onError: (error) => {
-      // A 409 is a decision to put to the person, not a failure to report.
-      if (error.status === 409) setRefusal({ kind: 'create' })
     },
   })
-
-  const flag = useApiMutation({
+  const makeTemplate = useApiMutation({
     invalidate: [INDEX_KEY],
-    mutationFn: ({ id, changes }) =>
-      send(endpoints.packingLists.detail(id), 'PATCH', changes),
+    mutationFn: (row) =>
+      send(endpoints.packingLists.index(), 'POST', {
+        name: templateName(row.name),
+        kind: 'template',
+        copy_from_id: row.id,
+      }),
+    onSuccess: (created) => setMadeTemplate(created),
+  })
+  const patch = useApiMutation({
+    invalidate: [INDEX_KEY],
+    mutationFn: ({ id, changes }) => send(endpoints.packingLists.detail(id), 'PATCH', changes),
     onError: (error, variables) => {
-      if (error.status === 409) setRefusal({ kind: 'unsave', ...variables })
+      // A 409 is a decision to put to the person, not a failure to report.
+      if (error.status === 409) setRefusal(variables)
     },
   })
 
-  if (index.isLoading) return <LoadingState label="載入清單中…" />
-  if (index.isError) return <ErrorState error={index.error} onRetry={index.refetch} />
+  if (indexQuery.isLoading) return <LoadingState label="載入清單中…" />
+  if (indexQuery.isError) return <ErrorState error={indexQuery.error} onRetry={indexQuery.refetch} />
 
-  const { recent, saved, templates, evict_next: evictNext } = index.data
-
-  const copyable = [...templates, ...saved, ...recent]
+  const index = indexQuery.data
+  const copyable = everyRow(index)
   const payload = () => ({
     name: draft.name.trim(),
     departure_at: draft.departure_at || null,
     copy_from_id: draft.copy_from_id ? Number(draft.copy_from_id) : null,
+    kind: draft.kind,
   })
 
-  const onFlag = (row, changes) => flag.mutate({ id: row.id, changes })
+  const onPatch = (row, changes) => patch.mutate({ id: row.id, changes })
+  const shelf = { onPatch, onMakeTemplate: makeTemplate.mutate }
 
   return (
     <main className="mx-auto max-w-4xl pb-16">
@@ -184,6 +182,17 @@ export default function PackingLists() {
               />
             </label>
             <label className="text-xs text-text-faint">
+              類型
+              <select
+                value={draft.kind}
+                onChange={(event) => setDraft({ ...draft, kind: event.target.value })}
+                className="mt-1 block rounded-md border border-border bg-canvas px-3 py-2 text-base text-text"
+              >
+                <option value="free">{KIND_LABELS.free}</option>
+                <option value="template">{KIND_LABELS.template}</option>
+              </select>
+            </label>
+            <label className="text-xs text-text-faint">
               從哪份清單複製項目
               <select
                 value={draft.copy_from_id}
@@ -196,7 +205,7 @@ export default function PackingLists() {
                 {copyable.map((row) => (
                   <option key={row.id} value={row.id}>
                     {row.name}
-                    {row.template ? '（範本）' : ''}
+                    {badgeFor(row) ? `（${badgeFor(row)}）` : ''}
                   </option>
                 ))}
               </select>
@@ -210,55 +219,75 @@ export default function PackingLists() {
           >
             建立
           </button>
-          {create.isError && create.error.status !== 409 && (
+          {create.isError && (
             <p className="mt-2 text-sm text-danger">無法建立清單，請再試一次。</p>
           )}
         </form>
       )}
 
+      {madeTemplate && (
+        <p role="status" className="mx-4 mt-4 rounded-md bg-surface-2 px-3 py-2 text-sm">
+          已建立範本 <Link to={`/lists/${madeTemplate.id}`}>{madeTemplate.name}</Link>。
+          <button
+            type="button"
+            onClick={() => setMadeTemplate(null)}
+            className="ml-2 text-text-muted"
+          >
+            知道了
+          </button>
+        </p>
+      )}
+      {makeTemplate.isError && (
+        <p className="mx-4 mt-4 text-sm text-danger">無法建立範本，請再試一次。</p>
+      )}
+
       <Table
-        title="進行中"
-        count={`${recent.length} / 3`}
-        rows={recent}
-        empty="目前沒有進行中的清單。從上面新增一份。"
-        onFlag={onFlag}
+        title={KIND_LABELS.free}
+        rows={index.free}
+        empty="目前沒有一般清單。從上面新增一份。"
+        {...shelf}
       />
       <Table
-        title="已保存"
-        rows={saved}
-        empty="在清單上勾選「保存」，它就不會被取代。"
-        onFlag={onFlag}
+        title={AUTO_SAVED_LABEL}
+        count={`${index.auto_saved.length} / ${AUTO_SAVE_LIMIT.lists}`}
+        rows={index.auto_saved}
+        empty="把一般清單的狀態設為「過去使用」，它會自動保存在這裡。"
+        showNote
+        {...shelf}
       />
       <Table
-        title="範本"
-        rows={templates}
-        empty="在清單上勾選「範本」，之後的新清單可以從它開始。"
-        onFlag={onFlag}
+        title={KIND_LABELS.saved}
+        rows={index.saved}
+        empty="在清單上勾選「保存」，它就不會被自動刪除。"
+        showNote
+        {...shelf}
+      />
+      <Table
+        title={KIND_LABELS.template}
+        rows={index.templates}
+        empty="按「當作範本」或新增一份範本，之後的新清單可以從它開始。"
+        {...shelf}
       />
 
-      {refusal?.kind === 'create' && (
+      {refusal && (
         <EvictDialog
-          evicting={evictNext}
+          noun="一份清單"
+          body={`自動保存最多 ${AUTO_SAVE_LIMIT.lists} 份清單。設為過去使用會刪除最舊的：`}
+          evicting={index.evict_next}
           onSaveInstead={async () => {
+            // Save the list that would go, then retry unconfirmed: the retry
+            // succeeds because there is room, not because it was forced.
             await Promise.all(
-              evictNext.map((row) =>
-                flag.mutateAsync({ id: row.id, changes: { saved: true } }),
+              index.evict_next.map((row) =>
+                patch.mutateAsync({ id: row.id, changes: { kind: 'saved' } }),
               ),
             )
-            create.mutate(payload())
+            setRefusal(null)
+            patch.mutate(refusal)
           }}
-          onConfirm={() => create.mutate({ ...payload(), evict_confirmed: true })}
-          onCancel={() => setRefusal(null)}
-        />
-      )}
-      {refusal?.kind === 'unsave' && (
-        <EvictDialog
-          body="已有 3 份進行中的清單。讓這份清單回到進行中會刪除最舊的："
-          confirmLabel="刪除並繼續"
-          evicting={evictNext}
           onConfirm={() => {
             setRefusal(null)
-            flag.mutate({ id: refusal.id, changes: { ...refusal.changes, evict_confirmed: true } })
+            patch.mutate({ ...refusal, changes: { ...refusal.changes, evict_confirmed: true } })
           }}
           onCancel={() => setRefusal(null)}
         />

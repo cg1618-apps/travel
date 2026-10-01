@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  CHECK_LABELS, CHECK_STATES, DAY_TYPE_LABELS, NEED_LABELS, NEEDS,
-  STATUS_LABELS, TIMING_LABELS, checkState,
+  CHECK_LABELS, CHECK_STATES, DAY_TYPE_LABELS, KIND_LABELS, NEED_LABELS, NEEDS,
+  STATUS_LABELS, TIMING_LABELS, USAGE_LABELS, USAGES, checkState,
 } from './labels'
 import { TIMINGS } from './timing'
 
@@ -13,6 +13,8 @@ describe('labels', () => {
     for (const n of NEEDS) expect(NEED_LABELS[n]).toBeTruthy()
     for (const c of CHECK_STATES) expect(CHECK_LABELS[c]).toBeTruthy()
     for (const d of ['weekday', 'holiday']) expect(DAY_TYPE_LABELS[d]).toBeTruthy()
+    for (const k of ['template', 'saved', 'free']) expect(KIND_LABELS[k]).toBeTruthy()
+    for (const u of USAGES) expect(USAGE_LABELS[u]).toBeTruthy()
   })
 
   it('uses the sheet words', () => {
@@ -22,6 +24,10 @@ describe('labels', () => {
     })
     expect(NEED_LABELS).toEqual({ need: '需要', bring: '需帶', buy: '需買' })
     expect(CHECK_LABELS).toEqual({ off: '不需確認', needed: '未確認', done: '確認' })
+    expect(KIND_LABELS).toEqual({ template: '範本', saved: '保存', free: '一般' })
+    expect(USAGE_LABELS).toEqual({
+      in_use: '使用中', upcoming: '未來使用', unused: '未使用', past: '過去使用',
+    })
   })
 
   it('derives the check state from the two fields', () => {
