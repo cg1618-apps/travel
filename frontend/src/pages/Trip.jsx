@@ -145,9 +145,8 @@ function ArchiveDialog({ trip, onConfirm, onCancel }) {
 }
 
 /** After a copy: which template legs had a packing list the copy did not carry. */
-function UnlinkedNotice({ entries }) {
-  const [open, setOpen] = useState(true)
-  if (!open || !entries?.length) return null
+function UnlinkedNotice({ entries, onDismiss }) {
+  if (!entries?.length) return null
   return (
     <div
       role="status"
@@ -158,7 +157,7 @@ function UnlinkedNotice({ entries }) {
           {unlinkedNotice(entry)}
         </p>
       ))}
-      <button type="button" onClick={() => setOpen(false)} className={`${smallButton} mt-2`}>
+      <button type="button" onClick={onDismiss} className={`${smallButton} mt-2`}>
         知道了
       </button>
     </div>
@@ -772,11 +771,14 @@ function TripView({
   actions,
   onCreateTrip,
   onDeleted,
+  onDismissNotice,
+  onLeavingCurrent,
 }) {
   const [confirming, setConfirming] = useState(false)
   const [archiving, setArchiving] = useState(false)
   const legs = sortLegs(trip.legs)
-  const patchTrip = (changes) => actions.patchTrip.mutate({ id: trip.id, changes })
+  const patchTrip = (changes, onSuccess) =>
+    actions.patchTrip.mutate({ id: trip.id, changes }, { onSuccess })
 
   return (
     <>
@@ -796,7 +798,9 @@ function TripView({
           trip={trip}
           onArchive={() => setArchiving(true)}
           onUnarchive={() => patchTrip({ archived: false })}
-          onToggleTemplate={() => patchTrip({ template: !trip.template })}
+          onToggleTemplate={() =>
+            patchTrip({ template: !trip.template }, trip.template ? undefined : onLeavingCurrent)
+          }
           onDelete={() => setConfirming(true)}
         />
       </div>
@@ -808,7 +812,7 @@ function TripView({
           onCommit={(archive_note) => patchTrip({ archive_note })}
         />
       )}
-      <UnlinkedNotice entries={unlinked} />
+      <UnlinkedNotice entries={unlinked} onDismiss={onDismissNotice} />
 
       <div className="mt-4 flex flex-col gap-3">
         {legs.length === 0 && <EmptyState>這個行程還沒有任何一段。</EmptyState>}
@@ -830,7 +834,7 @@ function TripView({
           trip={trip}
           onConfirm={(changes) => {
             setArchiving(false)
-            patchTrip(changes)
+            patchTrip(changes, onLeavingCurrent)
           }}
           onCancel={() => setArchiving(false)}
         />
@@ -926,6 +930,13 @@ export default function Trip() {
       actions={actions}
       onCreateTrip={openNewTrip}
       onDeleted={() => navigate('/trip')}
+      // Cleared rather than hidden, so Back and a reload do not bring it back.
+      onDismissNotice={() => navigate(location.pathname, { replace: true, state: null })}
+      // An archived trip or a template is never current, so on /trip it would
+      // vanish under the click; keep it on screen by its own address.
+      onLeavingCurrent={
+        tripId ? undefined : () => navigate(`/trips/${trip.data.id}`, { replace: true })
+      }
     />,
   )
 }
