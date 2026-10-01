@@ -421,8 +421,10 @@ the four tabs in scope (`彰化回台北`, `台北去彰化`, `Transportation`,
 
 - **The UI speaks the sheet's own words; stored values are English.** Headers
   and values such as 未打包 and 出發前晚 are the sheet's, so the owner reads the
-  same vocabulary in both places. Only the sheet's own English (`Double Check`,
-  `Transportation`, `This time`) stays English. Every display string lives in
+  same vocabulary in both places. Only `Double Check` stays English. The
+  `Transportation` and `This time` tabs started out under their sheet names and
+  are now 交通 and 行程, at the owner's request: a nav bar mixing two
+  languages read worse than a screen not matching its tab's spelling. Every display string lives in
   `frontend/src/lib/labels.js` and a test asserts each stored value has one.
 
 - **A required field cannot be nulled through `PATCH`; an explicit null is a

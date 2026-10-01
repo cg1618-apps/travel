@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { TIMINGS, daysUntil } from './timing'
+import { TIMINGS, daysUntil, departureLabel } from './timing'
 
 const DEPARTURE = '2026-10-10'
 
@@ -36,5 +36,21 @@ describe('daysUntil', () => {
 describe('TIMINGS', () => {
   test('is in escalating order, which is how the 打包時機 column sorts', () => {
     expect(TIMINGS).toEqual(['whenever', 'night_before', 'day_of', 'just_before'])
+  })
+})
+
+describe('departureLabel', () => {
+  test('says 今天 and 明天 on the two nearest days', () => {
+    expect(departureLabel(DEPARTURE, '2026-10-10')).toBe('今天')
+    expect(departureLabel(DEPARTURE, '2026-10-09')).toBe('明天')
+  })
+
+  test('counts days further out', () => {
+    expect(departureLabel(DEPARTURE, '2026-10-01')).toBe('9 天後')
+  })
+
+  test('shows the date once it has passed, and a dash with none', () => {
+    expect(departureLabel(DEPARTURE, '2026-10-11')).toBe(DEPARTURE)
+    expect(departureLabel(null, '2026-10-11')).toBe('—')
   })
 })

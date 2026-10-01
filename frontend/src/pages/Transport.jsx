@@ -1,5 +1,5 @@
 /**
- * Transportation: every route, its ways of making it, and when they leave.
+ * 交通: every route, its ways of making it, and when they leave.
  *
  * The sheet's tab, kept as a place to edit in place — every field is a cell
  * that commits on Enter or blur and reverts on Escape, with no Save button.
@@ -504,7 +504,7 @@ export default function Transport() {
 
   return (
     <main className="mx-auto max-w-4xl overflow-x-hidden px-4 pb-16 pt-6">
-      <h1 className="m-0 text-xl font-semibold">Transportation</h1>
+      <h1 className="m-0 text-xl font-semibold">交通</h1>
 
       {routes.data.length === 0 ? (
         <EmptyState

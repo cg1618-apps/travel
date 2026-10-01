@@ -16,7 +16,10 @@ in `api.md`; the rules it renders are in `business-rules.md`.
 | `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `States`. |
 | `src/lib/` | Pure modules with no React in them. Tests sit beside them. |
 
-Routes are declared in `src/App.jsx`. Every screen is editable, so every one of
+Routes are declared in `src/App.jsx`: `/` the dashboard, `/lists` and
+`/lists/:listId` the packing lists, `/transport` 交通, `/trip` and
+`/trips/:tripId` 行程, `/options` 選項. Any other path renders the dashboard.
+The nav bar names the last four; the app's name `travel` links to `/`. Every screen is editable, so every one of
 them goes through TanStack Query — media's split is query hooks for anything
 written back from the UI and plain `fetch` for read-only pages, and this app has
 no read-only pages.
@@ -24,8 +27,9 @@ no read-only pages.
 ## The screen speaks the sheet's language
 
 **Every string a person sees is Traditional Chinese**, in the owner's Google
-Sheet's own words, except where the sheet itself is English: `Double Check`,
-`Transportation`, `This time`, and the app's name `travel`. `index.html` says
+Sheet's own words, except `Double Check`, which the sheet itself writes in
+English, and the app's name `travel`. The two screens named after the sheet's
+English tabs are 交通 (`Transportation`) and 行程 (`This time`). `index.html` says
 `lang="zh-Hant-TW"`.
 
 **Stored values stay English enum text** (`not_packed`, `night_before`,
@@ -59,6 +63,27 @@ covers the real need without asking anything.
 
 The choice is remembered in `localStorage`, and a first visit on a narrow
 screen starts on Checklist, because a sheet at 375px is a horizontal scrollbar.
+
+## The dashboard
+
+`/` (`pages/Dashboard.jsx`) shows what is in use now and edits nothing. It
+reads the queries the other screens already own — `['packing-lists']`,
+`['trips', 'index']` and `['trips', 'current']` — so a write anywhere refreshes
+it.
+
+- **進行中的清單** — the `recent` lists from the packing-list index, the ones
+  the cap counts; saved lists and templates stay on `/lists`. Each row links to
+  the list and shows its 出發 (`departureLabel` in `lib/timing.js`, shared with
+  the index) and `已處理 {settled} / {items}`. 所有清單 links to `/lists`.
+- **行程** — every trip neither archived nor a template (`dashboardTrips` in
+  `lib/trips.js`): the current trip first with a 目前 badge, linking to
+  `/trip`; then the others by first departure, a trip with no legs last.
+  Each shows its date range or 沒有行程段. 前往行程 links to `/trip`.
+- **No add button, no templates.** Creating a list or a trip, and every
+  template, belong to `/lists` and `/trip`; the dashboard only links there.
+  An empty section says so plainly (目前沒有進行中的清單。 / 目前沒有行程。)
+  and offers nothing. A 404 from `/api/trips/current` means no current trip,
+  not an error.
 
 ## The sheet's columns
 
@@ -137,16 +162,15 @@ list, not progress through it. The rule itself is the server's
 **The name is a cell**, edited by clicking it like any other, and it cannot be
 emptied: a blanked name keeps its value rather than sending a null the API
 would refuse. Beside it, ⋯ 刪除清單 asks first, saying the items go with the
-list and a This time leg that linked it is kept, only unlinked. Deleting
-returns to the index. The ⋯ is `components/DeleteMenu.jsx`, shared with the
+list and a 行程 leg that linked it is kept, only unlinked. Deleting
+returns to `/lists`. The ⋯ is `components/DeleteMenu.jsx`, shared with the
 route, card, trip and leg menus.
 
 `lib/listHeader.js` builds both lines, pure so the day boundaries are tested:
 `未設定日期`, `今天出發`, `明天出發`, `{n} 天後出發`, `已出發 {n} 天`, each
 followed by the date; and progress as `已處理 {s} / {n}`, `{u} 項待確認`,
 `可以出發了`. A list's own date is edited by clicking it. A date that comes from
-a This time leg (`departure_source: "trip_leg"`) says so — `由 This time
-行程設定` — and is not editable here, because it is changed on the leg.
+a 行程 leg (`departure_source: "trip_leg"`) says so — `由行程設定` — and is not editable here, because it is changed on the leg.
 
 ## Spreadsheet conventions, because that is the reference
 
@@ -175,7 +199,7 @@ option (—) stores null; `SelectCell` treats `''` as null for any column that
 may be unset. 取得地點 is free text with the remembered `location` values
 suggested.
 
-## Transportation
+## 交通
 
 `/transport` is the sheet's Transportation tab as an editable page
 (`pages/Transport.jsx`, one query, `['transport-routes']`, invalidated by every
@@ -206,7 +230,7 @@ journey is a card under it.
 - **Empty.** 還沒有路線。 with the add-route form; with routes present the same
   form sits at the bottom of the page.
 
-## This time
+## 行程
 
 `/trip` is the sheet's This time tab (`pages/Trip.jsx`): the current trip, leg
 by leg. `/trips/:tripId` shows any other trip through the same component. Reads
@@ -230,7 +254,7 @@ its leg.
   or whenever it has a remark, a 封存備註 cell sits under 備註.
 - **Legs** are cards in `departs_at` order. The top line is 起點 → 終點, each
   a cell; an emptied one keeps its value (`required` in `lib/cells.js`, as on
-  Transportation and the trip's name). Under it the departure, the arrival
+  交通 and the trip's name). Under it the departure, the arrival
   (the clock alone when it is the same Taipei day, `formatArrival`) and the
   duration. ✎ opens two `datetime-local` inputs
   in Taipei time; a 422 shows 抵達時間要晚於出發時間.
@@ -242,7 +266,7 @@ its leg.
 - **Packing list.** A linked list shows as `打包清單：{name}`, a link to it; ✎
   opens a select of every list (recent, saved and templates, each once) and
   （不連結）. A 409 shows 這份清單已經連到別的行程段. The list's own header then
-  reads 由 This time 行程設定 for its date.
+  reads 由行程設定 for its date.
 - **Adding and deleting.** + 新增一段 takes the places and two Taipei times;
   ⋯ 刪除這段 asks first.
 - **Below the trip**, every other trip is in one of three sections

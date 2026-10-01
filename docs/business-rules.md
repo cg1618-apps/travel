@@ -161,7 +161,7 @@ leg that had one, and the page tells you to link a list yourself.
 
 ## The next departure
 
-The Transportation page marks, on each option, the next departure from now. It
+The 交通 page marks, on each option, the next departure from now. It
 looks only at today's day type — `weekday` Monday to Friday, `holiday` Saturday
 and Sunday — and picks the earliest time at or after the current minute. Both
 the weekday and the minute are read in Asia/Taipei, whatever zone the device is

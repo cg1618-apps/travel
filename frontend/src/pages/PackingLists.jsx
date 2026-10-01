@@ -15,18 +15,9 @@ import { EvictDialog } from '../components/EvictDialog'
 import { ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { LEG_LABELS } from '../lib/labels'
-import { daysUntil } from '../lib/timing'
+import { departureLabel } from '../lib/timing'
 
 const INDEX_KEY = ['packing-lists']
-
-function when(departureAt) {
-  if (!departureAt) return '—'
-  const days = daysUntil(departureAt, new Date())
-  if (days === 0) return '今天'
-  if (days === 1) return '明天'
-  if (days < 0) return departureAt
-  return `${days} 天後`
-}
 
 function Table({ title, count, rows, empty, onFlag }) {
   return (
@@ -70,7 +61,7 @@ function Table({ title, count, rows, empty, onFlag }) {
                     <span className="ml-2 text-xs text-text-faint">{LEG_LABELS[row.leg]}</span>
                   )}
                 </td>
-                <td className="px-2 py-2 text-text-muted">{when(row.departure_at)}</td>
+                <td className="px-2 py-2 text-text-muted">{departureLabel(row.departure_at, new Date())}</td>
                 <td className="px-2 py-2 tabular-nums text-text-muted">
                   {row.settled_count} / {row.item_count}
                 </td>

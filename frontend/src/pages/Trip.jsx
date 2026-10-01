@@ -1,5 +1,5 @@
 /**
- * This time: the trip being taken, leg by leg.
+ * 行程: the trip being taken, leg by leg.
  *
  * The sheet's tab, as cards — one per leg, with the booking code large enough
  * to read off a phone at a ticket gate. `/trip` is the current trip and
@@ -905,7 +905,7 @@ export default function Trip() {
     if (tripId) return shell(<EmptyState>找不到這個行程。</EmptyState>)
     return shell(
       <>
-        <h1 className="m-0 text-xl font-semibold">This time</h1>
+        <h1 className="m-0 text-xl font-semibold">行程</h1>
         <EmptyState action={<CreateTrip templates={templates} onCreate={openNewTrip} />}>
           還沒有進行中的行程。
         </EmptyState>
