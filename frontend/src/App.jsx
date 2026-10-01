@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 
+import Dashboard from './pages/Dashboard'
 import Options from './pages/Options'
 import PackingList from './pages/PackingList'
 import PackingLists from './pages/PackingLists'
@@ -19,12 +20,12 @@ const queryClient = new QueryClient({
   },
 })
 
-// The sheet's own tab names where it has them (Transportation, This time);
-// Traditional Chinese for the rest.
+// The app's name links to the dashboard; every screen is named in Traditional
+// Chinese.
 const NAV_LINKS = [
-  ['/', '打包清單'],
-  ['/transport', 'Transportation'],
-  ['/trip', 'This time'],
+  ['/lists', '打包清單'],
+  ['/transport', '交通'],
+  ['/trip', '行程'],
   ['/options', '選項'],
 ]
 
@@ -51,7 +52,8 @@ export default function App() {
       <BrowserRouter>
         <Nav />
         <Routes>
-          <Route path="/" element={<PackingLists />} />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/lists" element={<PackingLists />} />
           <Route path="/lists/:listId" element={<PackingList />} />
           <Route path="/transport" element={<Transport />} />
           <Route path="/trip" element={<Trip />} />
@@ -59,7 +61,7 @@ export default function App() {
           <Route path="/options" element={<Options />} />
           {/* The server's catch-all serves the bundle for any non-/api path,
               so an unknown URL reaches the router rather than a 404. */}
-          <Route path="*" element={<PackingLists />} />
+          <Route path="*" element={<Dashboard />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>

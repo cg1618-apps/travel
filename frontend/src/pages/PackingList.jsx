@@ -30,7 +30,7 @@ const RESET_BODY =
   '所有已打包的項目會改回未打包，已打包數量歸零，Double Check 改回未確認。不需打包的項目不變。'
 
 const DELETE_BODY =
-  '這份清單和它所有的項目都會一起刪除。連結到它的 This time 行程段會保留，只是不再連結清單。'
+  '這份清單和它所有的項目都會一起刪除。連結到它的行程段會保留，只是不再連結清單。'
 
 function initialView() {
   // Remembered per viewer; a phone-width first visit starts on the checklist,
@@ -60,7 +60,7 @@ function Progress({ items }) {
 
 /**
  * When the list leaves. A list's own date is edited here; a date that comes
- * from a This time leg is only shown — it is changed on the leg.
+ * from a 行程 leg is only shown — it is changed on the leg.
  */
 function Departure({ list, onChange }) {
   const [editing, setEditing] = useState(false)
@@ -141,7 +141,7 @@ export default function PackingList() {
   const removeList = useApiMutation({
     invalidate: [['packing-lists'], ['trips']],
     mutationFn: () => send(endpoints.packingLists.detail(listId), 'DELETE'),
-    onSuccess: () => navigate('/'),
+    onSuccess: () => navigate('/lists'),
   })
 
   const chooseView = (next) => {
@@ -173,7 +173,7 @@ export default function PackingList() {
   return (
     <main className="mx-auto max-w-6xl pb-16">
       <div className="px-4 pt-6">
-        <Link to="/" className="text-sm text-text-faint no-underline">
+        <Link to="/lists" className="text-sm text-text-faint no-underline">
           ← 所有清單
         </Link>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">

@@ -119,7 +119,7 @@ export default function Options() {
   return (
     <main className="mx-auto max-w-2xl pb-16">
       <div className="px-4 pt-6">
-        <Link to="/" className="text-sm text-text-faint no-underline">
+        <Link to="/lists" className="text-sm text-text-faint no-underline">
           ← 所有清單
         </Link>
         <h1 className="mt-2 mb-1 text-xl font-semibold">常用選項</h1>

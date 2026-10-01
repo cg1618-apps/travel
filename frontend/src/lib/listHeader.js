@@ -16,7 +16,7 @@ export function leavingText(departureAt, source, today) {
   else if (days === 1) text = `明天出發 · ${departureAt}`
   else if (days < 0) text = `已出發 ${-days} 天 · ${departureAt}`
   else text = `${days} 天後出發 · ${departureAt}`
-  return source === 'trip_leg' ? `${text} · 由 This time 行程設定` : text
+  return source === 'trip_leg' ? `${text} · 由行程設定` : text
 }
 
 /**
