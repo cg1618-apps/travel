@@ -13,8 +13,8 @@ import { ApiError } from '../api/client'
 import { endpoints } from '../api/endpoints'
 import { TextCell } from '../components/Cell'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { DeleteMenu } from '../components/DeleteMenu'
 import { PriceCell } from '../components/PriceCell'
-import { RowMenu } from '../components/RowMenu'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { required } from '../lib/cells'
@@ -220,30 +220,6 @@ function PairField({ label, from, to, fromLabel, toLabel, onFrom, onTo }) {
         <TextCell value={to} placeholder={toLabel} onCommit={onTo} />
       </div>
     </Field>
-  )
-}
-
-/** A ⋯ button and the menu it opens, for the one action a card or route has. */
-function DeleteMenu({ label, menuLabel, onSelect }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <button
-        type="button"
-        aria-label={menuLabel}
-        aria-haspopup="menu"
-        onClick={() => setOpen(true)}
-        className="px-2 text-text-faint hover:text-text"
-        style={{ minHeight: 0 }}
-      >
-        ⋯
-      </button>
-      <RowMenu
-        open={open}
-        onClose={() => setOpen(false)}
-        actions={[{ label, danger: true, onSelect }]}
-      />
-    </>
   )
 }
 

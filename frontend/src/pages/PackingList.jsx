@@ -11,20 +11,26 @@
  */
 
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
+import { TextCell } from '../components/Cell'
 import { Checklist } from '../components/Checklist'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { DeleteMenu } from '../components/DeleteMenu'
 import { Grid } from '../components/Grid'
 import { ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
+import { required } from '../lib/cells'
 import { leavingText, progressParts } from '../lib/listHeader'
 
 const VIEW_STORAGE_KEY = 'travel.packing.view'
 
 const RESET_BODY =
   '所有已打包的項目會改回未打包，已打包數量歸零，Double Check 改回未確認。不需打包的項目不變。'
+
+const DELETE_BODY =
+  '這份清單和它所有的項目都會一起刪除。連結到它的 This time 行程段會保留，只是不再連結清單。'
 
 function initialView() {
   // Remembered per viewer; a phone-width first visit starts on the checklist,
@@ -98,12 +104,14 @@ function Departure({ list, onChange }) {
 
 export default function PackingList() {
   const { listId } = useParams()
+  const navigate = useNavigate()
   const key = useMemo(() => ['packing-list', listId], [listId])
   const list = useApiQuery(key, endpoints.packingLists.detail(listId))
   const options = useApiQuery(['label-options'], endpoints.labelOptions.index())
 
   const [view, setView] = useState(initialView)
   const [confirmingReset, setConfirmingReset] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const invalidate = [key, ['packing-lists'], ['label-options']]
 
@@ -127,6 +135,13 @@ export default function PackingList() {
   const patchList = useApiMutation({
     invalidate: [key, ['packing-lists']],
     mutationFn: (changes) => send(endpoints.packingLists.detail(listId), 'PATCH', changes),
+  })
+  // Not this list's own key: refetching a list that was just deleted is a 404
+  // on the screen being left. The trips refresh because a leg loses its link.
+  const removeList = useApiMutation({
+    invalidate: [['packing-lists'], ['trips']],
+    mutationFn: () => send(endpoints.packingLists.detail(listId), 'DELETE'),
+    onSuccess: () => navigate('/'),
   })
 
   const chooseView = (next) => {
@@ -161,8 +176,21 @@ export default function PackingList() {
         <Link to="/" className="text-sm text-text-faint no-underline">
           ← 所有清單
         </Link>
-        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="m-0 text-xl font-semibold">{list.data.name}</h1>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <h1 className="m-0 min-w-0 flex-1 text-xl font-semibold">
+              <TextCell
+                value={list.data.name}
+                placeholder="清單名稱"
+                onCommit={required((name) => patchList.mutate({ name }))}
+              />
+            </h1>
+            <DeleteMenu
+              label="刪除清單"
+              menuLabel={`${list.data.name} 的選單`}
+              onSelect={() => setConfirmingDelete(true)}
+            />
+          </div>
           <div className="flex gap-1 rounded-md border border-border p-0.5">
             {[
               ['sheet', '表格'],
@@ -225,6 +253,19 @@ export default function PackingList() {
             reset.mutate()
           }}
           onCancel={() => setConfirmingReset(false)}
+        />
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`刪除「${list.data.name}」？`}
+          body={DELETE_BODY}
+          confirmLabel="刪除"
+          onConfirm={() => {
+            setConfirmingDelete(false)
+            removeList.mutate()
+          }}
+          onCancel={() => setConfirmingDelete(false)}
         />
       )}
     </main>
