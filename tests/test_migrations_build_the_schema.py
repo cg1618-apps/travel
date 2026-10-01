@@ -84,3 +84,40 @@ def test_there_is_exactly_one_head():
     lines = [line for line in result.stdout.splitlines() if line.strip()]
     assert len(lines) == 1, result.stdout
     assert head_revision() in lines[0], result.stdout
+
+
+def test_the_chain_downgrades_to_base_and_back(scratch_database):
+    env = {**os.environ, "DATABASE_URL": scratch_database}
+
+    def alembic(*command):
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", *command],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+    alembic("upgrade", "head")
+
+    # Load-bearing: the downgrades that narrow `ck_label_option_kind` delete
+    # the rows the narrower constraint would refuse. On an empty database those
+    # DELETEs meet nothing, and a downgrade that forgot one would still pass.
+    # One row of each kind a revision added makes the narrowing bite.
+    engine = create_engine(scratch_database)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO label_option (kind, value) "
+                "VALUES ('location', '彰化'), ('ticket_type', '電子')"
+            )
+        )
+        seeded = conn.execute(
+            text("SELECT count(*) FROM label_option WHERE kind IN ('location', 'ticket_type')")
+        ).scalar()
+    engine.dispose()
+    assert seeded == 2
+
+    alembic("downgrade", "base")
+    alembic("upgrade", "head")

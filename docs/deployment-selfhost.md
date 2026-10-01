@@ -1,6 +1,6 @@
 # Deployment, and getting back from a bad one
 
-Last verified: 2026-09-19
+Last verified: 2026-10-01
 
 **What this is for.** What a release of `travel` does to the box, and what your
 options are when one fails. `bin/rollback` names this page when it freezes, so
@@ -43,16 +43,22 @@ data only in the dump.
 
 ### For `travel`, reversing the schema destroys data
 
-There is one revision in this app that creates anything: **`p1acking0001`**,
-which creates `packing_list`, `packing_item` and `label_option`. Downgrading
-past it **drops all three tables and everything in them** — every list, every
-item, every remembered option.
+Every revision after `0001_baseline` creates something, and downgrading past
+it **drops what it created and everything in it**. In chain order:
 
-So for a release that carried `p1acking0001`:
+| Revision | Downgrading past it drops |
+| --- | --- |
+| `p1acking0001` | `packing_list`, `packing_item` and `label_option` — every list, every item, every remembered option. |
+| `p2acking0002` | Each item's `detail`, `need` and `location`, and every remembered `location` option. |
+| `t1ransport01` | `transport_route`, `transport_option` and `transport_departure` — the whole Transportation page. |
+| `t1rip0000001` | `trip` and `trip_leg` — every trip and booking, and every remembered `ticket_type` option. The packing lists they linked survive. |
+| `t2rip0000002` | Each trip's `visibility`. Nothing reads it yet, so nothing visible is lost. |
+
+So for a release that carried any of them:
 
 | Option | What it costs |
 | --- | --- |
-| Let `bin/rollback` downgrade | Every packing list on the box, gone. |
+| Let `bin/rollback` downgrade | Whatever the table above says for every revision the release added. |
 | Restore the pre-deploy dump | The dump was taken **before** the release, so every write made since is gone. |
 | Fix forward | Nothing, if you can ship a fix. |
 
@@ -73,9 +79,10 @@ docker compose -f ~/cg1618/docker-compose.prod.yml exec -T db \
     "SELECT version_num FROM alembic_version"
 ```
 
-If it answers `0001_baseline`, the packing tables do not exist yet and a
-downgrade costs nothing — that revision is deliberately empty. If it answers
-`p1acking0001` or later, the tables exist and the table above applies.
+If it answers `0001_baseline`, nothing exists yet and a downgrade costs
+nothing — that revision is deliberately empty. Anything later has created the
+tables named above up to and including that revision, and a downgrade to the
+revision the rollback targets drops each one past it.
 
 **This page deliberately does not record what production is at.** That is a
 fact this repository cannot keep true, and an app file holding a platform fact
@@ -87,18 +94,23 @@ planned` for a day after it went live.
 `travel` has no database of its own on the box. It uses the platform's
 PostgreSQL, one database per app.
 
-**Use `docker compose stop db`, never `docker compose down`.** Every tree is
-in one compose project — which is exactly what `COMPOSE_PROJECT_NAME` pinning
-is *for*, since it makes a worktree mount the real volume instead of silently
-creating an empty one — and the same project name makes the *container* shared
-too. A `down` in any tree removes the container all four apps are using. It
-happened on the development machine on 2026-09-19; no data was lost, because
-`down` without `-v` leaves named volumes alone, but on the box it would take
-production's database out from under four apps with nobody in front of it.
+**On the box, use `docker compose stop db`, never `docker compose down`.** A
+`down` removes the container all four apps are using, and there that is
+production's database taken out from under four apps with nobody in front of
+it. `down` without `-v` leaves the named volume alone, so it is recoverable —
+but it is an outage nobody asked for.
+
+**On a development machine this is no longer a trap**, and the paragraph that
+used to be here described one that has been removed. The development database
+lived in `media`'s compose project, so a `down` in any media tree took it from
+every other app; that happened on 2026-09-19 and read as data loss for ninety
+seconds. It is now the platform's own project — `docker-compose.dev-db.yml`,
+container `cg1618-dev-db`, volume `cg1618_dev_pgdata` — so nothing an app runs
+can adopt or destroy it.
 
 ## Why there is one page here and two in `media`
 
 `media` splits this across `deploy/README.md` and
 `docs/deployment-selfhost.md`. This app is the smallest of the four and has one
-migration; a second page would be a second place to go stale. If `deploy/`
+migration hook; a second page would be a second place to go stale. If `deploy/`
 grows past the single hook, split it then.

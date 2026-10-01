@@ -12,6 +12,11 @@ pip-delete-this-directory.txt
 # Environment & Secrets (CRITICAL SECURITY)
 .env
 credentials.json
+backups/
+# The sheet export the importer reads: personal data, not part of the image.
+# `**/` because a .dockerignore pattern, unlike .gitignore, matches from the
+# context root only.
+**/*.xlsx
 
 # Git
 .git/
@@ -20,7 +25,6 @@ credentials.json
 # Not needed at runtime
 tests/
 docs/
-scripts/
 .github/
 .superpowers/
 *.md

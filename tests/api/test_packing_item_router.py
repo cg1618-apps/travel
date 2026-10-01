@@ -198,3 +198,123 @@ def test_deleting_an_item_leaves_its_list_alone(client, db_session, packing_list
 
 def test_deleting_an_item_that_does_not_exist_is_a_404(client):
     assert client.delete("/api/packing-items/9999").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Detail, need and location
+# --------------------------------------------------------------------------
+
+
+def test_an_item_carries_detail_need_and_location(client, packing_list):
+    response = add_item(
+        client, packing_list, name="鑰匙", detail="家鑰匙", need="bring", location="彰化"
+    )
+    assert response.status_code == 201
+    body = response.json()
+    assert (body["detail"], body["need"], body["location"]) == ("家鑰匙", "bring", "彰化")
+
+
+def test_need_may_be_left_blank(client, packing_list):
+    assert add_item(client, packing_list).json()["need"] is None
+
+
+def test_an_unknown_need_is_a_422_not_a_500(client, packing_list):
+    assert add_item(client, packing_list, need="borrow").status_code == 422
+
+
+def test_every_declared_need_is_accepted(client, packing_list):
+    # The mirror of the refusal above.
+    for need in ("need", "bring", "buy"):
+        assert add_item(client, packing_list, need=need).status_code == 201
+
+
+def test_the_need_constraint_holds_when_the_schema_is_bypassed(db_session, packing_list):
+    from sqlalchemy.exc import IntegrityError
+
+    db_session.add(PackingItem(list_id=packing_list.id, name="x", need="borrow"))
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+def test_saving_an_item_remembers_its_location(client, packing_list):
+    add_item(client, packing_list, location="新北")
+    values = [row["value"] for row in client.get("/api/label-options?kind=location").json()]
+    assert values == ["新北"]
+
+
+# --------------------------------------------------------------------------
+# Insert after
+# --------------------------------------------------------------------------
+
+
+def positions(client, packing_list):
+    items = client.get(f"/api/packing-lists/{packing_list.id}").json()["items"]
+    return [(item["name"], item.get("detail"), item["position"]) for item in items]
+
+
+def test_after_id_inserts_directly_after_and_shifts_later_items(client, packing_list):
+    keys = add_item(client, packing_list, name="鑰匙", detail="家鑰匙").json()
+    add_item(client, packing_list, name="眼鏡")
+    add_item(client, packing_list, name="鑰匙", detail="宿舍鑰匙", after_id=keys["id"])
+    assert positions(client, packing_list) == [
+        ("鑰匙", "家鑰匙", 0),
+        ("鑰匙", "宿舍鑰匙", 1),
+        ("眼鏡", None, 2),
+    ]
+
+
+def test_after_id_does_not_move_another_lists_items(client, db_session, packing_list):
+    # Load-bearing: other must have items at positions > 0, so the shift would
+    # touch them if the list_id filter were missing from insert_after.
+    other = PackingList(name="other")
+    db_session.add(other)
+    db_session.commit()
+    add_item(client, other, name="x")
+    add_item(client, other, name="y")
+    add_item(client, other, name="z")
+    first = add_item(client, packing_list, name="a").json()
+    add_item(client, packing_list, name="b", after_id=first["id"])
+    assert positions(client, other) == [("x", None, 0), ("y", None, 1), ("z", None, 2)]
+
+
+def test_after_id_from_another_list_is_a_404(client, db_session, packing_list):
+    other = PackingList(name="other")
+    db_session.add(other)
+    db_session.commit()
+    foreign = add_item(client, other, name="far").json()
+    assert add_item(client, packing_list, name="x", after_id=foreign["id"]).status_code == 404
+    # Mirror: the same id on its own list is accepted.
+    assert add_item(client, other, name="y", after_id=foreign["id"]).status_code == 201
+
+
+def test_after_id_naming_no_item_is_a_404(client, packing_list):
+    assert add_item(client, packing_list, name="x", after_id=999999).status_code == 404
+
+
+def test_inserting_after_the_last_item_appends(client, packing_list):
+    add_item(client, packing_list, name="a")
+    second = add_item(client, packing_list, name="b").json()
+    add_item(client, packing_list, name="c", after_id=second["id"])
+    assert positions(client, packing_list) == [
+        ("a", None, 0),
+        ("b", None, 1),
+        ("c", None, 2),
+    ]
+
+
+def test_a_null_for_a_required_item_field_is_a_422(client, packing_list):
+    item = add_item(client, packing_list).json()
+    assert client.patch(f"/api/packing-items/{item['id']}", json={"name": None}).status_code == 422
+    assert client.patch(f"/api/packing-items/{item['id']}", json={"status": None}).status_code == 422
+    # Mirror: a nullable field on the same item takes null and clears.
+    assert client.patch(f"/api/packing-items/{item['id']}", json={"notes": None}).status_code == 200
+
+
+def test_a_patch_can_clear_need_and_location(client, packing_list):
+    item = add_item(client, packing_list, need="bring", location="彰化").json()
+    response = client.patch(
+        f"/api/packing-items/{item['id']}", json={"need": None, "location": None}
+    )
+    assert response.status_code == 200
+    stored = client.get(f"/api/packing-lists/{packing_list.id}").json()["items"][0]
+    assert (stored["need"], stored["location"]) == (None, None)

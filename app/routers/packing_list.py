@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.constants import Status
 from app.database import get_db
 from app.models import PackingList
 from app.schemas.packing_list import (
@@ -23,6 +24,7 @@ from app.services.domain.packing import (
     count_slots,
     evict,
     oldest_slot,
+    reset_list,
 )
 
 router = APIRouter(prefix="/api/packing-lists", tags=["Packing lists"])
@@ -63,12 +65,22 @@ def _make_room(db: Session, *, confirmed: bool) -> None:
     evict(db, slot)
 
 
+def _summary(packing_list: PackingList) -> PackingListSummary:
+    """A list plus the two numbers the index renders as a fraction."""
+    summary = PackingListSummary.model_validate(packing_list)
+    summary.item_count = len(packing_list.items)
+    summary.settled_count = sum(
+        1 for item in packing_list.items if item.status != Status.NOT_PACKED
+    )
+    return summary
+
+
 @router.get("", response_model=PackingListIndex)
 def index(db: Session = Depends(get_db)):
     lists = (
         db.execute(
             select(PackingList)
-            .options(selectinload(PackingList.items))
+            .options(selectinload(PackingList.items), selectinload(PackingList.trip_leg))
             .order_by(PackingList.created_at.desc(), PackingList.id.desc())
         )
         .scalars()
@@ -83,13 +95,11 @@ def index(db: Session = Depends(get_db)):
         if not packing_list.saved and not packing_list.template
     ]
     return PackingListIndex(
-        recent=[PackingListSummary.model_validate(row) for row in working],
-        saved=[PackingListSummary.model_validate(row) for row in lists if row.saved],
-        templates=[
-            PackingListSummary.model_validate(row) for row in lists if row.template
-        ],
+        recent=[_summary(row) for row in working],
+        saved=[_summary(row) for row in lists if row.saved],
+        templates=[_summary(row) for row in lists if row.template],
         evict_next=(
-            [PackingListSummary.model_validate(row) for row in oldest_slot(db)]
+            [_summary(row) for row in oldest_slot(db)]
             if count_slots(db) >= SLOT_CAP
             else []
         ),
@@ -128,7 +138,7 @@ def read(list_id: int, db: Session = Depends(get_db)):
     packing_list = db.execute(
         select(PackingList)
         .where(PackingList.id == list_id)
-        .options(selectinload(PackingList.items))
+        .options(selectinload(PackingList.items), selectinload(PackingList.trip_leg))
     ).scalar_one_or_none()
     if packing_list is None:
         raise HTTPException(status_code=404, detail=NOT_FOUND)
@@ -156,6 +166,15 @@ def update(list_id: int, payload: PackingListUpdate, db: Session = Depends(get_d
     db.commit()
     db.refresh(packing_list)
     return packing_list
+
+
+@router.post("/{list_id}/reset", response_model=PackingListResponse)
+def reset(list_id: int, db: Session = Depends(get_db)):
+    packing_list = _get(db, list_id)
+    reset_list(db, packing_list)
+    db.commit()
+    db.expire_all()
+    return read(list_id, db)
 
 
 @router.delete("/{list_id}", status_code=204)

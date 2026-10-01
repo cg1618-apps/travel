@@ -1,4 +1,5 @@
-"""The remembered values behind the free-text category and bag fields."""
+"""The remembered values behind the free-text fields: an item's category, bag
+and location, and a trip leg's ticket type."""
 
 from sqlalchemy import CheckConstraint, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
@@ -11,11 +12,12 @@ from app.models.base import TimestampMixin, in_clause
 class LabelOption(Base, TimestampMixin):
     """A suggestion, not a reference.
 
-    An item stores its category and bag as text. These rows exist so typing one
-    twice is unnecessary, and so a typo can be pruned - which is why deleting
-    one leaves the items using it untouched. Renaming one DOES rewrite them,
-    because the item holds the text itself and a rename that only touched this
-    row would leave the screen showing both spellings.
+    An item stores its category, bag and location as text, and a leg its
+    ticket type; `kind` says which of the four a row belongs to. These rows
+    exist so typing one twice is unnecessary, and so a typo can be pruned -
+    which is why deleting one leaves the rows using it untouched. Renaming one
+    DOES rewrite them, because each holds the text itself and a rename that
+    only touched this row would leave the screen showing both spellings.
     """
 
     __tablename__ = "label_option"

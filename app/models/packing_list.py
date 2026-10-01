@@ -5,7 +5,7 @@ from datetime import date
 from sqlalchemy import Boolean, CheckConstraint, Date, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.constants import Leg, Visibility
+from app.constants import TAIPEI, Leg, Visibility
 from app.database import Base
 from app.models.base import TimestampMixin, in_clause
 
@@ -23,7 +23,7 @@ class PackingList(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String, nullable=False)
 
     # Nullable, and the reason the timing view works without a trip existing.
-    # Module 2 prefills it from the trip; this value wins if it is changed.
+    # Ignored while a trip leg links this list - see `effective_departure_at`.
     departure_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # `saved` exempts the list from the three-slot cap; `template` offers it as
@@ -54,3 +54,18 @@ class PackingList(Base, TimestampMixin):
         passive_deletes=True,
         order_by="PackingItem.position",
     )
+
+    trip_leg = relationship(
+        "TripLeg", back_populates="packing_list", uselist=False, passive_deletes=True
+    )
+
+    @property
+    def effective_departure_at(self) -> date | None:
+        """The leg's Taipei calendar day when linked, else the list's own date."""
+        if self.trip_leg is not None:
+            return self.trip_leg.departs_at.astimezone(TAIPEI).date()
+        return self.departure_at
+
+    @property
+    def departure_source(self) -> str:
+        return "trip_leg" if self.trip_leg is not None else "list"

@@ -53,3 +53,12 @@ def test_the_secrets_are_ignored():
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8")
     for name in (".env", "credentials.json", "CLAUDE.local.md"):
         assert name in ignored, name
+
+
+def test_the_sheet_export_and_dumps_stay_out_of_git_and_the_image():
+    # Personal data - the importer's .xlsx and any database dump - is in
+    # neither the repository nor the container image.
+    for ignore_file in (".gitignore", ".dockerignore"):
+        lines = (ROOT / ignore_file).read_text(encoding="utf-8").splitlines()
+        assert any(line.endswith("*.xlsx") for line in lines), ignore_file
+        assert "backups/" in lines, ignore_file

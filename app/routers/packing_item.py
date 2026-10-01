@@ -16,7 +16,8 @@ from app.schemas.packing_item import (
     PackingItemResponse,
     PackingItemUpdate,
 )
-from app.services.domain.packing import remember_item_labels
+from app.services.domain.labels import remember_item_labels
+from app.services.domain.packing import insert_after
 
 router = APIRouter(tags=["Packing items"])
 
@@ -52,9 +53,15 @@ def create(list_id: int, payload: PackingItemCreate, db: Session = Depends(get_d
     if db.get(PackingList, list_id) is None:
         raise HTTPException(status_code=404, detail="Packing list not found.")
 
-    item = PackingItem(
-        list_id=list_id, position=_next_position(db, list_id), **payload.model_dump()
-    )
+    fields = payload.model_dump(exclude={"after_id"})
+    if payload.after_id is None:
+        position = _next_position(db, list_id)
+    else:
+        after = db.get(PackingItem, payload.after_id)
+        if after is None or after.list_id != list_id:
+            raise HTTPException(status_code=404, detail="Item to insert after not found on this list.")
+        position = insert_after(db, after)
+    item = PackingItem(list_id=list_id, position=position, **fields)
     db.add(item)
     db.flush()
     remember_item_labels(db, item)

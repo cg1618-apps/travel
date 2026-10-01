@@ -6,7 +6,9 @@
  * here" looks like.
  */
 
-export function LoadingState({ label = 'Loading…' }) {
+import { useEffect } from 'react'
+
+export function LoadingState({ label = '載入中…' }) {
   return (
     <div className="px-4 py-12 text-center text-text-faint" role="status">
       {label}
@@ -14,20 +16,39 @@ export function LoadingState({ label = 'Loading…' }) {
   )
 }
 
+/**
+ * The message is this app's own, not the error's: an API `detail` is English
+ * by contract and a network failure is the browser's wording. The status code
+ * is kept, because it is the one part worth reading back to someone. An error
+ * with no status never reached the server, so it says so rather than blaming
+ * the server; the error itself goes to the console, where it can be read.
+ */
 export function ErrorState({ error, onRetry }) {
+  useEffect(() => {
+    if (error) console.error(error)
+  }, [error])
+
   return (
     <div
       className="mx-4 my-6 rounded-md border border-danger/40 bg-danger/10 px-4 py-3 text-text"
       role="alert"
     >
-      <p className="m-0 text-sm">{error?.message || 'Something went wrong.'}</p>
+      <p className="m-0 text-sm">
+        {error?.status ? (
+          <>
+            發生錯誤。<span className="text-text-faint">（{error.status}）</span>
+          </>
+        ) : (
+          '無法連線，請稍後再試。'
+        )}
+      </p>
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
           className="mt-2 rounded-md border border-border-strong px-3 text-sm"
         >
-          Try again
+          再試一次
         </button>
       )}
     </div>

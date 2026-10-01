@@ -2,7 +2,7 @@
 
 The media tracker keeps its vocabularies in `app/utils/constants.py` and serves
 them to the client, and most of them carry no database constraint because they
-are open lists that grow — a completion level, an ending name. These five are
+are open lists that grow — a completion level, an ending name. These are
 not that. Each is a small closed set the application branches over, so each one
 also gets a `CheckConstraint`, following media's *discriminator* precedent
 (`ck_movies_media_type`) rather than its open-vocabulary one.
@@ -12,6 +12,11 @@ can use the same class to produce a 422 before the constraint is ever reached.
 """
 
 from enum import StrEnum
+from zoneinfo import ZoneInfo
+
+#: Every leg time is entered and shown here, and a linked list's departure
+#: date is the calendar day here - not the server's, not UTC's.
+TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 class Status(StrEnum):
@@ -46,6 +51,19 @@ class Leg(StrEnum):
     RETURN = "return"
 
 
+class Need(StrEnum):
+    """Why an item is on the list — the sheet's 需求 column.
+
+    `BRING` is already owned and taken from the item's location; `BUY` has to
+    be bought, at that location; `NEED` is needed with bring-or-buy not yet
+    decided. Nullable on the item: a row the question does not apply to.
+    """
+
+    NEED = "need"
+    BRING = "bring"
+    BUY = "buy"
+
+
 class Visibility(StrEnum):
     """Reserved. Nothing reads this yet.
 
@@ -64,6 +82,15 @@ class Visibility(StrEnum):
 class LabelKind(StrEnum):
     CATEGORY = "category"
     BAG = "bag"
+    LOCATION = "location"
+    TICKET_TYPE = "ticket_type"
+
+
+class DayType(StrEnum):
+    """The sheet's 平日 / 假日 split. Public holidays are not modelled."""
+
+    WEEKDAY = "weekday"
+    HOLIDAY = "holiday"
 
 
 TIMING_ORDER: tuple[Timing, ...] = tuple(Timing)

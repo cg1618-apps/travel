@@ -11,3 +11,8 @@ frontend_dist/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# The sheet export the importer reads, and database dumps: personal data and,
+# for a dump, possibly credentials. Neither belongs in git.
+*.xlsx
+backups/
