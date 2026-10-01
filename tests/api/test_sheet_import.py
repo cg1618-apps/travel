@@ -2,6 +2,7 @@ from datetime import date
 
 import pytest
 
+from app.constants import Kind, Usage
 from app.models import PackingList, TransportRoute, Trip
 from app.services.sheet_import.parse import parse_workbook
 from app.services.sheet_import.write import ImportClash, find_clashes, write_sheet
@@ -21,6 +22,13 @@ def test_an_import_writes_lists_routes_and_the_trip(db_session, sheet):
     assert db_session.query(TransportRoute).count() == 3
     trip = db_session.query(Trip).one()
     assert [leg.packing_list.name for leg in trip.legs] == ["彰化回台北", "台北去彰化"]
+
+
+def test_imported_lists_and_trip_are_free_and_unused(db_session, sheet):
+    write_sheet(db_session, sheet)
+    db_session.commit()
+    rows = [*db_session.query(PackingList), db_session.query(Trip).one()]
+    assert {(row.kind, row.usage) for row in rows} == {(Kind.FREE, Usage.UNUSED)}
 
 
 def test_an_import_remembers_labels(client, db_session, sheet):

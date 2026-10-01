@@ -1,44 +1,43 @@
-"""Which trip is "This time", and what a copied trip carries."""
+"""Which trip is current, and what a copied trip carries."""
 
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.constants import TAIPEI
+from app.constants import TAIPEI, Kind, Usage
 from app.models import Trip, TripLeg
 
 
 def current_trip(db: Session, now: datetime) -> Trip | None:
-    """The trip with the soonest leg still ahead; failing that, the one whose
-    legs ended most recently. Ties go to the newer trip (higher id). A trip
-    with no legs is never current, and neither is an archived trip or a
-    template — the one is finished with and the other is not a journey.
+    """The 使用中 trip; with none, the 未來使用 one. Within a group, the trip
+    whose soonest leg still ahead is earliest; trips with nothing ahead come
+    after, newest (highest id) first, and so does a tie. A trip with no legs
+    can be current - its status, not its legs, says it is the one being taken.
 
-    Computed in Python over every trip: there are a handful, and the rule reads
-    more plainly here than as SQL.
+    Computed in Python over the candidates: there are a handful, and the rule
+    reads more plainly here than as SQL.
     """
     trips = (
         db.execute(
             select(Trip)
-            .where(Trip.archived.is_(False), Trip.template.is_(False))
+            .where(Trip.kind == Kind.FREE, Trip.usage.in_([Usage.IN_USE, Usage.UPCOMING]))
             .options(selectinload(Trip.legs))
         )
         .scalars()
         .all()
     )
-    ahead = [
-        (min(leg.departs_at for leg in trip.legs if leg.departs_at > now), -trip.id, trip)
-        for trip in trips
-        if any(leg.departs_at > now for leg in trip.legs)
-    ]
-    if ahead:
-        return min(ahead, key=lambda row: row[:2])[2]
-    behind = [
-        (max(leg.arrives_at for leg in trip.legs), trip.id, trip) for trip in trips if trip.legs
-    ]
-    if behind:
-        return max(behind, key=lambda row: row[:2])[2]
+
+    def rank(trip: Trip) -> tuple:
+        ahead = [leg.departs_at for leg in trip.legs if leg.departs_at > now]
+        if ahead:
+            return (0, min(ahead), -trip.id)
+        return (1, now, -trip.id)
+
+    for usage in (Usage.IN_USE, Usage.UPCOMING):
+        group = [trip for trip in trips if trip.usage == usage]
+        if group:
+            return min(group, key=rank)
     return None
 
 

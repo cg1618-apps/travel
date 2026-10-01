@@ -51,7 +51,6 @@ class ParsedItem:
 class ParsedList:
     name: str
     leg: str | None
-    saved: bool
     pair_id: str
     items: list[ParsedItem] = field(default_factory=list)
 
@@ -197,7 +196,7 @@ def _parse_packing(ws, report: list[str]) -> ParsedList:
     columns = _header_index(header)
     detail_at = columns["項目"] + 1
     leg = Leg.OUTBOUND if "去" in ws.title else Leg.RETURN if "回" in ws.title else None
-    parsed = ParsedList(ws.title, leg, True, "sheet-" + "-".join(sorted(PACKING_TABS)))
+    parsed = ParsedList(ws.title, leg, "sheet-" + "-".join(sorted(PACKING_TABS)))
     category = name = None
     for number, row in _rows(ws):
         category = _text(row, columns, "類別") or category

@@ -1,9 +1,11 @@
 """Trips and their legs, going in and coming out."""
 
-from datetime import date
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
+from app.constants import Kind, Usage
 from app.schemas.base import NonNullableUpdate
 
 ARRIVAL_BEFORE_DEPARTURE = "arrives_at must be after departs_at"
@@ -77,30 +79,54 @@ class TripBase(BaseModel):
 
 
 class TripUpdate(NonNullableUpdate):
-    non_nullable = ("name", "archived", "template")
+    # `evict_confirmed` is a plain bool, so pydantic already refuses null for it.
+    non_nullable = ("name", "kind", "usage")
 
     name: str | None = Field(default=None, min_length=1)
     notes: str | None = None
-    archived: bool | None = None
     archive_note: str | None = None
-    template: bool | None = None
+    #: 保存 or 取消保存. A template is made by creating one.
+    kind: Literal["saved", "free"] | None = None
+    usage: Usage | None = None
+    #: Acknowledges that 過去使用 may drop the oldest 自動保存 trip.
+    evict_confirmed: bool = False
 
 
 class TripResponse(TripBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    archived: bool
+    kind: Kind
+    usage: Usage | None
+    auto_saved_at: datetime | None
     archive_note: str | None = None
-    template: bool
     legs: list[TripLegResponse] = []
 
 
 class TripCreate(TripBase):
-    """`copy_from_id` copies another trip; `start_date` is the Taipei day its
-    first leg moves to, required when that trip has legs."""
+    """`kind` is 一般 or 範本 - nothing is created saved. `copy_from_id` copies
+    another trip, of any kind; `start_date` is the Taipei day its first leg
+    moves to, required when that trip has legs."""
 
+    kind: Literal["free", "template"] = "free"
     copy_from_id: int | None = None
     start_date: date | None = None
+
+
+class TripIndex(BaseModel):
+    """The same four shelves as packing lists, plus what 過去使用 would drop."""
+
+    #: 一般 trips that are not 過去使用, latest departure first, legless last.
+    free: list[TripResponse]
+    #: 自動保存: newest `auto_saved_at` first.
+    auto_saved: list[TripResponse]
+    saved: list[TripResponse]
+    templates: list[TripResponse]
+    #: The trip the next 過去使用 would drop, or empty when there is room.
+    evict_next: list[TripResponse]
+
+
+class TripIds(BaseModel):
+    ids: list[int]
 
 
 class UnlinkedLeg(BaseModel):

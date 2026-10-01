@@ -2,45 +2,85 @@
 
 Last verified: 2026-10-01
 
-**What this is for.** The rules that are not visible in the schema — what fills
-the three-list cap, what eviction destroys, what a copy carries, and how the
-status and check fields relate. Column-level facts live in `data-model.md`; why a rule is shaped
+**What this is for.** The rules that are not visible in the schema — what kind
+a list or trip is and how it moves between kinds, what fills 自動保存 and what
+dropping a slot destroys, what a copy carries, and how the status and check
+fields relate. Column-level facts live in `data-model.md`; why a rule is shaped
 this way lives in `notes/decisions.md`.
 
-These live in `app/services/domain/`, not in the routers: the cap, copy and
-reset rules in `packing.py`, the common-options rules in `labels.py` and the
-current-trip and trip-copy rules in `trip.py`. The sheet importer is `app/services/sheet_import/`.
-A router owns wiring and status codes; a rule reimplemented in a second endpoint
-is a rule with two answers.
+These live in `app/services/domain/`, not in the routers: kinds, usage and the
+自動保存 queue in `auto_save.py`, the copy and reset rules in `packing.py`, the
+common-options rules in `labels.py` and the current-trip and trip-copy rules in
+`trip.py`. The sheet importer is `app/services/sheet_import/`. A router owns
+wiring and status codes; a rule reimplemented in a second endpoint is a rule
+with two answers.
 
-## The three-list cap
+## Kinds, usage and 自動保存
 
-**Three working lists at a time.** A list counts toward the cap when it is
-**neither `saved` nor a `template`** — the two flags are independent, so a list
-with either one set is exempt, and a list with both is exempt once.
+Lists and trips share one model. Every row has exactly one **kind**, and a
+一般 row also has a **usage** (狀態):
 
-**A round-trip pair occupies one slot.** The two lists of a pair share a
-`pair_id`; every unpaired list is its own slot. Three round trips therefore
-still fit, because a pair is how a trip is actually thought about and charging
-it two slots would punish the round trip for being modelled honestly.
+| Kind (`kind`) | 中文 | Made by | `usage` | Limit |
+| --- | --- | --- | --- | --- |
+| `template` | 範本 | Creating one as 範本 (blank or copied), or 當作範本 on any list or trip, which **copies** it | null | none |
+| `saved` | 保存 | 保存 on a 一般 or 自動保存 row, which **moves** it | null | none |
+| `free` | 一般 | The ordinary create | `in_use` 使用中 · `upcoming` 未來使用 · `unused` 未使用 | none |
+| `free` + `past` | 自動保存 | Setting a 一般 row to `past` 過去使用 | `past` | lists 5 slots, trips 10 |
 
-**Eviction destroys.** Creating a fourth slot removes the oldest — both lists
-of a pair, and their items by cascade. It is not silent: the create call
-refuses first, naming what would go, and the caller either saves that list or
-confirms. See `api.md` for the exchange.
+**自動保存 is not a stored kind.** It is `kind = 'free' AND usage = 'past'`, so
+"a 一般 row marked 過去使用 is auto-saved" is true by construction rather than
+kept in step by code. The database's check constraints make every other
+combination unstorable (`data-model.md`).
 
-**The oldest slot is ordered by `created_at`, then by `id`.** The tie-break is
-load-bearing, not defensive: `created_at` defaults to `now()`, which in
-PostgreSQL is the *transaction's* start time, so lists created in one
-transaction share a timestamp exactly.
+- **A new 一般 row starts `unused`.** Usage changes only by hand; nothing moves
+  it by date.
+- **Setting `usage` to `past`** stamps `auto_saved_at` and puts the row in
+  自動保存. If that would exceed the limit, the request is refused unless it
+  confirms; confirmed, the **oldest** slot is deleted in the same transaction.
+  It is never silent: the refusal names what would go, and the caller either
+  saves that row or confirms. See `api.md` for the exchange.
+- **Setting `usage` from `past` to anything else** clears `auto_saved_at`; the
+  row is 一般 again and its slot is free.
+- **保存** (`kind: saved`) is allowed on 一般 and 自動保存 rows; `usage` and
+  `auto_saved_at` are cleared. **取消保存** (`kind: free`) on a saved row sets
+  `usage` to `unused`, unless the same request names another usage. Neither is
+  ever refused by a limit — except 取消保存 straight to `past`, which enters
+  the queue like any other `past`.
+- **A template's kind never changes, and nothing becomes a template by
+  update.** Sending `kind: template`, or any `kind` or `usage` to a template, is
+  refused. A template is made by creating one.
+- **`usage` on a row that is not (or is not becoming) 一般** is refused.
+- **保存備註** (`archive_note`) is editable on every list and trip, whatever its
+  kind; the screens show it where it matters (`frontend.md`).
 
-Saving a list is how you rescue it from the cap, so a saved list is never
-offered for eviction however old it is.
+Every check runs before anything is written, so a refused change leaves the row
+as it was.
+
+### Slots
+
+**A slot is what the limit counts.** The oldest slot is ordered by its
+`auto_saved_at`, then by `id`. The tie-break makes the answer deterministic:
+two rows carrying the same `auto_saved_at` — written in one transaction, or by
+hand — would otherwise be ordered by whatever the planner returned.
+
+**Lists: a round-trip pair is one slot.** The two lists of a pair share a
+`pair_id`; every unpaired list is its own slot. A pair takes its slot once
+either half is auto-saved, and the second half joining it never needs room —
+a full queue does not refuse it. The slot's time is the earliest
+`auto_saved_at` of its auto-saved halves. Dropping a pair's slot deletes **only
+its auto-saved halves**; a half still 使用中 is not part of the queue and is
+not touched. Items go by cascade.
+
+**Trips: one trip is one slot.** Legs go by cascade; a packing list a dropped
+trip's leg linked is kept and unlinked, as on any trip delete.
+
+Saving a row is how you rescue it, so a saved row is never offered for
+dropping however old it is.
 
 ## Copying a list
 
-A new list may be copied from any existing list — recent, saved or template
-alike. **The definition carries; the state resets.**
+A new list may be copied from any existing list, of any kind. **The definition
+carries; the state resets.**
 
 | Carries | Resets |
 | --- | --- |
@@ -49,10 +89,11 @@ alike. **The definition carries; the state resets.**
 Nothing arrives pre-ticked. A duplicated list with its ticks intact is how you
 reach the airport certain you packed the charger.
 
-The source list's own fields — `departure_at`, `saved`, `template`, `leg`,
-`pair_id`, `visibility` — are not copied. They describe *that* list rather than
-its contents, and a template copied with `template` still set is simply a
-second template.
+The source list's own fields — `departure_at`, `kind`, `usage`, `leg`,
+`pair_id`, `notes`, `archive_note`, `visibility` — are not copied. They
+describe *that* list rather than its contents; the new list's `kind` comes from
+the request, so 當作範本 is simply a create with `kind: template` and the
+source as `copy_from_id`.
 
 ## Status, and the count that does not set it
 
@@ -117,38 +158,34 @@ unless a trip leg links it; see "Departure source".
 
 ## The current trip
 
-The trip with the soonest leg still ahead of now is current. With nothing
-ahead, the trip whose legs ended most recently is. Ties go to the newer trip
-(the higher id), and a trip with no legs is never current. With no trips, or
-only leg-less ones, there is no current trip.
+`/api/trips/current` looks only at 一般 trips, and **their status decides, not
+their dates**:
 
-**Archived trips and templates are never current**; they are left out before
-the rule runs, so an archived trip with a leg ahead does not take `/trip`. With
-every trip archived or a template there is no current trip.
+1. the trips that are 使用中 (`in_use`); with none,
+2. the trips that are 未來使用 (`upcoming`).
 
-The rule looks at the soonest *future* leg, so it can switch trips mid-journey:
-while one trip's leg is under way, a trip with a leg still ahead is current. That
-is accepted; see `notes/decisions.md`.
-
-## Archiving a trip
-
-Archiving sets `archived` and nothing else. It does not check that the trip is
-over — a cancelled trip can be archived — and it locks nothing: an archived
-trip and its legs stay editable. Un-archiving clears the flag and leaves
-`archive_note` as it was.
+Within the group, the trip whose soonest leg **still ahead of now** is earliest
+is current; trips with no leg ahead come after, newest (highest id) first, and
+so does a tie. A trip with no legs can be current — it is the status that says
+which trip is being taken. With no 一般 trip in either group there is no
+current trip. Templates, saved trips and 自動保存 trips are never current.
 
 ## Copying a trip
 
-A new trip may be copied from any trip; the page offers templates. **The
-definition carries; the state resets**, as with a packing list.
+A new trip may be copied from any trip, of any kind; the page offers templates
+for 從範本 and every trip for 當作範本. **The definition carries; the state
+resets**, as with a packing list.
 
 | Carries | Resets |
 | --- | --- |
 | trip `notes` (unless the request sends its own); each leg's `from_place`, `to_place`, `service`, `service_number`, `price`, `ticket_type`, `notes`, and its times, shifted | `booked`, `paid`, `collected` → `false`; `booking_code`, `seat`, `packing_list_id` → null |
 
-The name comes from the request. The source's own `archived`, `archive_note`,
-`template` and `visibility` are not copied, so a copy of an archived template
-is an ordinary trip.
+The name and `kind` come from the request. The source's own `kind`, `usage`,
+`archive_note` and `visibility` are not copied, so a copy of a template is a
+一般 trip (未使用) unless the request asks for another template.
+
+**當作範本 keeps the dates.** The page sends the Taipei day of the source's own
+first departure as `start_date`, so the shift below is zero.
 
 **The shift.** `start_date` is a Taipei calendar day. Every leg moves by the
 whole days between it and the Taipei day of the source's earliest departure,
