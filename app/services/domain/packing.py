@@ -1,80 +1,15 @@
-"""The rules about lists: what fills the cap, what eviction destroys, what a
-copy carries.
+"""The rules about a list's contents: what a copy carries, where a variant
+goes, what a reset clears.
 
 Nothing here raises `HTTPException`. The router decides what a refusal looks
 like over HTTP; these functions only answer questions and perform changes.
 """
 
-from sqlalchemy import String, cast, func, select, update
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from app.constants import Status
 from app.models import PackingItem, PackingList
-
-#: How many working lists may exist at once. Saved lists and templates are
-#: exempt, so this is a cap on clutter rather than on how much you may keep.
-SLOT_CAP = 3
-
-#: A slot is one working list, or one round-trip pair. The two lists of a pair
-#: share a `pair_id`, so coalescing to the id gives every unpaired list a slot
-#: key of its own and the pair a single shared one.
-SLOT_KEY = func.coalesce(PackingList.pair_id, cast(PackingList.id, String))
-
-#: Neither saved nor a template. Both flags are independent, so this is an AND
-#: of two negatives rather than a single "kind" check.
-_WORKING = (PackingList.saved.is_(False), PackingList.template.is_(False))
-
-
-def count_slots(db: Session) -> int:
-    """How many of the cap's slots are currently occupied."""
-    return db.execute(
-        select(func.count(func.distinct(SLOT_KEY))).where(*_WORKING)
-    ).scalar_one()
-
-
-def oldest_slot(db: Session) -> list[PackingList]:
-    """Every list in the slot that would be evicted next, oldest first.
-
-    A pair comes back as two rows, because evicting a slot destroys both -
-    leaving half a round trip behind would be worse than leaving none of it.
-
-    Ordering breaks ties on `id`, and that is load-bearing rather than
-    defensive. `created_at` defaults to `now()`, which in PostgreSQL is the
-    TRANSACTION's start time, so every list created in one transaction carries
-    an identical timestamp - and which one is "oldest" would otherwise be
-    whatever the planner felt like returning.
-    """
-    slot = db.execute(
-        select(
-            SLOT_KEY.label("slot"),
-            func.min(PackingList.created_at).label("created_at"),
-            func.min(PackingList.id).label("id"),
-        )
-        .where(*_WORKING)
-        .group_by(SLOT_KEY)
-        .order_by("created_at", "id")
-        .limit(1)
-    ).first()
-
-    if slot is None:
-        return []
-
-    return list(
-        db.execute(
-            select(PackingList)
-            .where(*_WORKING, SLOT_KEY == slot.slot)
-            .order_by(PackingList.id)
-        )
-        .scalars()
-        .all()
-    )
-
-
-def evict(db: Session, slot: list[PackingList]) -> None:
-    """Destroy a slot. Items go with their lists by ON DELETE CASCADE."""
-    for packing_list in slot:
-        db.delete(packing_list)
-    db.flush()
 
 
 def copy_items(db: Session, source: PackingList, target: PackingList) -> None:
@@ -83,10 +18,10 @@ def copy_items(db: Session, source: PackingList, target: PackingList) -> None:
     Nothing arrives pre-ticked. A duplicated list with its ticks intact is how
     you reach the airport certain you packed the charger.
 
-    The list's own fields - departure_at, saved, template, leg, pair_id,
-    visibility - are deliberately not this function's business. They describe
-    THAT list rather than its contents, and a template copied with
-    `template=True` is simply a second template.
+    The list's own fields - departure_at, kind, usage, leg, pair_id, notes,
+    archive_note, visibility - are deliberately not this function's business.
+    They describe THAT list rather than its contents, and a list copied with
+    `kind=template` is simply a new template.
     """
     for item in source.items:
         db.add(
