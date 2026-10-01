@@ -75,12 +75,15 @@ it.
   the cap counts; saved lists and templates stay on `/lists`. Each row links to
   the list and shows its 出發 (`departureLabel` in `lib/timing.js`, shared with
   the index) and `已處理 {settled} / {items}`. 所有清單 links to `/lists`.
-- **行程** — every trip not archived (`dashboardTrips` in `lib/trips.js`): the
-  current trip first with a 目前 badge, linking to `/trip`; then the others by
-  first departure, a trip with no legs last; then templates with a 範本 badge.
+- **行程** — every trip neither archived nor a template (`dashboardTrips` in
+  `lib/trips.js`): the current trip first with a 目前 badge, linking to
+  `/trip`; then the others by first departure, a trip with no legs last.
   Each shows its date range or 沒有行程段. 前往行程 links to `/trip`.
-- **Empty.** Each section says where to go to fill it. A 404 from
-  `/api/trips/current` means no current trip, not an error.
+- **No add button, no templates.** Creating a list or a trip, and every
+  template, belong to `/lists` and `/trip`; the dashboard only links there.
+  An empty section says so plainly (目前沒有進行中的清單。 / 目前沒有行程。)
+  and offers nothing. A 404 from `/api/trips/current` means no current trip,
+  not an error.
 
 ## The sheet's columns
 
