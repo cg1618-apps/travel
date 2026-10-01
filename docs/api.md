@@ -235,10 +235,10 @@ addressed on its own afterwards.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/trips` | none | Every trip with its legs nested, newest first by latest `departs_at`; a trip with no legs is last. |
+| `GET` | `/api/trips` | none | Every trip with its legs nested, newest first by latest `departs_at`; a trip with no legs is last. Archived trips and templates are included; each trip carries `archived`, `archive_note` and `template`. |
 | `GET` | `/api/trips/current` | none | The current trip (see `business-rules.md`). `404` with `No current trip.` when there is none. |
-| `POST` | `/api/trips` | none | `201`. `name` is required and non-empty. |
-| `GET` / `PATCH` / `DELETE` | `/api/trips/{id}` | none | `404` when missing. Deleting takes the legs with it. |
+| `POST` | `/api/trips` | none | `201`. `name` is required and non-empty. Optional `copy_from_id` copies another trip (see `business-rules.md`, "Copying a trip"): `404` `Trip to copy from not found.` for an unknown one, and `422` `start_date is required to copy a trip with legs.` when it has legs and no `start_date` (a date) was sent. Nothing is written on either refusal; a `start_date` without `copy_from_id` is ignored. The response adds `unlinked_from`, `[{from_place, to_place, packing_list_name}]`, empty unless a copied leg had a list. |
+| `GET` / `PATCH` / `DELETE` | `/api/trips/{id}` | none | `404` when missing. `PATCH` takes `name`, `notes`, `archived`, `archive_note` and `template`; `name`, `archived` and `template` refuse null with `422`. Deleting takes the legs with it. |
 | `POST` | `/api/trips/{trip_id}/legs` | none | `201`. `from_place`, `to_place`, `departs_at` and `arrives_at` are required. |
 | `PATCH` / `DELETE` | `/api/trip-legs/{id}` | none | `404` when missing. |
 
