@@ -71,7 +71,8 @@ imports as 07:14, and the report does not mention it.
 
 **A failed write shows nothing.** Most mutations are fire-and-forget
 `.mutate()` calls with no `onError`: every item patch, add and delete and the
-reset and departure-date patch on `src/pages/PackingList.jsx`; every route and
+reset, departure-date patch, rename and delete on
+`src/pages/PackingList.jsx`; every route and
 option write and the departure delete on `src/pages/Transport.jsx`; the trip
 and leg field patches and the deletes on `src/pages/Trip.jsx`; and the rename
 and delete on `src/pages/Options.jsx`. Only the departure adder, a leg's times

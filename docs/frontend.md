@@ -134,6 +134,13 @@ list, not progress through it. The rule itself is the server's
 
 ## The list header
 
+**The name is a cell**, edited by clicking it like any other, and it cannot be
+emptied: a blanked name keeps its value rather than sending a null the API
+would refuse. Beside it, ⋯ 刪除清單 asks first, saying the items go with the
+list and a This time leg that linked it is kept, only unlinked. Deleting
+returns to the index. The ⋯ is `components/DeleteMenu.jsx`, shared with the
+route, card, trip and leg menus.
+
 `lib/listHeader.js` builds both lines, pure so the day boundaries are tested:
 `未設定日期`, `今天出發`, `明天出發`, `{n} 天後出發`, `已出發 {n} 天`, each
 followed by the date; and progress as `已處理 {s} / {n}`, `{u} 項待確認`,
