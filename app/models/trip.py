@@ -29,6 +29,19 @@ class Trip(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String, nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # `archived` takes a trip out of 其他行程 and out of the current-trip rule;
+    # it locks nothing and is undone by clearing it. `archive_note` is the
+    # remark written afterwards, kept apart from the planning `notes`.
+    # `template` offers the trip as a starting point. Independent, like
+    # `PackingList.saved` and `.template`.
+    archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    archive_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    template: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
     # A single trip is the thing expected to be shared. Nothing reads this yet,
     # as with `PackingList.visibility`: the column is carried now so that the
     # checks, when they come, have something to check.

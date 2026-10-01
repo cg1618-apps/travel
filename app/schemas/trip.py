@@ -75,13 +75,19 @@ class TripBase(BaseModel):
 
 
 class TripUpdate(NonNullableUpdate):
-    non_nullable = ("name",)
+    non_nullable = ("name", "archived", "template")
 
     name: str | None = Field(default=None, min_length=1)
     notes: str | None = None
+    archived: bool | None = None
+    archive_note: str | None = None
+    template: bool | None = None
 
 
 class TripResponse(TripBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    archived: bool
+    archive_note: str | None = None
+    template: bool
     legs: list[TripLegResponse] = []

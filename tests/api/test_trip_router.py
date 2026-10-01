@@ -275,3 +275,33 @@ def test_a_leg_patch_remembers_its_ticket_type(client, trip):
     assert client.patch(f"/api/trip-legs/{leg['id']}", json={"ticket_type": "紙本"}).status_code == 200
     values = [row["value"] for row in client.get("/api/label-options?kind=ticket_type").json()]
     assert values == ["紙本"]
+
+
+# --------------------------------------------------------------------------
+# Archive and template flags
+# --------------------------------------------------------------------------
+
+
+def test_a_new_trip_is_neither_archived_nor_a_template(client, trip):
+    assert (trip["archived"], trip["archive_note"], trip["template"]) == (False, None, False)
+
+
+def test_a_trip_can_be_archived_with_a_remark_and_unarchived(client, trip):
+    url = f"/api/trips/{trip['id']}"
+    body = client.patch(url, json={"archived": True, "archive_note": "下次早點訂票"}).json()
+    assert (body["archived"], body["archive_note"]) == (True, "下次早點訂票")
+    body = client.patch(url, json={"archived": False}).json()
+    # Un-archiving leaves the remark alone.
+    assert (body["archived"], body["archive_note"]) == (False, "下次早點訂票")
+    assert client.patch(url, json={"archive_note": None}).json()["archive_note"] is None
+
+
+def test_a_trip_can_be_made_a_template_and_back(client, trip):
+    url = f"/api/trips/{trip['id']}"
+    assert client.patch(url, json={"template": True}).json()["template"] is True
+    assert client.patch(url, json={"template": False}).json()["template"] is False
+
+
+@pytest.mark.parametrize("field", ["archived", "template"])
+def test_a_null_archive_or_template_flag_is_a_422(client, trip, field):
+    assert client.patch(f"/api/trips/{trip['id']}", json={field: None}).status_code == 422
