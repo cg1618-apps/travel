@@ -99,8 +99,8 @@ def test_a_legs_ticket_type_is_remembered(client, trip):
 NOW = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
 
 
-def make_trip(db, name, *offsets_hours):
-    trip = Trip(name=name)
+def make_trip(db, name, *offsets_hours, **flags):
+    trip = Trip(name=name, **flags)
     db.add(trip)
     db.flush()
     for hours in offsets_hours:
@@ -138,6 +138,39 @@ def test_a_tie_goes_to_the_newer_trip(db_session):
     make_trip(db_session, "first", 24)
     second = make_trip(db_session, "second", 24)
     assert current_trip(db_session, NOW).id == second.id
+
+
+# Each refusal below gives the flagged trip the SOONEST leg ahead, so without
+# the exclusion it would be current: the fixture is what lets the test fail.
+# The mirror un-flags the same trip and expects it back.
+
+
+@pytest.mark.parametrize("flag", ["archived", "template"])
+def test_a_flagged_trip_is_never_current(db_session, flag):
+    later = make_trip(db_session, "later", 72)
+    flagged = make_trip(db_session, "flagged", 24, **{flag: True})
+    assert current_trip(db_session, NOW).id == later.id
+    setattr(flagged, flag, False)
+    db_session.flush()
+    assert current_trip(db_session, NOW).id == flagged.id
+
+
+@pytest.mark.parametrize("flag", ["archived", "template"])
+def test_with_every_trip_flagged_there_is_no_current_trip(db_session, flag):
+    make_trip(db_session, "only", 24, **{flag: True})
+    assert current_trip(db_session, NOW) is None
+
+
+def test_archiving_the_current_trip_moves_the_current_endpoint(client):
+    far = datetime.now(timezone.utc) + timedelta(days=30)
+    soon = client.post("/api/trips", json={"name": "soon"}).json()
+    later = client.post("/api/trips", json={"name": "later"}).json()
+    add_leg(client, soon, departs=far.isoformat(), arrives=(far + timedelta(hours=1)).isoformat())
+    add_leg(client, later, departs=(far + timedelta(days=1)).isoformat(),
+            arrives=(far + timedelta(days=1, hours=1)).isoformat())
+    assert client.get("/api/trips/current").json()["id"] == soon["id"]
+    client.patch(f"/api/trips/{soon['id']}", json={"archived": True})
+    assert client.get("/api/trips/current").json()["id"] == later["id"]
 
 
 def test_the_current_endpoint_is_404_when_there_is_none(client):

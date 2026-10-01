@@ -12,7 +12,8 @@ from app.database import get_db
 from app.models import PackingList, Trip, TripLeg
 from app.schemas.trip import (
     ARRIVAL_BEFORE_DEPARTURE,
-    TripBase,
+    TripCreate,
+    TripCreated,
     TripLegBase,
     TripLegResponse,
     TripLegUpdate,
@@ -20,7 +21,7 @@ from app.schemas.trip import (
     TripUpdate,
 )
 from app.services.domain.labels import remember_label
-from app.services.domain.trip import current_trip
+from app.services.domain.trip import copy_legs, current_trip
 
 router = APIRouter(tags=["Trips"])
 
@@ -29,6 +30,8 @@ LEG_NOT_FOUND = "Trip leg not found."
 NO_CURRENT_TRIP = "No current trip."
 LIST_NOT_FOUND = "Packing list not found."
 LIST_ALREADY_LINKED = "That packing list is already linked to another leg."
+COPY_SOURCE_NOT_FOUND = "Trip to copy from not found."
+START_DATE_REQUIRED = "start_date is required to copy a trip with legs."
 
 _EARLIEST = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -104,12 +107,27 @@ def read_current_trip(db: Session = Depends(get_db)):
     return _get_trip(db, trip.id)
 
 
-@router.post("/api/trips", response_model=TripResponse, status_code=201)
-def create_trip(payload: TripBase, db: Session = Depends(get_db)):
-    trip = Trip(**payload.model_dump())
+@router.post("/api/trips", response_model=TripCreated, status_code=201)
+def create_trip(payload: TripCreate, db: Session = Depends(get_db)):
+    source = None
+    if payload.copy_from_id is not None:
+        # Both refusals come before anything is written.
+        source = db.scalars(_trips_query().where(Trip.id == payload.copy_from_id)).first()
+        if source is None:
+            raise HTTPException(status_code=404, detail=COPY_SOURCE_NOT_FOUND)
+        if source.legs and payload.start_date is None:
+            raise HTTPException(status_code=422, detail=START_DATE_REQUIRED)
+
+    trip = Trip(**payload.model_dump(exclude={"copy_from_id", "start_date"}))
+    if source is not None and "notes" not in payload.model_fields_set:
+        trip.notes = source.notes
     db.add(trip)
+    db.flush()
+
+    unlinked = copy_legs(db, source, trip, payload.start_date) if source is not None else []
     db.commit()
-    return _get_trip(db, trip.id)
+    created = TripResponse.model_validate(_get_trip(db, trip.id))
+    return TripCreated(**created.model_dump(), unlinked_from=unlinked)
 
 
 @router.get("/api/trips/{trip_id}", response_model=TripResponse)
