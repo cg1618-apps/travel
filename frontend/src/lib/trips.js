@@ -80,6 +80,20 @@ export function partitionTrips(trips, excludeId) {
   return { others, templates, archived }
 }
 
+/**
+ * The dashboard's trips: every one not archived. The current trip first, then
+ * the rest by their first departure (a trip with no legs after those with
+ * some), then templates, which are kept but are never a trip being taken.
+ */
+export function dashboardTrips(trips, currentId) {
+  const firstDeparture = (trip) =>
+    trip.legs.length ? Math.min(...trip.legs.map((leg) => new Date(leg.departs_at))) : Infinity
+  const rank = (trip) => (trip.id === currentId ? 0 : trip.template ? 2 : 1)
+  return trips
+    .filter((trip) => !trip.archived)
+    .sort((a, b) => rank(a) - rank(b) || firstDeparture(a) - firstDeparture(b))
+}
+
 /** What 從範本 offers: every template, archived or not. */
 export function templateChoices(trips) {
   return trips.filter((trip) => trip.template)

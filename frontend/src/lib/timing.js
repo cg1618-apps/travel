@@ -43,3 +43,13 @@ export function daysUntil(departureAt, today) {
   if (from === null || to === null) return null
   return Math.round((to - from) / DAY)
 }
+
+/** A list's 出發 column: 今天, 明天, `{n} 天後`, the date once past, — with none. */
+export function departureLabel(departureAt, today) {
+  if (!departureAt) return '—'
+  const days = daysUntil(departureAt, today)
+  if (days === 0) return '今天'
+  if (days === 1) return '明天'
+  if (days < 0) return departureAt
+  return `${days} 天後`
+}

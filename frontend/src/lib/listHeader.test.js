@@ -16,11 +16,11 @@ describe('leavingText', () => {
     expect(leavingText('2026-09-28', 'list', today)).toBe('已出發 2 天 · 2026-09-28')
   })
 
-  it('says the date comes from This time when a leg sets it, and not otherwise', () => {
+  it('says the date comes from 行程 when a leg sets it, and not otherwise', () => {
     expect(leavingText('2026-10-01', 'trip_leg', today)).toBe(
-      '明天出發 · 2026-10-01 · 由 This time 行程設定',
+      '明天出發 · 2026-10-01 · 由行程設定',
     )
-    expect(leavingText('2026-10-01', 'list', today)).not.toContain('This time')
+    expect(leavingText('2026-10-01', 'list', today)).not.toContain('行程')
   })
 })
 

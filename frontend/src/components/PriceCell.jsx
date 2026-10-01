@@ -1,4 +1,4 @@
-/** The 價錢 cell, shared by Transportation and This time: a whole number shown as `NT$22`. */
+/** The 價錢 cell, shared by 交通 and 行程: a whole number shown as `NT$22`. */
 
 import { useState } from 'react'
 
