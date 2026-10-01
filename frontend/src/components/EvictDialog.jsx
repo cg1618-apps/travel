@@ -1,5 +1,5 @@
 /**
- * What stands between a new list and a destroyed one.
+ * What stands between 過去使用 and a dropped list or trip.
  *
  * The 409 is not an error toast. It is a decision, and the safe option is
  * listed first and styled as the primary one: a destructive confirm whose
@@ -10,11 +10,10 @@
  * `evict_next` on the index anyway.
  */
 
-const CREATE_BODY = '已有 3 份進行中的清單。建立新的清單會刪除最舊的：'
-
 export function EvictDialog({
-  body = CREATE_BODY,
-  confirmLabel = '刪除並建立',
+  body,
+  noun = '一份清單',
+  confirmLabel = '刪除並繼續',
   evicting,
   onSaveInstead,
   onConfirm,
@@ -29,7 +28,7 @@ export function EvictDialog({
     >
       <div className="w-full max-w-md rounded-t-2xl border border-border bg-surface p-5 sm:rounded-2xl">
         <h2 id="evict-title" className="m-0 text-base font-semibold">
-          這會刪除一份清單
+          這會刪除{noun}
         </h2>
         <p className="mt-2 text-sm text-text-muted">{body}</p>
 

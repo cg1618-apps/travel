@@ -93,4 +93,25 @@ class DayType(StrEnum):
     HOLIDAY = "holiday"
 
 
+class Kind(StrEnum):
+    """What sort of list or trip a row is. Shared by both tables.
+
+    自動保存 is deliberately not a member: it is `FREE` with `Usage.PAST`, so
+    "a 一般 item marked 過去使用 is auto-saved" holds by construction.
+    """
+
+    TEMPLATE = "template"
+    SAVED = "saved"
+    FREE = "free"
+
+
+class Usage(StrEnum):
+    """Where a 一般 list or trip stands. Only `FREE` rows carry one."""
+
+    IN_USE = "in_use"
+    UPCOMING = "upcoming"
+    UNUSED = "unused"
+    PAST = "past"
+
+
 TIMING_ORDER: tuple[Timing, ...] = tuple(Timing)

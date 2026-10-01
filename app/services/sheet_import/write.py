@@ -48,7 +48,7 @@ def find_clashes(db: Session, sheet: ParsedSheet) -> list[str]:
 
 
 def _write_list(db: Session, parsed) -> PackingList:
-    row = PackingList(name=parsed.name, leg=parsed.leg, saved=parsed.saved, pair_id=parsed.pair_id)
+    row = PackingList(name=parsed.name, leg=parsed.leg, pair_id=parsed.pair_id)
     db.add(row)
     for position, parsed_item in enumerate(parsed.items):
         item = PackingItem(position=position, **asdict(parsed_item))

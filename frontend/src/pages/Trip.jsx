@@ -6,8 +6,8 @@
  * `/trips/:tripId` any other, through the same component. Every field is a
  * cell that commits on Enter or blur; the times, the packing list link and the
  * three ticks are the exceptions, because each has a refusal worth showing.
- * A trip can be archived (with a remark) or made a 範本 from its ⋯ menu; the
- * trips below it are split into 其他行程, 範本 and a collapsed 已封存.
+ * A trip carries 狀態, 保存 and 當作範本; the trips below it are split into
+ * 一般, 保存 and 範本, with a link to 自動保存的行程.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -18,25 +18,32 @@ import { endpoints } from '../api/endpoints'
 import { TextCell } from '../components/Cell'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DeleteMenu } from '../components/DeleteMenu'
+import { EvictDialog } from '../components/EvictDialog'
+import { KindControls } from '../components/KindControls'
 import { PriceCell } from '../components/PriceCell'
 import { RowMenu } from '../components/RowMenu'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { required } from '../lib/cells'
 import { keysFor } from '../lib/keys'
-import { BOOKING_LABELS } from '../lib/labels'
 import {
-  archivePatch,
+  AUTO_SAVE_LIMIT,
+  badgeFor,
+  everyRow,
+  isAutoSaved,
+  leavesCurrent,
+  templateName,
+} from '../lib/kinds'
+import { BOOKING_LABELS, KIND_LABELS, USAGE_LABELS } from '../lib/labels'
+import {
   firstLine,
   formatArrival,
   formatDuration,
   formatTaipei,
   fromTaipeiInput,
   needsStartDate,
-  partitionTrips,
   sortLegs,
   taipeiInputValue,
-  templateChoices,
   tripDateRange,
   unlinkedNotice,
 } from '../lib/trips'
@@ -52,8 +59,8 @@ const editButton = 'px-1 text-xs text-text-faint hover:text-text'
 
 const hasStatus = (error, status) => error instanceof ApiError && error.status === status
 
-function useTripMutation(mutationFn) {
-  return useApiMutation({ invalidate: INVALIDATE, mutationFn })
+function useTripMutation(mutationFn, onError) {
+  return useApiMutation({ invalidate: INVALIDATE, mutationFn, onError })
 }
 
 function Field({ label, children }) {
@@ -74,16 +81,21 @@ function Problem({ children }) {
   )
 }
 
-/** The trip header's ⋯: archive, template, delete. */
-function TripMenu({ trip, onArchive, onUnarchive, onToggleTemplate, onDelete }) {
+/**
+ * The trip header's ⋯: 保存 (or 取消保存), 當作範本, 刪除行程. A 範本's kind
+ * never changes, so it offers only 刪除行程.
+ */
+function TripMenu({ trip, onToggleSaved, onMakeTemplate, onDelete }) {
   const [open, setOpen] = useState(false)
-  const actions = [
-    trip.archived
-      ? { label: '取消封存', onSelect: onUnarchive }
-      : { label: '封存', onSelect: onArchive },
-    { label: trip.template ? '取消範本' : '設為範本', onSelect: onToggleTemplate },
-    { label: '刪除行程', danger: true, onSelect: onDelete },
-  ]
+  const remove = { label: '刪除行程', danger: true, onSelect: onDelete }
+  const actions =
+    trip.kind === 'template'
+      ? [remove]
+      : [
+          { label: trip.kind === 'saved' ? '取消保存' : '保存', onSelect: onToggleSaved },
+          { label: '當作範本', onSelect: onMakeTemplate },
+          remove,
+        ]
   return (
     <>
       <button
@@ -98,49 +110,6 @@ function TripMenu({ trip, onArchive, onUnarchive, onToggleTemplate, onDelete }) 
       </button>
       <RowMenu open={open} onClose={() => setOpen(false)} actions={actions} />
     </>
-  )
-}
-
-/** 封存, with the optional remark. Starts from any remark already written. */
-function ArchiveDialog({ trip, onConfirm, onCancel }) {
-  const [note, setNote] = useState(trip.archive_note ?? '')
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 p-0 sm:items-center sm:p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="archive-title"
-    >
-      <div className="w-full max-w-md rounded-t-2xl border border-border bg-surface p-5 sm:rounded-2xl">
-        <h2 id="archive-title" className="m-0 text-base font-semibold">
-          封存「{trip.name}」？
-        </h2>
-        <p className="mt-2 text-sm text-text-muted">
-          封存的行程會移到「已封存」，隨時可以取消封存。
-        </p>
-        <textarea
-          autoFocus
-          aria-label="封存備註"
-          placeholder="封存備註（選填）"
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-          rows={3}
-          className={`${inputClass} mt-3 w-full`}
-        />
-        <div className="mt-5 flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => onConfirm(archivePatch(note))}
-            className="rounded-md bg-brand px-4 font-medium text-on-brand"
-          >
-            封存
-          </button>
-          <button type="button" onClick={onCancel} className="px-4 text-text-muted">
-            取消
-          </button>
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -300,16 +269,7 @@ function PackingListLink({ leg, onLink }) {
     enabled: editing,
   })
 
-  const choices = []
-  if (lists.data) {
-    const seen = new Set()
-    for (const list of [...lists.data.recent, ...lists.data.saved, ...lists.data.templates]) {
-      if (!seen.has(list.id)) {
-        seen.add(list.id)
-        choices.push(list)
-      }
-    }
-  }
+  const choices = lists.data ? everyRow(lists.data) : []
 
   const choose = async (value) => {
     try {
@@ -604,9 +564,9 @@ function AddLeg({ onAdd }) {
 }
 
 /**
- * A name field, an optional 從範本 and + 新增行程. A template with legs needs
- * a 出發日期, the Taipei day its first leg moves to. With `onCancel`, Escape
- * and 取消 close it.
+ * A name field, 一般 or 範本, an optional 從範本 and + 新增行程. A template
+ * with legs needs a 出發日期, the Taipei day its first leg moves to. With
+ * `onCancel`, Escape and 取消 close it.
  */
 function CreateTrip({
   templates = [],
@@ -616,6 +576,7 @@ function CreateTrip({
   className = 'justify-center',
 }) {
   const [name, setName] = useState('')
+  const [kind, setKind] = useState('free')
   const [templateId, setTemplateId] = useState('')
   const [startDate, setStartDate] = useState('')
   const template = templates.find((row) => String(row.id) === templateId)
@@ -624,7 +585,7 @@ function CreateTrip({
 
   const submit = () => {
     if (!ready) return
-    const payload = { name: name.trim() }
+    const payload = { name: name.trim(), kind }
     if (template) {
       payload.copy_from_id = template.id
       if (dateNeeded) payload.start_date = startDate
@@ -642,6 +603,15 @@ function CreateTrip({
         onKeyDown={keysFor(submit, onCancel ?? (() => setName('')))}
         className={`${inputClass} w-48`}
       />
+      <select
+        aria-label="類型"
+        value={kind}
+        onChange={(event) => setKind(event.target.value)}
+        className={inputClass}
+      >
+        <option value="free">{KIND_LABELS.free}</option>
+        <option value="template">{KIND_LABELS.template}</option>
+      </select>
       {templates.length > 0 && (
         <select
           aria-label="從範本"
@@ -702,6 +672,10 @@ function NewTrip({ templates, onCreate }) {
   )
 }
 
+/**
+ * One row per trip, linking to it with its date range. A 一般 trip shows its
+ * 狀態; with `note`, the first line of 保存備註 follows the name.
+ */
 function TripLinks({ trips, note = false }) {
   return (
     <ul className="m-0 mt-2 list-none p-0">
@@ -710,6 +684,9 @@ function TripLinks({ trips, note = false }) {
           <Link to={`/trips/${trip.id}`} className="flex justify-between gap-3 py-1.5 text-brand">
             <span className="min-w-0">
               {trip.name}
+              {trip.kind === 'free' && (
+                <span className={`${badge} ml-2`}>{USAGE_LABELS[trip.usage]}</span>
+              )}
               {note && trip.archive_note && (
                 <span className="ml-2 text-sm text-text-faint">{firstLine(trip.archive_note)}</span>
               )}
@@ -725,37 +702,43 @@ function TripLinks({ trips, note = false }) {
 }
 
 /**
- * Every trip but the one on screen: 其他行程 (past and future alike, so not
- * "past"), 範本, and 已封存 collapsed. With `onCreate` 其他行程 is shown even
- * when empty, to hold + 新增行程.
+ * Every trip but the one on screen: 一般, 保存 and 範本, then the link to
+ * 自動保存的行程, which has a page of its own because that is where old trips
+ * pile up. With `onCreate` 一般 is shown even when empty, to hold + 新增行程.
  */
-function TripSections({ trips, currentId, templates, onCreate }) {
-  const { others, templates: templateTrips, archived } = partitionTrips(trips, currentId)
+function TripSections({ index, currentId, templates, onCreate }) {
+  const others = (rows) => rows.filter((trip) => trip.id !== currentId)
+  const free = others(index.free)
+  const saved = others(index.saved)
+  const templateTrips = others(index.templates)
   return (
     <>
-      {(others.length > 0 || onCreate) && (
+      {(free.length > 0 || onCreate) && (
         <section className="mt-10 border-t border-border pt-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="m-0 text-base font-semibold">其他行程</h2>
+            <h2 className="m-0 text-base font-semibold">{KIND_LABELS.free}</h2>
             {onCreate && <NewTrip templates={templates} onCreate={onCreate} />}
           </div>
-          <TripLinks trips={others} />
+          <TripLinks trips={free} />
+        </section>
+      )}
+      {saved.length > 0 && (
+        <section className="mt-6 border-t border-border pt-4">
+          <h2 className="m-0 text-base font-semibold">{KIND_LABELS.saved}</h2>
+          <TripLinks trips={saved} note />
         </section>
       )}
       {templateTrips.length > 0 && (
         <section className="mt-6 border-t border-border pt-4">
-          <h2 className="m-0 text-base font-semibold">範本</h2>
+          <h2 className="m-0 text-base font-semibold">{KIND_LABELS.template}</h2>
           <TripLinks trips={templateTrips} />
         </section>
       )}
-      {archived.length > 0 && (
-        <details className="mt-6 border-t border-border pt-4">
-          <summary className="cursor-pointer text-base font-semibold">
-            已封存（{archived.length}）
-          </summary>
-          <TripLinks trips={archived} note />
-        </details>
-      )}
+      <p className="mt-6 border-t border-border pt-4">
+        <Link to="/trips/auto-saved" className="text-brand">
+          自動保存的行程（{index.auto_saved.length} / {AUTO_SAVE_LIMIT.trips}）→
+        </Link>
+      </p>
     </>
   )
 }
@@ -769,16 +752,32 @@ function TripView({
   unlinked,
   ticketTypes,
   actions,
+  refusal,
+  onRefusalSettled,
   onCreateTrip,
   onDeleted,
   onDismissNotice,
   onLeavingCurrent,
 }) {
   const [confirming, setConfirming] = useState(false)
-  const [archiving, setArchiving] = useState(false)
+  const [confirmingUnsave, setConfirmingUnsave] = useState(false)
   const legs = sortLegs(trip.legs)
   const patchTrip = (changes, onSuccess) =>
     actions.patchTrip.mutate({ id: trip.id, changes }, { onSuccess })
+  // 保存, or a 狀態 that is not current, takes the trip on /trip out of being
+  // the current one; `onLeavingCurrent` keeps it on screen.
+  const patchKind = (changes) =>
+    patchTrip(changes, leavesCurrent(changes) ? onLeavingCurrent : undefined)
+  // 當作範本 copies the legs on the same dates: the source's own first day is
+  // the start date the copy rule moves them to.
+  const makeTemplate = () =>
+    onCreateTrip({
+      name: templateName(trip.name),
+      kind: 'template',
+      copy_from_id: trip.id,
+      ...(legs.length ? { start_date: taipeiInputValue(legs[0].departs_at).slice(0, 10) } : {}),
+    })
+  const evicting = allTrips?.evict_next ?? []
 
   return (
     <>
@@ -791,24 +790,23 @@ function TripView({
               onCommit={required((name) => patchTrip({ name }))}
             />
           </span>
-          {trip.archived && <span className={badge}>已封存</span>}
-          {trip.template && <span className={badge}>範本</span>}
+          {badgeFor(trip) && <span className={badge}>{badgeFor(trip)}</span>}
         </h1>
         <TripMenu
           trip={trip}
-          onArchive={() => setArchiving(true)}
-          onUnarchive={() => patchTrip({ archived: false })}
-          onToggleTemplate={() =>
-            patchTrip({ template: !trip.template }, trip.template ? undefined : onLeavingCurrent)
+          onToggleSaved={() =>
+            trip.kind === 'saved' ? setConfirmingUnsave(true) : patchKind({ kind: 'saved' })
           }
+          onMakeTemplate={makeTemplate}
           onDelete={() => setConfirming(true)}
         />
       </div>
+      <KindControls row={trip} noun="行程" onPatch={patchKind} onMakeTemplate={makeTemplate} />
       <TextCell value={trip.notes} placeholder="備註" onCommit={(notes) => patchTrip({ notes })} />
-      {(trip.archived || trip.archive_note) && (
+      {(trip.kind === 'saved' || isAutoSaved(trip) || trip.archive_note) && (
         <TextCell
           value={trip.archive_note}
-          placeholder="封存備註"
+          placeholder="保存備註"
           onCommit={(archive_note) => patchTrip({ archive_note })}
         />
       )}
@@ -822,21 +820,48 @@ function TripView({
         <AddLeg onAdd={(payload) => actions.addLeg.mutateAsync({ tripId: trip.id, payload })} />
       </div>
 
-      <TripSections
-        trips={allTrips}
-        currentId={trip.id}
-        templates={templates}
-        onCreate={onCreateTrip}
-      />
+      {allTrips && (
+        <TripSections
+          index={allTrips}
+          currentId={trip.id}
+          templates={templates}
+          onCreate={onCreateTrip}
+        />
+      )}
 
-      {archiving && (
-        <ArchiveDialog
-          trip={trip}
-          onConfirm={(changes) => {
-            setArchiving(false)
-            patchTrip(changes, onLeavingCurrent)
+      {refusal?.id === trip.id && (
+        <EvictDialog
+          noun="一個行程"
+          body={`自動保存最多 ${AUTO_SAVE_LIMIT.trips} 個行程。設為過去使用會刪除最舊的：`}
+          evicting={evicting}
+          onSaveInstead={async () => {
+            // Save the trip that would go, then retry unconfirmed: the retry
+            // succeeds because there is room, not because it was forced.
+            await Promise.all(
+              evicting.map((row) =>
+                actions.patchTrip.mutateAsync({ id: row.id, changes: { kind: 'saved' } }),
+              ),
+            )
+            onRefusalSettled()
+            patchKind(refusal.changes)
           }}
-          onCancel={() => setArchiving(false)}
+          onConfirm={() => {
+            onRefusalSettled()
+            patchKind({ ...refusal.changes, evict_confirmed: true })
+          }}
+          onCancel={onRefusalSettled}
+        />
+      )}
+      {confirmingUnsave && (
+        <ConfirmDialog
+          title={`取消保存「${trip.name}」？`}
+          body="取消保存後會回到一般行程（未使用）。"
+          confirmLabel="取消保存"
+          onConfirm={() => {
+            setConfirmingUnsave(false)
+            patchKind({ kind: 'free' })
+          }}
+          onCancel={() => setConfirmingUnsave(false)}
         />
       )}
       {confirming && (
@@ -859,6 +884,8 @@ export default function Trip() {
   const { tripId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  // A refused 過去使用, as { id, changes }: a decision to put to the person.
+  const [refusal, setRefusal] = useState(null)
 
   const trip = useApiQuery(
     tripId ? [...TRIPS, 'detail', tripId] : [...TRIPS, 'current'],
@@ -870,8 +897,12 @@ export default function Trip() {
   const options = useApiQuery(['label-options'], endpoints.labelOptions.index())
 
   const createTrip = useTripMutation((payload) => send(endpoints.trips.index(), 'POST', payload))
-  const patchTrip = useTripMutation(({ id, changes }) =>
-    send(endpoints.trips.detail(id), 'PATCH', changes),
+  const patchTrip = useTripMutation(
+    ({ id, changes }) => send(endpoints.trips.detail(id), 'PATCH', changes),
+    // A 409 is a decision to put to the person, not a failure to report.
+    (error, variables) => {
+      if (hasStatus(error, 409)) setRefusal(variables)
+    },
   )
   const deleteTrip = useTripMutation((id) => send(endpoints.trips.detail(id), 'DELETE'))
   const addLeg = useTripMutation(({ tripId: id, payload }) =>
@@ -884,13 +915,13 @@ export default function Trip() {
 
   const openNewTrip = (payload) =>
     createTrip.mutate(payload, {
-      // A trip with no legs is never the current one, and a copy may not be
-      // either, so the new trip is opened by its own address. What the copy
-      // could not carry rides along in the navigation state.
+      // A new trip is 未使用 or a 範本, so it is never the current one: it is
+      // opened by its own address. What the copy could not carry rides along
+      // in the navigation state.
       onSuccess: (created) =>
         navigate(`/trips/${created.id}`, { state: { unlinked: created.unlinked_from } }),
     })
-  const templates = templateChoices(all.data ?? [])
+  const templates = all.data?.templates ?? []
 
   if (trip.isLoading) return <LoadingState label="載入行程中…" />
 
@@ -907,9 +938,9 @@ export default function Trip() {
       <>
         <h1 className="m-0 text-xl font-semibold">行程</h1>
         <EmptyState action={<CreateTrip templates={templates} onCreate={openNewTrip} />}>
-          還沒有進行中的行程。
+          目前沒有使用中或未來使用的行程。
         </EmptyState>
-        <TripSections trips={all.data ?? []} currentId={null} templates={templates} />
+        {all.data && <TripSections index={all.data} currentId={null} templates={templates} />}
       </>,
     )
   }
@@ -923,17 +954,20 @@ export default function Trip() {
     <TripView
       key={trip.data.id}
       trip={trip.data}
-      allTrips={all.data ?? []}
+      allTrips={all.data}
       templates={templates}
       unlinked={location.state?.unlinked}
       ticketTypes={ticketTypes}
       actions={actions}
+      refusal={refusal}
+      onRefusalSettled={() => setRefusal(null)}
       onCreateTrip={openNewTrip}
       onDeleted={() => navigate('/trip')}
       // Cleared rather than hidden, so Back and a reload do not bring it back.
       onDismissNotice={() => navigate(location.pathname, { replace: true, state: null })}
-      // An archived trip or a template is never current, so on /trip it would
-      // vanish under the click; keep it on screen by its own address.
+      // On /trip, a trip that stops being current (保存, or a 狀態 other than
+      // 使用中 / 未來使用) would vanish under the click; keep it on screen by
+      // its own address.
       onLeavingCurrent={
         tripId ? undefined : () => navigate(`/trips/${trip.data.id}`, { replace: true })
       }

@@ -15,9 +15,9 @@ def at(value):
 
 def make_source(client):
     """A source trip with every reset field SET, so a reset that fails to
-    happen shows up: ticked, coded, seated, linked, archived, templated."""
+    happen shows up: ticked, coded, seated, linked, saved with a remark."""
     source = client.post("/api/trips", json={"name": "範本", "notes": "帶身分證"}).json()
-    lst = client.post("/api/packing-lists", json={"name": "台北去彰化", "saved": True}).json()
+    lst = client.post("/api/packing-lists", json={"name": "台北去彰化"}).json()
     legs = [
         # Crosses Taipei midnight, and departs at 23:30 Taipei = 15:30 UTC.
         {"from_place": "台北車站", "to_place": "彰化火車站",
@@ -32,8 +32,13 @@ def make_source(client):
     for leg in legs:
         assert client.post(f"/api/trips/{source['id']}/legs", json=leg).status_code == 201
     client.patch(f"/api/trips/{source['id']}",
-                 json={"template": True, "archived": True, "archive_note": "舊的"})
+                 json={"kind": "saved", "archive_note": "舊的"})
     return client.get(f"/api/trips/{source['id']}").json()
+
+
+def trip_count(client):
+    index = client.get("/api/trips").json()
+    return sum(len(index[shelf]) for shelf in ("free", "auto_saved", "saved", "templates"))
 
 
 def copy(client, source, **body):
@@ -47,7 +52,7 @@ def test_the_definition_carries_and_the_state_resets(client):
     new = response.json()
 
     assert (new["name"], new["notes"]) == ("新行程", "帶身分證")
-    assert (new["archived"], new["archive_note"], new["template"]) == (False, None, False)
+    assert (new["kind"], new["usage"], new["archive_note"]) == ("free", "unused", None)
 
     first, second = new["legs"]
     assert (first["from_place"], first["to_place"]) == ("台北車站", "彰化火車站")
@@ -105,20 +110,20 @@ def test_the_source_is_unchanged(client):
 
 def test_a_source_with_legs_and_no_start_date_is_a_422_and_writes_nothing(client):
     source = make_source(client)
-    before = len(client.get("/api/trips").json())
+    before = trip_count(client)
     response = copy(client, source)
     assert response.status_code == 422
     assert response.json()["detail"] == "start_date is required to copy a trip with legs."
-    assert len(client.get("/api/trips").json()) == before
+    assert trip_count(client) == before
 
 
 def test_an_unknown_source_is_a_404_and_writes_nothing(client):
-    before = len(client.get("/api/trips").json())
+    before = trip_count(client)
     response = client.post("/api/trips", json={"name": "x", "copy_from_id": 999999,
                                                "start_date": "2026-10-08"})
     assert response.status_code == 404
     assert response.json()["detail"] == "Trip to copy from not found."
-    assert len(client.get("/api/trips").json()) == before
+    assert trip_count(client) == before
 
 
 def test_a_legless_source_needs_no_start_date(client):
@@ -143,3 +148,19 @@ def test_the_requests_own_notes_win_over_the_sources(client):
 def test_a_malformed_start_date_is_a_422(client, bad):
     source = make_source(client)
     assert copy(client, source, start_date=bad).status_code == 422
+
+
+def test_copying_as_a_template_keeps_the_dates_when_given_the_first_day(client):
+    # 當作範本: the client sends the source's own first day as start_date.
+    source = client.post("/api/trips", json={"name": "s"}).json()
+    client.post(f"/api/trips/{source['id']}/legs", json={
+        "from_place": "a", "to_place": "b",
+        "departs_at": f"2026-09-24T18:06:00{TPE}", "arrives_at": f"2026-09-24T20:59:00{TPE}"})
+    response = client.post("/api/trips", json={"name": "s（範本）", "kind": "template",
+                                               "copy_from_id": source["id"],
+                                               "start_date": "2026-09-24"})
+    assert response.status_code == 201
+    new = response.json()
+    assert (new["kind"], new["usage"]) == ("template", None)
+    assert at(new["legs"][0]["departs_at"]) == at(f"2026-09-24T18:06:00{TPE}")
+    assert client.get(f"/api/trips/{source['id']}").json()["kind"] == "free"  # the source stays

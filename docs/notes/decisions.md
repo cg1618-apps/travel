@@ -33,13 +33,13 @@ as they bind this app:
   shareable, a `visibility` field from the first migration, and share tokens
   rather than accounts. All three are nearly free now and expensive to
   retrofit; none of them is implemented until sharing is actually wanted.
-- **Archived and template trips are flags on `trip`**, the way `saved` and
-  `template` are on `packing_list`, rather than a separate template table: a
-  template *is* a trip, edited on the same page. `archive_note` is kept apart
-  from `notes` because one is written before the trip and the other after.
-  Archiving is manual and reversible and locks nothing; archiving
-  automatically once the last leg ended, and a read-only archived state, were
-  both considered and not wanted.
+- **Saved and template trips are kinds of `trip`**, as they are of
+  `packing_list`, rather than a separate template table: a template *is* a
+  trip, edited on the same page. `archive_note` (保存備註) is kept apart from
+  `notes` because one is written before the trip and the other after. Saving
+  and a trip's 狀態 are set by hand, are reversible and lock nothing; moving a
+  trip on automatically once its last leg ended, and a read-only saved state,
+  were both considered and not wanted. See "Kinds replace flags" below.
 - **A copied trip moves to a start date and does not take the lists.** Its
   legs shift by whole Taipei days so clock times and gaps survive — the same
   idea as the sheet import's `--trip-start`. Copying the linked packing lists
@@ -99,7 +99,7 @@ reader can tell a decision from an accident.
 
 - **Timestamps come from the database clock (`server_default=now()`); media
   defaults them in Python from a Taipei-now helper.** Media displays them.
-  Nothing here does — `created_at` exists to order the cap's eviction — so the
+  Nothing here does — `created_at` only orders the packing-list index — so the
   database clock is correct for a row written by a migration or by hand as well
   as by the app, and needs no helper.
 
@@ -250,11 +250,12 @@ three below are still sketches, or were superseded.
   superseded the nullable `trip_id` this sketch first proposed. The same
   instinct as `food`'s ingredient stubs: the app must never demand bookkeeping
   before it is useful.
-- **Lists are disposable; templates are kept.** The three most recent lists
-  stay available to copy from, older ones fall away, and a list worth keeping
-  is promoted to a template explicitly. Without that, "copy a previous list"
-  degrades into a wall of forty names and stops being used — which would take
-  the most valuable feature with it.
+- **Lists are disposable; templates and saved lists are kept.** A finished
+  list marked 過去使用 is auto-saved, only the most recent five slots of those
+  stay, older ones fall away, and a list worth keeping is saved or made a
+  template explicitly. Without that, "copy a previous list" degrades into a
+  wall of forty names and stops being used — which would take the most
+  valuable feature with it.
 - **A round trip is two ordinary lists that know about each other.** Pairing is
   navigational: it lets the two be viewed together and says nothing more. There
   is deliberately **no logic across the pair** — nothing infers that something
@@ -266,7 +267,7 @@ three below are still sketches, or were superseded.
 - **A shared `pair_id`, not a `paired_list_id` self-pointer.** Designed as a
   self-reference and built as a shared key, for two reasons found while
   writing it: a pointer holds two copies of one fact and can desync — A points
-  at B while B points at C, and nothing complains — and the cap counts a pair
+  at B while B points at C, and nothing complains — and 自動保存 counts a pair
   as one slot, which is a distinct-count against a shared key but an awkward
   self-join against a pointer.
 - **Rules and transport notes are tagged text, not structured records.** Rules
@@ -292,12 +293,11 @@ the share rather than of every row.
 
 The rejected alternatives, which the shipped code cannot show on its own.
 
-- **One list entity with two independent flags, not a separate template
-  table.** `saved` exempts a list from the cap; `template` offers it as a
-  starting point. A list can be both, either or neither, so promoting one is a
-  flag flip rather than a duplication, and there is no copying between kinds.
-  Rejected: templates as their own entity, which makes "keep this actual list
-  and also start from it" two rows that drift apart.
+- **One list entity with a `kind`, not a separate template table.** A
+  template is a list like any other, opened and edited on the same page.
+  Rejected: templates as their own entity, which needs a second set of
+  endpoints and screens for what is the same shape of data. 當作範本 does copy
+  — see "Kinds replace flags" below for why that is now wanted.
 
 - **There is no "always packed" marker.** It was in the original design and was
   removed before anything was built. Nothing is unconditionally packed — the
@@ -305,8 +305,8 @@ The rejected alternatives, which the shipped code cannot show on its own.
   set of things on every list is a property of the *template chosen for this
   trip*, not of the item. Templates already do that job, and two mechanisms for
   one job is how they drift apart. It also had no answerable seed source: the
-  lists whose always-items the union would be read from are the ones the cap
-  deletes.
+  lists whose always-items the union would be read from are the ones
+  自動保存 drops.
 
 - **Status is a triple, not a boolean.** Without `no_need` a list never reads
   as finished, and the items left unticked cannot say whether they are
@@ -334,11 +334,13 @@ The rejected alternatives, which the shipped code cannot show on its own.
   whenever a quantity is set, which is one source of truth and no way to say
   "three is enough".
 
-- **A pair counts as one slot against the cap.** The pair is how a trip is
-  actually thought about; charging it two would punish the round trip for being
-  modelled honestly.
+- **A pair counts as one 自動保存 slot.** The pair is how a trip is actually
+  thought about; charging it two would punish the round trip for being
+  modelled honestly. Dropping the slot deletes only the auto-saved halves: a
+  half still 使用中 was never in the queue.
 
-- **Eviction refuses before it deletes, and the refusal is a plain string.**
+- **Dropping a slot refuses before it deletes, and the refusal is a plain
+  string.**
   `detail` is a plain string on every refusal a router raises, matching media
   (only FastAPI's own schema `422` is a list), so the ids the
   confirmation dialog needs arrive as `evict_next` on the index instead — data
@@ -401,12 +403,13 @@ the four tabs in scope (`彰化回台北`, `台北去彰化`, `Transportation`,
   intended. That intention is superseded: a trip with several legs needs to say
   *which journey* a list is for, and only the leg knows.
 
-- **The current trip is the one with the soonest leg still ahead, and it
-  switches trips mid-journey.** While one trip's leg is in progress, a trip with
-  a later leg is already current. This is a known, accepted consequence of
-  "soonest leg still ahead". The alternative, treating a trip as current until
-  its last leg arrives, needs an arbitrary rule for two overlapping trips; the
-  simple rule is predictable and overlapping trips are rare.
+- **The current trip follows its 狀態, not its dates.** The 使用中 trip, else
+  the 未來使用 one; legs only order trips within a group. It used to be the
+  trip with the soonest leg still ahead, else the one whose legs ended most
+  recently — which switched trips mid-journey (while one trip's leg was under
+  way, a trip with a later leg was already current), never chose a trip with no
+  legs, and kept showing a finished trip until something newer had a leg. A
+  status the owner sets says which trip is being taken; dates could only guess.
 
 - **Status is stored as three values and tapped as two.** `no_need` stays in
   the data because a decision not to pack is not the same as forgetting, and
@@ -466,3 +469,53 @@ the four tabs in scope (`彰化回台北`, `台北去彰化`, `Transportation`,
   is Asia/Taipei through `zoneinfo`, which reads the operating system's zone
   database — and Windows has none, so without `tzdata` the development machines
   cannot name the zone at all.
+
+## Kinds replace flags; 自動保存 is free + past
+
+Lists and trips used to carry independent booleans — `saved` and `template`
+on a list, `archived` and `template` on a trip — with a three-slot cap on
+"working" lists and a date rule for the current trip. `k1ind0000001` replaced
+all of it with one model shared by both tables: a `kind` (`template`, `saved`,
+`free`), a `usage` that only a `free` row has, and `auto_saved_at`. The rules
+are in `business-rules.md`; this is why.
+
+- **Impossible combinations are unstorable.** Two independent flags allowed a
+  saved template, an archived template and states the screens had to reconcile
+  (an archived template was listed as archived *and* offered by 從範本). One
+  `kind` column puts every row on exactly one shelf, and four check
+  constraints keep `usage` and `auto_saved_at` consistent with it.
+- **自動保存 is `kind = free AND usage = past`, not a fourth kind.** "A 一般 row
+  marked 過去使用 is auto-saved" is then true by construction rather than kept
+  in step by code, and leaving 過去使用 returns the row to 一般 with nothing
+  else to undo.
+- **One queue rule for two tables.** Lists and trips fill 自動保存 the same way
+  (`app/services/domain/auto_save.py`), differing only in the limit — five list
+  slots, ten trips — and in a pair of lists sharing a slot.
+- **封存 and 保存 were one idea under two words.** A trip was 封存 and a list
+  保存; both meant "keep this, it is done". Both are 保存 now, and the remark
+  written afterwards is 保存備註 on both.
+- **Templates are made by copying.** 當作範本 creates a new template from any
+  list or trip rather than flipping the original, so a template's kind never
+  changes and nothing becomes or stops being one by `PATCH`. On a trip it keeps the legs on their own dates.
+- **The current trip follows usage rather than dates** — see "The current trip
+  follows its 狀態" under "Sheet parity".
+
+Rejected:
+
+- **Keep the booleans and add a status.** Every impossible combination
+  survives, and a third column has to be kept consistent with two others.
+- **A table per kind.** Moving a list to 保存 would be a copy between tables,
+  its items and a leg's link with it, for what is a change of shelf.
+
+Two choices made in the migration and the importer:
+
+- **A row that was both saved (or archived) and a template becomes a template
+  only**, not a template plus a saved copy. Templates are never dropped, so
+  nothing is lost; a copy would mean duplicating items inside a migration for a
+  set that was probably empty. The downgrade cannot tell such a row apart, so
+  it comes back a template only.
+- **The sheet importer creates `free` rows, 未使用**, not saved ones. Under the
+  cap, saving was what kept the import from being evicted. Nothing is dropped
+  from 一般 any more — only from 自動保存, and only once a row is set to
+  過去使用 by hand — so there is nothing to protect them from, and an imported
+  list saved by default would have to be un-saved before it could be used.

@@ -39,3 +39,15 @@ export const LABEL_KIND_LABELS = {
 }
 export const BOOKING_LABELS = { booked: '已訂票', paid: '付款', collected: '取票' }
 export const ADVANCE_TICKET_LABELS = { true: '需要', false: '不需要' }
+
+/** Which shelf a list or trip is on. 自動保存 is free + past, not a stored kind. */
+export const KIND_LABELS = { template: '範本', saved: '保存', free: '一般' }
+export const AUTO_SAVED_LABEL = '自動保存'
+
+export const USAGES = ['in_use', 'upcoming', 'unused', 'past']
+export const USAGE_LABELS = {
+  in_use: '使用中',
+  upcoming: '未來使用',
+  unused: '未使用',
+  past: '過去使用',
+}
