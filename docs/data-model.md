@@ -211,13 +211,18 @@ before `weekday`), then `time`.
 ## `trip`
 
 A named group of journeys, such as a round trip. It holds no dates of its own;
-they belong to its legs.
+they belong to its legs. A trip can be archived once it is done with, and can
+be a template — a starting point for a new trip. The two flags are
+independent, like `saved` and `template` on `packing_list`.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | identity | |
 | `name` | text | no | | |
 | `notes` | text | yes | | |
+| `archived` | boolean | no | `false` | Out of 其他行程 and never current. Undone by clearing it; locks nothing. |
+| `archive_note` | text | yes | | 封存備註 — the remark written afterwards, separate from `notes`. Kept when the trip is un-archived. |
+| `template` | boolean | no | `false` | Offered as a starting point for a new trip. Never current. |
 | `visibility` | text | no | `private` | `private`, `unlisted`, `public`. A single trip is the thing expected to be shared. **Nothing reads this yet**, as with `packing_list.visibility`. |
 | `created_at` | timestamptz | no | `now()` | |
 | `updated_at` | timestamptz | no | `now()` | |

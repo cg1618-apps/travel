@@ -53,6 +53,7 @@ it **drops what it created and everything in it**. In chain order:
 | `t1ransport01` | `transport_route`, `transport_option` and `transport_departure` — the whole Transportation page. |
 | `t1rip0000001` | `trip` and `trip_leg` — every trip and booking, and every remembered `ticket_type` option. The packing lists they linked survive. |
 | `t2rip0000002` | Each trip's `visibility`. Nothing reads it yet, so nothing visible is lost. |
+| `t3rip0000003` | Each trip's `archived`, `archive_note` and `template` — every archive remark is lost, and archived trips and templates come back as ordinary trips. |
 
 So for a release that carried any of them:
 
