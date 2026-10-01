@@ -81,16 +81,16 @@ export function partitionTrips(trips, excludeId) {
 }
 
 /**
- * The dashboard's trips: every one not archived. The current trip first, then
- * the rest by their first departure (a trip with no legs after those with
- * some), then templates, which are kept but are never a trip being taken.
+ * The dashboard's trips: neither archived nor templates. The current trip
+ * first, then the rest by their first departure (a trip with no legs after
+ * those with some).
  */
 export function dashboardTrips(trips, currentId) {
   const firstDeparture = (trip) =>
     trip.legs.length ? Math.min(...trip.legs.map((leg) => new Date(leg.departs_at))) : Infinity
-  const rank = (trip) => (trip.id === currentId ? 0 : trip.template ? 2 : 1)
+  const rank = (trip) => (trip.id === currentId ? 0 : 1)
   return trips
-    .filter((trip) => !trip.archived)
+    .filter((trip) => !trip.archived && !trip.template)
     .sort((a, b) => rank(a) - rank(b) || firstDeparture(a) - firstDeparture(b))
 }
 

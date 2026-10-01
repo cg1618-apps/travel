@@ -2,9 +2,9 @@
  * The front page: what is in use right now.
  *
  * Two sections and nothing to edit. The lists in progress — the three the cap
- * counts — and every trip not archived, the current one first. Everything
- * else (saved lists, list templates, archived trips) is one click away on its
- * own page, which is where it is managed.
+ * counts — and every trip neither archived nor a template, the current one
+ * first. Nothing here adds anything: saved lists, templates, archived trips
+ * and every create form are on their own pages, where they are managed.
  */
 
 import { Link } from 'react-router-dom'
@@ -49,7 +49,7 @@ function Badge({ children }) {
 
 function Lists({ rows }) {
   if (rows.length === 0) {
-    return <Empty>目前沒有進行中的清單。到打包清單新增一份。</Empty>
+    return <Empty>目前沒有進行中的清單。</Empty>
   }
   const today = new Date()
   return (
@@ -77,7 +77,7 @@ function Lists({ rows }) {
 
 function Trips({ trips, currentId }) {
   if (trips.length === 0) {
-    return <Empty>還沒有行程。到行程新增一個。</Empty>
+    return <Empty>目前沒有行程。</Empty>
   }
   return (
     <ul className="m-0 list-none border-t border-border p-0">
@@ -90,7 +90,6 @@ function Trips({ trips, currentId }) {
             <span className="min-w-0">
               {trip.name}
               {trip.id === currentId && <Badge>目前</Badge>}
-              {trip.template && <Badge>範本</Badge>}
             </span>
             <span className="shrink-0 text-sm tabular-nums text-text-muted">
               {tripDateRange(trip.legs) ?? '沒有行程段'}

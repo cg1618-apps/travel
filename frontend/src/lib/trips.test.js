@@ -80,22 +80,19 @@ const t = (id, fields = {}) => ({ id, archived: false, template: false, legs: []
 
 describe('dashboardTrips', () => {
   const leg = (departsAt) => ({ departs_at: departsAt, arrives_at: departsAt })
-  it('leaves out archived trips, archived templates included', () => {
-    const trips = [t(1), t(2, { archived: true }), t(3, { archived: true, template: true })]
+  it('leaves out archived trips and templates', () => {
+    const trips = [t(1), t(2, { archived: true }), t(3, { template: true }),
+      t(4, { archived: true, template: true })]
     expect(dashboardTrips(trips, null).map((x) => x.id)).toEqual([1])
   })
-  it('puts the current trip first, then trips by first departure, then templates', () => {
+  it('puts the current trip first, then trips by first departure', () => {
     const trips = [
-      t(1, { template: true }),
       t(2, { legs: [leg('2026-12-01T09:00:00+08:00')] }),
       t(3),
       t(4, { legs: [leg('2026-11-01T09:00:00+08:00'), leg('2026-10-01T09:00:00+08:00')] }),
       t(5, { legs: [leg('2026-12-24T09:00:00+08:00')] }),
     ]
-    expect(dashboardTrips(trips, 5).map((x) => x.id)).toEqual([5, 4, 2, 3, 1])
-  })
-  it('orders without a current trip', () => {
-    expect(dashboardTrips([t(2), t(1, { template: true })], null).map((x) => x.id)).toEqual([2, 1])
+    expect(dashboardTrips(trips, 5).map((x) => x.id)).toEqual([5, 4, 2, 3])
   })
 })
 
