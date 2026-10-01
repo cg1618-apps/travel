@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
 
+import AutoSavedTrips from './pages/AutoSavedTrips'
 import Dashboard from './pages/Dashboard'
 import Options from './pages/Options'
 import PackingList from './pages/PackingList'
@@ -57,6 +58,8 @@ export default function App() {
           <Route path="/lists/:listId" element={<PackingList />} />
           <Route path="/transport" element={<Transport />} />
           <Route path="/trip" element={<Trip />} />
+          {/* Above /trips/:tripId, which would otherwise read it as an id. */}
+          <Route path="/trips/auto-saved" element={<AutoSavedTrips />} />
           <Route path="/trips/:tripId" element={<Trip />} />
           <Route path="/options" element={<Options />} />
           {/* The server's catch-all serves the bundle for any non-/api path,
