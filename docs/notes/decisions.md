@@ -33,6 +33,18 @@ as they bind this app:
   shareable, a `visibility` field from the first migration, and share tokens
   rather than accounts. All three are nearly free now and expensive to
   retrofit; none of them is implemented until sharing is actually wanted.
+- **Archived and template trips are flags on `trip`**, the way `saved` and
+  `template` are on `packing_list`, rather than a separate template table: a
+  template *is* a trip, edited on the same page. `archive_note` is kept apart
+  from `notes` because one is written before the trip and the other after.
+  Archiving is manual and reversible and locks nothing; archiving
+  automatically once the last leg ended, and a read-only archived state, were
+  both considered and not wanted.
+- **A copied trip moves to a start date and does not take the lists.** Its
+  legs shift by whole Taipei days so clock times and gaps survive — the same
+  idea as the sheet import's `--trip-start`. Copying the linked packing lists
+  as well was considered and declined: lists are linked by hand, so the copy
+  reports which legs had one instead (`unlinked_from`).
 
 ## Divergences from the media tracker
 

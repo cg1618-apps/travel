@@ -9,7 +9,7 @@ this way lives in `notes/decisions.md`.
 
 These live in `app/services/domain/`, not in the routers: the cap, copy and
 reset rules in `packing.py`, the common-options rules in `labels.py` and the
-current-trip rule in `trip.py`. The sheet importer is `app/services/sheet_import/`.
+current-trip and trip-copy rules in `trip.py`. The sheet importer is `app/services/sheet_import/`.
 A router owns wiring and status codes; a rule reimplemented in a second endpoint
 is a rule with two answers.
 
@@ -122,9 +122,42 @@ ahead, the trip whose legs ended most recently is. Ties go to the newer trip
 (the higher id), and a trip with no legs is never current. With no trips, or
 only leg-less ones, there is no current trip.
 
+**Archived trips and templates are never current**; they are left out before
+the rule runs, so an archived trip with a leg ahead does not take `/trip`. With
+every trip archived or a template there is no current trip.
+
 The rule looks at the soonest *future* leg, so it can switch trips mid-journey:
 while one trip's leg is under way, a trip with a leg still ahead is current. That
 is accepted; see `notes/decisions.md`.
+
+## Archiving a trip
+
+Archiving sets `archived` and nothing else. It does not check that the trip is
+over — a cancelled trip can be archived — and it locks nothing: an archived
+trip and its legs stay editable. Un-archiving clears the flag and leaves
+`archive_note` as it was.
+
+## Copying a trip
+
+A new trip may be copied from any trip; the page offers templates. **The
+definition carries; the state resets**, as with a packing list.
+
+| Carries | Resets |
+| --- | --- |
+| trip `notes` (unless the request sends its own); each leg's `from_place`, `to_place`, `service`, `service_number`, `price`, `ticket_type`, `notes`, and its times, shifted | `booked`, `paid`, `collected` → `false`; `booking_code`, `seat`, `packing_list_id` → null |
+
+The name comes from the request. The source's own `archived`, `archive_note`,
+`template` and `visibility` are not copied, so a copy of an archived template
+is an ordinary trip.
+
+**The shift.** `start_date` is a Taipei calendar day. Every leg moves by the
+whole days between it and the Taipei day of the source's earliest departure,
+so clock times and the gaps between legs survive; Taiwan keeps no daylight
+saving. The shift may be negative. A source with no legs needs no date.
+
+**Packing lists are not carried.** A list is linked from at most one leg, so a
+copy cannot share them. The create response's `unlinked_from` names each source
+leg that had one, and the page tells you to link a list yourself.
 
 ## The next departure
 

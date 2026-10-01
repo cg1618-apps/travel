@@ -215,11 +215,19 @@ refreshes the packing-list queries, because a linked list's date comes from
 its leg.
 
 - **No trip.** `/api/trips/current` answers 404, which the page treats as an
-  answer rather than an error: 還沒有行程。 with a name field. A trip with no
-  legs is never current, so a new trip opens at `/trips/{id}`. A
-  `/trips/{id}` that answers 404 reads 找不到這個行程。
-- **Header.** The name is a cell that cannot be emptied, then 備註; ⋯ 刪除行程
-  asks first.
+  answer rather than an error: 還沒有進行中的行程。 with the new-trip form,
+  and the 其他行程 / 範本 / 已封存 sections below it so archived trips and
+  templates stay reachable. A trip with no legs is never current, so a new
+  trip opens at `/trips/{id}`. A `/trips/{id}` that answers 404 reads
+  找不到這個行程。
+- **Header.** The name is a cell that cannot be emptied, with a 已封存 and/or
+  範本 badge beside it, then 備註. The ⋯ menu holds 封存 (or 取消封存),
+  設為範本 (or 取消範本) and 刪除行程, which asks first. 封存 opens a dialog
+  with an optional 封存備註, starting from any remark already written;
+  取消封存 needs no dialog and keeps the remark. An archived trip or a
+  template is never current, so 封存 or 設為範本 on `/trip` moves the page to
+  `/trips/{id}` rather than letting the trip vanish. While the trip is archived,
+  or whenever it has a remark, a 封存備註 cell sits under 備註.
 - **Legs** are cards in `departs_at` order. The top line is 起點 → 終點, each
   a cell; an emptied one keeps its value (`required` in `lib/cells.js`, as on
   Transportation and the trip's name). Under it the departure, the arrival
@@ -237,13 +245,25 @@ its leg.
   reads 由 This time 行程設定 for its date.
 - **Adding and deleting.** + 新增一段 takes the places and two Taipei times;
   ⋯ 刪除這段 asks first.
-- **其他行程** lists every other trip — earlier and later ones alike — with
-  its date range (`tripDateRange`) and links to it. On a trip's page the
-  heading carries **+ 新增行程**, which opens a name field; creating the trip
-  goes to `/trips/{id}`. It is the only way to a second trip, because once any
-  trip has legs `/trip` shows one rather than the empty state. With no current
-  trip the empty state offers the name field instead, and the heading is
-  omitted when there are no trips to list.
+- **Below the trip**, every other trip is in one of three sections
+  (`partitionTrips` in `lib/trips.js`), each row linking to the trip with its
+  date range (`tripDateRange`):
+  - **其他行程** — trips neither archived nor templates, earlier and later
+    alike.
+  - **範本** — templates.
+  - **已封存（n）** — archived trips, collapsed, each with the first line of
+    its 封存備註. An archived template is listed here.
+- **+ 新增行程** sits in the 其他行程 heading on a trip's page and is the only
+  way to a second trip, because once any trip has legs `/trip` shows one
+  rather than the empty state. It opens a name field and, when templates
+  exist, a 從範本 select of every template (archived ones included). Choosing
+  a template with legs adds a required 出發日期, the Taipei day its first leg
+  moves to. Creating goes to `/trips/{id}`; after a copy, a notice names each
+  template leg whose packing list was not carried
+  (「台北車站 → 彰化火車站」在範本中連結了「台北去彰化」，請自行連結打包清單。),
+  dismissed with 知道了. It travels in the navigation state, which 知道了
+  clears, so Back and a reload do not bring a dismissed one back. With no current trip the empty state offers the same form, and a
+  section is omitted when it has nothing to list.
 
 ## Mobile first
 

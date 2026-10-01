@@ -1,5 +1,7 @@
 """Trips and their legs, going in and coming out."""
 
+from datetime import date
+
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.base import NonNullableUpdate
@@ -75,13 +77,39 @@ class TripBase(BaseModel):
 
 
 class TripUpdate(NonNullableUpdate):
-    non_nullable = ("name",)
+    non_nullable = ("name", "archived", "template")
 
     name: str | None = Field(default=None, min_length=1)
     notes: str | None = None
+    archived: bool | None = None
+    archive_note: str | None = None
+    template: bool | None = None
 
 
 class TripResponse(TripBase):
     model_config = ConfigDict(from_attributes=True)
     id: int
+    archived: bool
+    archive_note: str | None = None
+    template: bool
     legs: list[TripLegResponse] = []
+
+
+class TripCreate(TripBase):
+    """`copy_from_id` copies another trip; `start_date` is the Taipei day its
+    first leg moves to, required when that trip has legs."""
+
+    copy_from_id: int | None = None
+    start_date: date | None = None
+
+
+class UnlinkedLeg(BaseModel):
+    """A source leg whose packing list the copy did not carry."""
+
+    from_place: str
+    to_place: str
+    packing_list_name: str
+
+
+class TripCreated(TripResponse):
+    unlinked_from: list[UnlinkedLeg] = []
