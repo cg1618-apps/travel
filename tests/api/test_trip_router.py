@@ -45,7 +45,7 @@ def test_a_naive_time_is_a_422(client, trip):
 
 
 def test_a_list_can_be_linked_from_only_one_leg(client, trip):
-    lst = client.post("/api/packing-lists", json={"name": "彰化回台北", "saved": True}).json()
+    lst = client.post("/api/packing-lists", json={"name": "彰化回台北"}).json()
     assert add_leg(client, trip, packing_list_id=lst["id"]).status_code == 201
     second = add_leg(client, trip, departs=f"2026-09-28T12:15:00{TPE}",
                      arrives=f"2026-09-28T14:23:00{TPE}", packing_list_id=lst["id"])
@@ -61,7 +61,7 @@ def test_linking_a_missing_list_is_a_404(client, trip):
 
 def test_a_linked_list_takes_the_taipei_date_of_its_leg(client, trip):
     lst = client.post("/api/packing-lists",
-                      json={"name": "l", "saved": True, "departure_at": "2026-01-01"}).json()
+                      json={"name": "l", "departure_at": "2026-01-01"}).json()
     # 00:30 in Taipei is 16:30 the previous day in UTC: this is the case that
     # makes the timezone bite.
     add_leg(client, trip, departs=f"2026-09-24T00:30:00{TPE}", arrives=f"2026-09-24T03:00:00{TPE}",
@@ -73,13 +73,13 @@ def test_a_linked_list_takes_the_taipei_date_of_its_leg(client, trip):
 
 def test_an_unlinked_list_keeps_its_own_date(client):
     lst = client.post("/api/packing-lists",
-                      json={"name": "l", "saved": True, "departure_at": "2026-01-01"}).json()
+                      json={"name": "l", "departure_at": "2026-01-01"}).json()
     body = client.get(f"/api/packing-lists/{lst['id']}").json()
     assert (body["departure_at"], body["departure_source"]) == ("2026-01-01", "list")
 
 
 def test_deleting_a_linked_list_keeps_the_leg(client, trip):
-    lst = client.post("/api/packing-lists", json={"name": "l", "saved": True}).json()
+    lst = client.post("/api/packing-lists", json={"name": "l"}).json()
     leg = add_leg(client, trip, packing_list_id=lst["id"]).json()
     assert client.delete(f"/api/packing-lists/{lst['id']}").status_code == 204
     legs = client.get(f"/api/trips/{trip['id']}").json()["legs"]
@@ -185,7 +185,7 @@ def test_the_current_endpoint_is_404_when_there_is_none(client):
 
 
 def test_a_patch_that_keeps_its_own_list_link_is_not_a_collision(client, trip):
-    lst = client.post("/api/packing-lists", json={"name": "l", "saved": True}).json()
+    lst = client.post("/api/packing-lists", json={"name": "l"}).json()
     leg = add_leg(client, trip, packing_list_id=lst["id"]).json()
     response = client.patch(
         f"/api/trip-legs/{leg['id']}", json={"packing_list_id": lst["id"], "seat": "1A"}
@@ -195,7 +195,7 @@ def test_a_patch_that_keeps_its_own_list_link_is_not_a_collision(client, trip):
 
 
 def test_a_patch_onto_another_legs_list_is_a_409(client, trip):
-    lst = client.post("/api/packing-lists", json={"name": "l", "saved": True}).json()
+    lst = client.post("/api/packing-lists", json={"name": "l"}).json()
     add_leg(client, trip, packing_list_id=lst["id"])
     other = add_leg(
         client, trip, departs=f"2026-09-28T12:15:00{TPE}", arrives=f"2026-09-28T14:23:00{TPE}"
@@ -207,7 +207,7 @@ def test_a_patch_onto_another_legs_list_is_a_409(client, trip):
 
 
 def test_a_patch_can_unlink_a_list(client, trip):
-    lst = client.post("/api/packing-lists", json={"name": "l", "saved": True}).json()
+    lst = client.post("/api/packing-lists", json={"name": "l"}).json()
     leg = add_leg(client, trip, packing_list_id=lst["id"]).json()
     response = client.patch(f"/api/trip-legs/{leg['id']}", json={"packing_list_id": None})
     assert response.status_code == 200
@@ -215,7 +215,7 @@ def test_a_patch_can_unlink_a_list(client, trip):
 
 
 def test_a_leg_response_names_its_list(client, trip):
-    lst = client.post("/api/packing-lists", json={"name": "彰化回台北", "saved": True}).json()
+    lst = client.post("/api/packing-lists", json={"name": "彰化回台北"}).json()
     leg = add_leg(client, trip, packing_list_id=lst["id"]).json()
     assert leg["packing_list_name"] == "彰化回台北"
 

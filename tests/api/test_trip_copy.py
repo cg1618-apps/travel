@@ -17,7 +17,7 @@ def make_source(client):
     """A source trip with every reset field SET, so a reset that fails to
     happen shows up: ticked, coded, seated, linked, archived, templated."""
     source = client.post("/api/trips", json={"name": "範本", "notes": "帶身分證"}).json()
-    lst = client.post("/api/packing-lists", json={"name": "台北去彰化", "saved": True}).json()
+    lst = client.post("/api/packing-lists", json={"name": "台北去彰化"}).json()
     legs = [
         # Crosses Taipei midnight, and departs at 23:30 Taipei = 15:30 UTC.
         {"from_place": "台北車站", "to_place": "彰化火車站",
