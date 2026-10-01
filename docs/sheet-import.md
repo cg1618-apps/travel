@@ -10,9 +10,9 @@ Four tabs are read; any other tab is ignored. Tables are described in
 
 | Tab | Becomes |
 | --- | --- |
-| `彰化回台北`, `台北去彰化` | Two saved packing lists forming a round-trip pair (`return` and `outbound`, sharing one `pair_id`), with their items in row order. |
+| `彰化回台北`, `台北去彰化` | Two packing lists forming a round-trip pair (`return` and `outbound`, sharing one `pair_id`), with their items in row order. Both are `saved`, so the three-list cap can never evict what the import loaded. |
 | `Transportation` | Transport routes grouped by (`目標起點`, `目標終點`) in first-seen order, each with its options and departure times. |
-| `This time` | One trip whose legs are the rows, each linked to the packing list for its journey. |
+| `This time` | One trip whose legs are the rows, each linked to the packing list for its journey: the list whose name, split at 去 or 回, has its first half starting the leg's 出發地點 and its second half starting its 目的地 (`彰化回台北` for 彰化火車站 → 台北車站). |
 
 Columns are found by the text of the header row, so inserting a column in the
 sheet does not break the import.
@@ -31,12 +31,16 @@ venv/Scripts/python.exe -m scripts.import_sheet export.xlsx --trip-start 2026-09
 venv/Scripts/python.exe -m scripts.import_sheet export.xlsx --trip-start 2026-09-24
 ```
 
+The `This time` tab's 時間 cell holds a weekday and two clock times, such as
+`Thu 18:06-20:59`, and no date, so the date is supplied on the command line.
 `--trip-start` is the date of the first `This time` leg, and its weekday must
 match that leg's weekday (`Thu` for 2026-09-24) or the import stops. Each later
 leg takes the next date on or after the previous leg with its own weekday.
 Times are Asia/Taipei. `--trip-name` defaults to `彰化 ⇄ 台北`.
 
-`--dry-run` parses, writes inside a transaction, prints the counts and the
+Everything is written in **one transaction**, committed once at the end: a
+refusal or an error part-way through leaves the database as it was.
+`--dry-run` parses, writes inside that transaction, prints the counts and the
 notes, and rolls back.
 
 The import **refuses, and writes nothing**, when the database already holds a

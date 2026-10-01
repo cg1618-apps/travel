@@ -1,6 +1,6 @@
 # Testing
 
-Last verified: 2026-09-19
+Last verified: 2026-10-01
 
 **What this is for.** How this application's tests are laid out, what each
 fixture gives you, and the two rules that decide whether a test is worth
@@ -28,7 +28,7 @@ applications share one PostgreSQL, and concurrent runs produce
 breakage. Take the machine-wide lock:
 
 ```bash
-LOCK=/c/Users/cgent/AppData/Local/Temp/anime_site_pytest.lock
+LOCK=/c/Users/$USERNAME/AppData/Local/Temp/anime_site_pytest.lock
 until mkdir "$LOCK" 2>/dev/null; do sleep 10; done
 venv/Scripts/python.exe -m pytest tests/ -q; rc=$?
 rmdir "$LOCK"; exit $rc
@@ -46,6 +46,13 @@ Defined in `tests/api/conftest.py`.
 | `engine` | session | An engine bound to it. |
 | `db_session` | function | A `Session` inside a transaction that is rolled back on teardown, so no test sees another's rows. |
 | `client` | function | A `TestClient` whose requests run inside that same transaction. |
+
+`tests/sheet_fixture.py` builds, in memory, a small workbook shaped like the
+owner's sheet — the four tabs with their real headers, one ignored tab, and
+rows carrying the sheet's quirks: inherited blank cells, an item named `無`,
+float numbers, a day-fraction time, `*` and `...` departure cells, a route with
+no end and one with no mode. The parser and writer tests share it, so no
+`.xlsx` is ever committed.
 
 `tests/conftest.py` holds `admin_url(database)`, which derives an
 administrative connection URL from the app's own settings rather than
@@ -131,6 +138,21 @@ setting; it is the only reason the cap's refusal can fail.
 
 Assert the mirror case with the same fixture. A green then proves the rule did
 the refusing, rather than an empty table doing it for free.
+
+The same holds for a rule that **leaves something alone**. Each of these has a
+row in its fixture that exists only so the test can fail, marked
+`Load-bearing` in a comment:
+
+- `test_a_reset_unpacks_clears_counts_and_checks_but_leaves_no_need_alone`
+  holds a `no_need` item; without one it cannot tell "left alone" from "never
+  there".
+- `test_after_id_does_not_move_another_lists_items` gives the other list
+  items past position 0, so a shift that leaked across lists would show.
+- `test_an_import_refuses_when_any_target_exists_and_writes_nothing` seeds one
+  route and nothing else, so the refusal has to come from the route check.
+- `test_a_linked_list_takes_the_taipei_date_of_its_leg` departs at 00:30
+  Taipei, which is the previous day in UTC; a daytime departure is the same
+  date in both zones and would pass with the zone read wrong.
 
 Two more of the same shape arrived with the logging contract, and both are
 easy to read as decoration:

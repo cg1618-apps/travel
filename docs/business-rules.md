@@ -126,6 +126,17 @@ The rule looks at the soonest *future* leg, so it can switch trips mid-journey:
 while one trip's leg is under way, a trip with a leg still ahead is current. That
 is accepted; see `notes/decisions.md`.
 
+## The next departure
+
+The Transportation page marks, on each option, the next departure from now. It
+looks only at today's day type — `weekday` Monday to Friday, `holiday` Saturday
+and Sunday — and picks the earliest time at or after the current minute. Both
+the weekday and the minute are read in Asia/Taipei, whatever zone the device is
+in. With nothing left today, nothing is marked: the rule does not roll over to
+tomorrow's first run. Public holidays are not modelled, so a national holiday
+on a weekday reads the weekday row. The rule is `nextDeparture` in
+`frontend/src/lib/departures.js`.
+
 ## Departure source
 
 A list linked from a trip leg takes that leg's departure as its date: the

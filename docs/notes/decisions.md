@@ -436,3 +436,19 @@ the four tabs in scope (`彰化回台北`, `台北去彰化`, `Transportation`,
   does not render one, but the column, its option kind and the copy rule stay.
   Removing it would be a destructive migration for a field the owner may want
   back, and leaving it costs nothing.
+
+- **A trip carries `visibility`, added by its own revision.** A single trip's
+  information is the thing expected to be shared, so `trip` carries `private` /
+  `unlisted` / `public` like `packing_list`, everything `private`, and nothing
+  reads it yet. `t1rip0000001` shipped without it; the column arrived as
+  `t2rip0000002` rather than as an edit to `t1rip0000001`, because that
+  revision had already been applied to a development database holding the
+  imported sheet, and an edited revision leaves such a database stamped with an
+  id whose contents it never ran. The revision writes the three values out
+  rather than building them from `Visibility`, so it keeps describing what the
+  schema was if the enum later changes.
+
+- **`tzdata` is a runtime dependency.** Every leg time and every derived date
+  is Asia/Taipei through `zoneinfo`, which reads the operating system's zone
+  database — and Windows has none, so without `tzdata` the development machines
+  cannot name the zone at all.
