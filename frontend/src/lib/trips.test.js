@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  dashboardTrips,
   firstLine,
   formatArrival,
   formatDuration,
@@ -73,25 +72,7 @@ describe('sortLegs', () => {
   })
 })
 
-const t = (id, fields = {}) => ({ id, archived: false, template: false, legs: [], ...fields })
-
-describe('dashboardTrips', () => {
-  const leg = (departsAt) => ({ departs_at: departsAt, arrives_at: departsAt })
-  it('leaves out archived trips and templates', () => {
-    const trips = [t(1), t(2, { archived: true }), t(3, { template: true }),
-      t(4, { archived: true, template: true })]
-    expect(dashboardTrips(trips, null).map((x) => x.id)).toEqual([1])
-  })
-  it('puts the current trip first, then trips by first departure', () => {
-    const trips = [
-      t(2, { legs: [leg('2026-12-01T09:00:00+08:00')] }),
-      t(3),
-      t(4, { legs: [leg('2026-11-01T09:00:00+08:00'), leg('2026-10-01T09:00:00+08:00')] }),
-      t(5, { legs: [leg('2026-12-24T09:00:00+08:00')] }),
-    ]
-    expect(dashboardTrips(trips, 5).map((x) => x.id)).toEqual([5, 4, 2, 3])
-  })
-})
+const t = (id, fields = {}) => ({ id, legs: [], ...fields })
 
 describe('needsStartDate', () => {
   it('is true only for a trip with legs', () => {

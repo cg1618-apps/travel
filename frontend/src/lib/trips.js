@@ -62,20 +62,6 @@ export function sortLegs(legs) {
   return [...legs].sort((a, b) => new Date(a.departs_at) - new Date(b.departs_at))
 }
 
-/**
- * The dashboard's trips: neither archived nor templates. The current trip
- * first, then the rest by their first departure (a trip with no legs after
- * those with some).
- */
-export function dashboardTrips(trips, currentId) {
-  const firstDeparture = (trip) =>
-    trip.legs.length ? Math.min(...trip.legs.map((leg) => new Date(leg.departs_at))) : Infinity
-  const rank = (trip) => (trip.id === currentId ? 0 : 1)
-  return trips
-    .filter((trip) => !trip.archived && !trip.template)
-    .sort((a, b) => rank(a) - rank(b) || firstDeparture(a) - firstDeparture(b))
-}
-
 /** A copy needs a start date only when there are legs to move. */
 export function needsStartDate(trip) {
   return trip.legs.length > 0
