@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom'
 
+import { useTheme } from './hooks/useTheme'
 import Dashboard from './pages/Dashboard'
 import Options from './pages/Options'
 import PackingList from './pages/PackingList'
 import PackingLists from './pages/PackingLists'
 import Transport from './pages/Transport'
+import TransportRoute from './pages/TransportRoute'
 import Trip from './pages/Trip'
 import Trips from './pages/Trips'
 
@@ -30,6 +32,24 @@ const NAV_LINKS = [
   ['/options', '選項'],
 ]
 
+/** ☾ or ☀: the theme the tap switches to, named for a screen reader. */
+function ThemeToggle() {
+  const { theme, toggle } = useTheme()
+  const label = theme === 'dark' ? '切換成淺色模式' : '切換成深色模式'
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      title={label}
+      aria-label={label}
+      aria-pressed={theme === 'dark'}
+      className="ml-auto min-w-11 rounded-md text-ink-text/70 hover:text-ink-text"
+    >
+      {theme === 'dark' ? '☀' : '☾'}
+    </button>
+  )
+}
+
 function Nav() {
   return (
     <nav className="border-b border-border bg-ink text-ink-text">
@@ -42,6 +62,7 @@ function Nav() {
             {label}
           </Link>
         ))}
+        <ThemeToggle />
       </div>
     </nav>
   )
@@ -57,6 +78,7 @@ export default function App() {
           <Route path="/lists" element={<PackingLists />} />
           <Route path="/lists/:listId" element={<PackingList />} />
           <Route path="/transport" element={<Transport />} />
+          <Route path="/transport/:routeId" element={<TransportRoute />} />
           <Route path="/trips" element={<Trips />} />
           {/* Old addresses, kept for bookmarks: the current trip, and the
               自動保存 page that is now a tab. /trips/auto-saved sits above

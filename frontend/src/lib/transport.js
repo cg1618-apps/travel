@@ -20,3 +20,11 @@ export function groupByDayType(departures) {
   for (const departure of departures) groups[departure.day_type]?.push(departure)
   return groups
 }
+
+/**
+ * One way of making a route, on one line of the 交通 index: 交通方式, then
+ * 價錢 and 時間 when set — "公車 307 · NT$15 · 40分".
+ */
+export function optionSummary({ mode, price, duration }) {
+  return [mode, formatPrice(price), duration].filter(Boolean).join(' · ')
+}
