@@ -12,8 +12,8 @@
 
 export function EvictDialog({
   body,
-  confirmLabel = '刪除並繼續',
   noun = '一份清單',
+  confirmLabel = '刪除並繼續',
   evicting,
   onSaveInstead,
   onConfirm,

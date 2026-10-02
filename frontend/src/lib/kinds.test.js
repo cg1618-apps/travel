@@ -32,6 +32,10 @@ describe('everyRow', () => {
     const index = { free: [row(1)], auto_saved: [row(2)], saved: [row(3)], templates: [row(4)] }
     expect(everyRow(index).map((r) => r.id)).toEqual([1, 2, 3, 4])
   })
+  it('lists a row that appears twice only once', () => {
+    const index = { free: [row(1)], auto_saved: [], saved: [row(1)], templates: [] }
+    expect(everyRow(index).map((r) => r.id)).toEqual([1])
+  })
 })
 
 describe('templateName and statusLabel', () => {

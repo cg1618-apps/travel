@@ -1,6 +1,9 @@
 /**
- * The front page: 一般 lists and trips that are 使用中 or 未來使用, 使用中 first.
- * Nothing to add or edit.
+ * The front page: 一般 lists and trips that are 使用中 or 未來使用, 使用中
+ * first. Nothing to add or edit.
+ *
+ * Every other shelf - 自動保存, 保存, 範本 - and every create form are on
+ * their own pages, where they are managed.
  */
 
 import { Link } from 'react-router-dom'

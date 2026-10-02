@@ -58,9 +58,12 @@ export default function App() {
           <Route path="/lists/:listId" element={<PackingList />} />
           <Route path="/transport" element={<Transport />} />
           <Route path="/trips" element={<Trips />} />
-          <Route path="/trips/:tripId" element={<Trip />} />
-          {/* The old address of the current trip, kept for bookmarks. */}
+          {/* Old addresses, kept for bookmarks: the current trip, and the
+              自動保存 page that is now a tab. /trips/auto-saved sits above
+              /trips/:tripId, which would otherwise read it as an id. */}
           <Route path="/trip" element={<Navigate to="/trips" replace />} />
+          <Route path="/trips/auto-saved" element={<Navigate to="/trips?tab=auto_saved" replace />} />
+          <Route path="/trips/:tripId" element={<Trip />} />
           <Route path="/options" element={<Options />} />
           {/* The server's catch-all serves the bundle for any non-/api path,
               so an unknown URL reaches the router rather than a 404. */}

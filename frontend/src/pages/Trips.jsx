@@ -16,7 +16,7 @@ import { IndexTabs } from '../components/IndexTabs'
 import { ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { keysFor } from '../lib/keys'
-import { AUTO_SAVE_LIMIT, TABS, autofillName, tabCounts } from '../lib/kinds'
+import { AUTO_SAVE_LIMIT, TABS, autofillName, isAutoSaved, tabCounts } from '../lib/kinds'
 import { KIND_LABELS, USAGE_LABELS } from '../lib/labels'
 import { firstLine, legSummary, needsStartDate, sortLegs } from '../lib/trips'
 
@@ -35,9 +35,10 @@ const EMPTY = {
 /**
  * A name, 一般 or 範本, an optional 從範本 and + 新增行程. Picking a template
  * fills the name unless one was typed. A template with legs needs a 出發日期,
- * the Taipei day its first leg moves to.
+ * the Taipei day its first leg moves to. `pending` holds 建立 while a create
+ * is in flight, so a second click cannot make a second trip.
  */
-function CreateTrip({ templates, onCreate, onCancel }) {
+function CreateTrip({ templates, pending, failed, onCreate, onCancel }) {
   const [name, setName] = useState('')
   const [fill, setFill] = useState('')
   const [kind, setKind] = useState('free')
@@ -55,7 +56,7 @@ function CreateTrip({ templates, onCreate, onCancel }) {
     setFill(next.fill)
   }
   const submit = () => {
-    if (!ready) return
+    if (!ready || pending) return
     const payload = { name: name.trim(), kind }
     if (template) {
       payload.copy_from_id = template.id
@@ -108,19 +109,33 @@ function CreateTrip({ templates, onCreate, onCancel }) {
           className={inputClass}
         />
       )}
-      <button type="button" disabled={!ready} onClick={submit} className={smallButton}>
+      <button
+        type="button"
+        disabled={!ready || pending}
+        onClick={submit}
+        className={`${smallButton} disabled:opacity-40`}
+      >
         建立
       </button>
       <button type="button" onClick={onCancel} className={smallButton}>
         取消
       </button>
+      {failed && (
+        <p role="alert" className="m-0 w-full text-sm text-danger">
+          無法建立行程，請再試一次。
+        </p>
+      )}
     </div>
   )
 }
 
+/**
+ * One trip: name, a 狀態 badge on 一般 and 自動保存, one line per leg. 保存
+ * and 自動保存 cards add the first line of 保存備註.
+ */
 function TripCard({ trip, selecting, selected, onToggle }) {
   const legs = sortLegs(trip.legs)
-  const note = trip.kind !== 'template' && firstLine(trip.archive_note)
+  const note = (trip.kind === 'saved' || isAutoSaved(trip)) && firstLine(trip.archive_note)
   return (
     <li className="flex items-start gap-3 border-b border-border px-4 py-3">
       {selecting && (
@@ -152,7 +167,11 @@ function TripCard({ trip, selecting, selected, onToggle }) {
   )
 }
 
-function TripPanel({ tab, trips, onBulkDelete }) {
+/**
+ * One tab's cards. On 自動保存 it holds 刪除模式: a checkbox per card, 全選,
+ * and 刪除所選（n）, confirmed once for the whole selection.
+ */
+function TripPanel({ tab, trips, deleting, deleteFailed, onBulkDelete }) {
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState(new Set())
   const [confirming, setConfirming] = useState(false)
@@ -197,13 +216,18 @@ function TripPanel({ tab, trips, onBulkDelete }) {
               </label>
               <button
                 type="button"
-                disabled={chosen.length === 0}
+                disabled={chosen.length === 0 || deleting}
                 onClick={() => setConfirming(true)}
                 className="rounded-md border border-danger px-3 text-sm text-danger disabled:opacity-40"
               >
                 刪除所選（{chosen.length}）
               </button>
             </>
+          )}
+          {deleteFailed && (
+            <p role="alert" className="m-0 w-full text-sm text-danger">
+              無法刪除，請再試一次。
+            </p>
           )}
         </div>
       )}
@@ -241,6 +265,8 @@ export default function Trips() {
   const navigate = useNavigate()
   const index = useApiQuery(INDEX, endpoints.trips.index())
   const [creating, setCreating] = useState(false)
+  // A deleted trip's linked list loses its leg, and with it the date the leg
+  // gave it, so the packing-list queries refresh too.
   const invalidate = [['trips'], ['packing-lists'], ['packing-list']]
 
   const create = useApiMutation({
@@ -275,6 +301,8 @@ export default function Trips() {
       {creating && (
         <CreateTrip
           templates={index.data.templates}
+          pending={create.isPending}
+          failed={create.isError}
           onCreate={create.mutate}
           onCancel={() => setCreating(false)}
         />
@@ -286,6 +314,8 @@ export default function Trips() {
             key={tab}
             tab={tab}
             trips={index.data[TABS.find((t) => t.key === tab).shelf]}
+            deleting={bulkDelete.isPending}
+            deleteFailed={bulkDelete.isError}
             onBulkDelete={(ids, onSuccess) => bulkDelete.mutate(ids, { onSuccess })}
           />
         )}

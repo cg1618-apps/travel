@@ -30,9 +30,11 @@ export function onDashboard(rows) {
 /** Every row of an index response, each once. */
 export function everyRow(index) {
   const seen = new Set()
-  return [...index.free, ...index.auto_saved, ...index.saved, ...index.templates].filter((row) =>
-    seen.has(row.id) ? false : seen.add(row.id),
-  )
+  return [...index.free, ...index.auto_saved, ...index.saved, ...index.templates].filter((row) => {
+    if (seen.has(row.id)) return false
+    seen.add(row.id)
+    return true
+  })
 }
 
 const TEMPLATE_SUFFIX = '（範本）'

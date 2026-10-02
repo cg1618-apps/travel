@@ -73,7 +73,7 @@ describe('sortLegs', () => {
   })
 })
 
-const t = (id, fields = {}) => ({ id, archived: false, template: false, legs: [], ...fields })
+const t = (id, fields = {}) => ({ id, legs: [], ...fields })
 
 describe('needsStartDate', () => {
   it('is true only for a trip with legs', () => {

@@ -1,7 +1,7 @@
 /**
  * 行程: one trip, in full, leg by leg.
  *
- * The sheet's tab, as cards - one per leg, with the booking code large enough
+ * The sheet's tab, as cards — one per leg, with the booking code large enough
  * to read off a phone at a ticket gate. `/trips/:tripId` only - the index is
  * `Trips.jsx`. A trip carries 狀態, 保存 and 當作範本 in its header; ← 行程
  * returns to the tab it is on. Every field is a cell that commits on Enter or
@@ -55,9 +55,12 @@ const smallButton = 'rounded-md border border-border-strong px-3 text-sm text-te
 const editButton = 'px-1 text-xs text-text-faint hover:text-text'
 
 const hasStatus = (error, status) => error instanceof ApiError && error.status === status
+// An id that is not a number - /trips/current, a stale /trips/<word> - is a
+// 422 from the API rather than a 404, and means the same: no such trip.
+const notFound = (error) => hasStatus(error, 404) || hasStatus(error, 422)
 
-function useTripMutation(mutationFn, options = {}) {
-  return useApiMutation({ invalidate: INVALIDATE, mutationFn, ...options })
+function useTripMutation(mutationFn, onError) {
+  return useApiMutation({ invalidate: INVALIDATE, mutationFn, onError })
 }
 
 function Field({ label, children }) {
@@ -78,7 +81,10 @@ function Problem({ children }) {
   )
 }
 
-/** The trip header's ⋯: 保存, 當作範本, delete. A template only offers delete. */
+/**
+ * The trip header's ⋯: 保存 (or 取消保存), 當作範本, 刪除行程. A 範本's kind
+ * never changes, so it offers only 刪除行程.
+ */
 function TripMenu({ trip, onToggleSaved, onMakeTemplate, onDelete }) {
   const [open, setOpen] = useState(false)
   const remove = { label: '刪除行程', danger: true, onSelect: onDelete }
@@ -559,13 +565,11 @@ function AddLeg({ onAdd }) {
 
 const badge = 'shrink-0 rounded-sm bg-surface-2 px-2 text-xs font-normal text-text-muted'
 
-
 function TripView({ trip, unlinked, ticketTypes, actions, onDeleted, onDismissNotice }) {
   const [confirming, setConfirming] = useState(false)
   const [confirmingUnsave, setConfirmingUnsave] = useState(false)
   const legs = sortLegs(trip.legs)
   const patchTrip = (changes) => actions.patchTrip.mutate({ id: trip.id, changes })
-  const patchKind = (changes) => patchTrip(changes)
   const makeTemplate = () => actions.makeTemplate(trip)
   const tab = tabFor(trip)
 
@@ -591,13 +595,13 @@ function TripView({ trip, unlinked, ticketTypes, actions, onDeleted, onDismissNo
         <TripMenu
           trip={trip}
           onToggleSaved={() =>
-            trip.kind === 'saved' ? setConfirmingUnsave(true) : patchKind({ kind: 'saved' })
+            trip.kind === 'saved' ? setConfirmingUnsave(true) : patchTrip({ kind: 'saved' })
           }
           onMakeTemplate={makeTemplate}
           onDelete={() => setConfirming(true)}
         />
       </div>
-      <KindControls row={trip} noun="行程" onPatch={patchKind} onMakeTemplate={makeTemplate} />
+      <KindControls row={trip} noun="行程" onPatch={patchTrip} onMakeTemplate={makeTemplate} />
       <TextCell value={trip.notes} placeholder="備註" onCommit={(notes) => patchTrip({ notes })} />
       {(trip.kind === 'saved' || isAutoSaved(trip) || trip.archive_note) && (
         <TextCell
@@ -623,7 +627,7 @@ function TripView({ trip, unlinked, ticketTypes, actions, onDeleted, onDismissNo
           confirmLabel="取消保存"
           onConfirm={() => {
             setConfirmingUnsave(false)
-            patchKind({ kind: 'free' })
+            patchTrip({ kind: 'free' })
           }}
           onCancel={() => setConfirmingUnsave(false)}
         />
@@ -648,13 +652,14 @@ export default function Trip() {
   const { tripId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
+  // A refused 過去使用's changes: a decision to put to the person.
   const [refusal, setRefusal] = useState(null)
 
   const trip = useApiQuery(
     [...TRIPS, 'detail', tripId],
     endpoints.trips.detail(tripId),
-    // A 404 is an answer (no such trip), not a failure worth retrying.
-    { retry: (count, error) => !hasStatus(error, 404) && count < 1 },
+    // A 404 or 422 is an answer (no such trip), not a failure worth retrying.
+    { retry: (count, error) => !notFound(error) && count < 1 },
   )
   const options = useApiQuery(['label-options'], endpoints.labelOptions.index())
   // Only while a 409 is waiting on a decision: the index names what would go.
@@ -665,7 +670,10 @@ export default function Trip() {
   const createTrip = useTripMutation((payload) => send(endpoints.trips.index(), 'POST', payload))
   const patchTrip = useTripMutation(
     ({ id, changes }) => send(endpoints.trips.detail(id), 'PATCH', changes),
-    { onError: (error, variables) => hasStatus(error, 409) && setRefusal(variables.changes) },
+    // A 409 is a decision to put to the person, not a failure to report.
+    (error, variables) => {
+      if (hasStatus(error, 409)) setRefusal(variables.changes)
+    },
   )
   const deleteTrip = useTripMutation((id) => send(endpoints.trips.detail(id), 'DELETE'))
   const addLeg = useTripMutation(({ tripId: id, payload }) =>
@@ -699,7 +707,7 @@ export default function Trip() {
     <main className="mx-auto max-w-4xl overflow-x-hidden px-4 pb-16 pt-6">{children}</main>
   )
 
-  if (trip.isError && !hasStatus(trip.error, 404)) {
+  if (trip.isError && !notFound(trip.error)) {
     return <ErrorState error={trip.error} onRetry={trip.refetch} />
   }
   if (trip.isError) {

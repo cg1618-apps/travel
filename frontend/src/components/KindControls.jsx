@@ -3,7 +3,8 @@
  *
  * 取消保存 asks first, because it puts the row back among the 一般 ones as
  * 未使用 - the dialog lives here so every place that shows the checkbox asks
- * the same question.
+ * the same question. A 範本 shows none of the three: its kind never changes,
+ * and it has no 狀態.
  */
 
 import { useState } from 'react'
@@ -37,6 +38,7 @@ export function KindControls({ row, noun, onPatch, onMakeTemplate }) {
           onChange={(event) =>
             event.target.checked ? onPatch({ kind: 'saved' }) : setConfirmingUnsave(true)
           }
+          aria-label={`保存「${row.name}」`}
           className="size-4"
         />
         保存
