@@ -1,4 +1,4 @@
-"""Trips and their legs, which trip is current, and the 自動保存 queue.
+"""Trips and their legs, the four shelves they sit on, and the 自動保存 queue.
 
 Which moves between kinds are allowed and what fills or drops a 自動保存 slot
 live in `app.services.domain.auto_save`; this router only translates its
@@ -35,19 +35,16 @@ from app.services.domain.auto_save import (
     evict_next,
 )
 from app.services.domain.labels import remember_label
-from app.services.domain.trip import copy_legs, current_trip
+from app.services.domain.trip import copy_legs
 
 router = APIRouter(tags=["Trips"])
 
 TRIP_NOT_FOUND = "Trip not found."
 LEG_NOT_FOUND = "Trip leg not found."
-NO_CURRENT_TRIP = "No current trip."
 LIST_NOT_FOUND = "Packing list not found."
 LIST_ALREADY_LINKED = "That packing list is already linked to another leg."
 COPY_SOURCE_NOT_FOUND = "Trip to copy from not found."
 START_DATE_REQUIRED = "start_date is required to copy a trip with legs."
-
-_EARLIEST = datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _trips_query():
@@ -113,27 +110,20 @@ def _responses(trips) -> list[TripResponse]:
 
 @router.get("/api/trips", response_model=TripIndex)
 def list_trips(db: Session = Depends(get_db)):
-    trips = db.scalars(_trips_query()).all()
-    # Newest first by latest departure; a trip with no legs goes last.
-    ordered = sorted(
-        trips,
-        key=lambda trip: (
-            bool(trip.legs),
-            max((leg.departs_at for leg in trip.legs), default=_EARLIEST),
-            trip.id,
-        ),
-        reverse=True,
-    )
+    # Newest created first, the same order as packing lists. Every trip is on
+    # exactly one shelf: `kind` is one value, and 自動保存 is the 一般 trips
+    # whose usage is past.
+    trips = db.scalars(_trips_query().order_by(Trip.created_at.desc(), Trip.id.desc())).all()
     auto_saved = sorted(
         (trip for trip in trips if trip.kind == Kind.FREE and trip.usage == Usage.PAST),
         key=lambda trip: (trip.auto_saved_at, trip.id),
         reverse=True,
     )
     return TripIndex(
-        free=_responses(t for t in ordered if t.kind == Kind.FREE and t.usage != Usage.PAST),
+        free=_responses(t for t in trips if t.kind == Kind.FREE and t.usage != Usage.PAST),
         auto_saved=_responses(auto_saved),
-        saved=_responses(t for t in ordered if t.kind == Kind.SAVED),
-        templates=_responses(t for t in ordered if t.kind == Kind.TEMPLATE),
+        saved=_responses(t for t in trips if t.kind == Kind.SAVED),
+        templates=_responses(t for t in trips if t.kind == Kind.TEMPLATE),
         evict_next=_responses(evict_next(db, Trip)),
     )
 
@@ -153,15 +143,6 @@ def bulk_delete_trips(payload: TripIds, db: Session = Depends(get_db)):
         db.delete(trip)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-# Declared before /{trip_id}, which would otherwise read "current" as an id.
-@router.get("/api/trips/current", response_model=TripResponse)
-def read_current_trip(db: Session = Depends(get_db)):
-    trip = current_trip(db, datetime.now(timezone.utc))
-    if trip is None:
-        raise HTTPException(status_code=404, detail=NO_CURRENT_TRIP)
-    return _get_trip(db, trip.id)
 
 
 @router.post("/api/trips", response_model=TripCreated, status_code=201)

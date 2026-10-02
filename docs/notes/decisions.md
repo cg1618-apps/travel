@@ -403,13 +403,14 @@ the four tabs in scope (`彰化回台北`, `台北去彰化`, `Transportation`,
   intended. That intention is superseded: a trip with several legs needs to say
   *which journey* a list is for, and only the leg knows.
 
-- **The current trip follows its 狀態, not its dates.** The 使用中 trip, else
-  the 未來使用 one; legs only order trips within a group. It used to be the
-  trip with the soonest leg still ahead, else the one whose legs ended most
-  recently — which switched trips mid-journey (while one trip's leg was under
-  way, a trip with a later leg was already current), never chose a trip with no
-  legs, and kept showing a finished trip until something newer had a leg. A
-  status the owner sets says which trip is being taken; dates could only guess.
+- **There is no current trip any more.** It began as the trip with the soonest
+  leg still ahead, else the one whose legs ended most recently — which switched
+  trips mid-journey (while one trip's leg was under way, a trip with a later
+  leg was already current), never chose a trip with no legs, and kept showing a
+  finished trip until something newer had a leg. `k1ind0000001` made it follow
+  狀態 instead: the 使用中 trip, else the 未來使用 one, legs only ordering trips
+  within a group. That rule was then retired along with the `/trip` page that
+  showed it; see "An index with tabs replaces the current trip".
 
 - **Status is stored as three values and tapped as two.** `no_need` stays in
   the data because a decision not to pack is not the same as forgetting, and
@@ -497,8 +498,8 @@ are in `business-rules.md`; this is why.
 - **Templates are made by copying.** 當作範本 creates a new template from any
   list or trip rather than flipping the original, so a template's kind never
   changes and nothing becomes or stops being one by `PATCH`. On a trip it keeps the legs on their own dates.
-- **The current trip follows usage rather than dates** — see "The current trip
-  follows its 狀態" under "Sheet parity".
+- **The current trip followed usage rather than dates**, until it was retired
+  — see "An index with tabs replaces the current trip".
 
 Rejected:
 
@@ -519,3 +520,42 @@ Two choices made in the migration and the importer:
   from 一般 any more — only from 自動保存, and only once a row is set to
   過去使用 by hand — so there is nothing to protect them from, and an imported
   list saved by default would have to be un-saved before it could be used.
+
+## An index with tabs replaces the current trip
+
+`/trip` showed one trip — the usage-based current trip — with every other trip
+in stacked 一般 / 保存 / 範本 sections below it and 自動保存 on a page of its
+own; `/lists` stacked its four shelves the same way. Both are now indexes with
+browser-style tabs, and 行程 opens `/trips` like 打包清單 opens `/lists`.
+
+- **The usage-based current trip was retired, not refined.** The page left the
+  trip on screen out of every section below it, so a lone 一般 trip sat in no
+  section at all: reachable only as "the current one", on a page that listed
+  everything else. Keeping a page that shows one trip meant keeping a
+  second place every trip could be, and code to move the page when a 狀態
+  change took the trip out of being current (使用中 → 未來使用 included, since
+  another 使用中 trip would then take `/trip` over). What the current trip was
+  for — "what am I using now" — is the dashboard's job, and it already picks by
+  `usage`: every 使用中 and 未來使用 trip, 使用中 first. `GET /api/trips/current`
+  went with the page; it now falls to `/api/trips/{trip_id}` and is a `422`.
+- **Tabs, not sections.** Every row is on exactly one tab, the counts say where
+  without scrolling, and the four tabs are the API's four arrays shown as they
+  come, so the screen cannot drop a row the API returned. The tab is in
+  `?tab=`, so Back and a reload return to it.
+- **Shelves are newest `created_at` first, for trips as for lists.** Trips were
+  ordered by their latest departure with legless trips last, which put a trip
+  just created without legs at the bottom of the tab it was created into, and
+  reordered the tab whenever a leg's time was edited. `created_at` is stable,
+  and it is what lists already used. The leg picker orders by it too, and shows
+  the created date, because two lists with the same name are told apart by when
+  they were made.
+- **Old addresses redirect.** `/trip` goes to `/trips`, and `/trips/auto-saved`
+  — a page that shipped — to `/trips?tab=auto_saved`, rather than falling to
+  `/trips/:tripId` and an error.
+
+Rejected:
+
+- **Keep a current trip, pinned above the tabs.** It is the same trip in two
+  places again, and the dashboard already answers the question.
+- **Keep the departure order for trips.** It is the order of the legs, not of
+  the trips, and a trip with no legs has none.

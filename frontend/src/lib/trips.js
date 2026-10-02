@@ -77,3 +77,14 @@ export function firstLine(text) {
   if (!text) return null
   return text.split('\n').find((line) => line.trim()) ?? null
 }
+
+/** One compact line for a leg on the 行程 index: route, departure, duration, 車種. */
+export function legSummary(leg) {
+  const parts = [
+    `${leg.from_place} → ${leg.to_place}`,
+    formatTaipei(leg.departs_at),
+    formatDuration(leg.departs_at, leg.arrives_at),
+  ]
+  if (leg.service?.trim()) parts.push(leg.service.trim())
+  return parts.join(' · ')
+}

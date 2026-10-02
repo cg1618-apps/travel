@@ -1,9 +1,10 @@
 /**
- * Every list, on four shelves: 一般, 自動保存（n / 5）, 保存 and 範本.
+ * Every list, on four tabs: 一般, 範本, 保存 and 自動保存（n / 5）.
  *
- * Sections rather than tabs, because there are rarely more than a handful.
- * Each row carries its own 狀態, 保存 and 當作範本; 過去使用 into a full
- * 自動保存 is the one change that asks first, naming the list it would drop.
+ * Tabs rather than stacked sections, so every list is in exactly one place
+ * and the counts say where without scrolling. Each row carries its own 狀態,
+ * 保存 and 當作範本; 過去使用 into a full 自動保存 is the one change that asks
+ * first, naming the list it would drop.
  * Creating one is behind a button: the form used to sit open at the top of
  * the page, which made the first thing you saw a form rather than your lists.
  */
@@ -13,32 +14,47 @@ import { Link } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
 import { EvictDialog } from '../components/EvictDialog'
+import { IndexTabs } from '../components/IndexTabs'
 import { KindControls } from '../components/KindControls'
 import { ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
-import { AUTO_SAVE_LIMIT, badgeFor, everyRow, templateName } from '../lib/kinds'
-import { AUTO_SAVED_LABEL, KIND_LABELS, LEG_LABELS } from '../lib/labels'
+import {
+  AUTO_SAVE_LIMIT,
+  TABS,
+  autofillName,
+  badgeFor,
+  everyRow,
+  tabCounts,
+  templateName,
+} from '../lib/kinds'
+import { KIND_LABELS, LEG_LABELS } from '../lib/labels'
 import { departureLabel } from '../lib/timing'
 import { firstLine } from '../lib/trips'
 
 const INDEX_KEY = ['packing-lists']
-const BLANK_DRAFT = { name: '', departure_at: '', copy_from_id: '', kind: 'free' }
+// `fill` is the name the copy select last wrote, so a typed name is kept.
+const BLANK_DRAFT = { name: '', departure_at: '', copy_from_id: '', kind: 'free', fill: '' }
 
-/** `showNote` puts the first line of 保存備註 under the name, on the shelves where it matters. */
-function Table({ title, count, rows, empty, showNote = false, onPatch, onMakeTemplate }) {
+const EMPTY = {
+  free: '目前沒有一般清單。從上面新增一份。',
+  template: '按「當作範本」或新增一份範本，之後的新清單可以從它開始。',
+  saved: '在清單上勾選「保存」，它就不會被自動刪除。',
+  auto_saved: '把一般清單的狀態設為「過去使用」，它會自動保存在這裡。',
+}
+
+// The tabs where the first line of 保存備註 sits under the name.
+const NOTE_TABS = ['saved', 'auto_saved']
+
+/** `showNote` puts the first line of 保存備註 under the name, on the tabs where it matters. */
+function Table({ rows, empty, showNote = false, onPatch, onMakeTemplate }) {
   return (
-    <section className="mt-8">
-      <h2 className="mx-4 mb-2 text-xs font-semibold uppercase tracking-wide text-text-faint">
-        {title}
-        {count && <span className="ml-2 font-normal normal-case">{count}</span>}
-      </h2>
-
+    <>
       {rows.length === 0 ? (
         <p className="px-4 py-6 text-center text-sm text-text-muted">{empty}</p>
       ) : (
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-y border-border bg-surface-2 text-xs tracking-wide text-text-muted">
+            <tr className="border-b border-border bg-surface-2 text-xs tracking-wide text-text-muted">
               <th scope="col" className="px-4 py-2 text-left font-semibold">
                 清單
               </th>
@@ -84,7 +100,7 @@ function Table({ title, count, rows, empty, showNote = false, onPatch, onMakeTem
           </tbody>
         </table>
       )}
-    </section>
+    </>
   )
 }
 
@@ -196,9 +212,16 @@ export default function PackingLists() {
               從哪份清單複製項目
               <select
                 value={draft.copy_from_id}
-                onChange={(event) =>
-                  setDraft({ ...draft, copy_from_id: event.target.value })
-                }
+                onChange={(event) => {
+                  const id = event.target.value
+                  const source = copyable.find((row) => String(row.id) === id)
+                  const { name, fill } = autofillName({
+                    current: draft.name,
+                    lastFill: draft.fill,
+                    source: source?.name ?? null,
+                  })
+                  setDraft({ ...draft, copy_from_id: id, name, fill })
+                }}
                 className="mt-1 block rounded-md border border-border bg-canvas px-3 py-2 text-base text-text"
               >
                 <option value="">空白開始</option>
@@ -241,33 +264,16 @@ export default function PackingLists() {
         <p className="mx-4 mt-4 text-sm text-danger">無法建立範本，請再試一次。</p>
       )}
 
-      <Table
-        title={KIND_LABELS.free}
-        rows={index.free}
-        empty="目前沒有一般清單。從上面新增一份。"
-        {...shelf}
-      />
-      <Table
-        title={AUTO_SAVED_LABEL}
-        count={`${index.auto_saved.length} / ${AUTO_SAVE_LIMIT.lists}`}
-        rows={index.auto_saved}
-        empty="把一般清單的狀態設為「過去使用」，它會自動保存在這裡。"
-        showNote
-        {...shelf}
-      />
-      <Table
-        title={KIND_LABELS.saved}
-        rows={index.saved}
-        empty="在清單上勾選「保存」，它就不會被自動刪除。"
-        showNote
-        {...shelf}
-      />
-      <Table
-        title={KIND_LABELS.template}
-        rows={index.templates}
-        empty="按「當作範本」或新增一份範本，之後的新清單可以從它開始。"
-        {...shelf}
-      />
+      <IndexTabs counts={tabCounts(index, AUTO_SAVE_LIMIT.lists)}>
+        {(tab) => (
+          <Table
+            rows={index[TABS.find((entry) => entry.key === tab).shelf]}
+            empty={EMPTY[tab]}
+            showNote={NOTE_TABS.includes(tab)}
+            {...shelf}
+          />
+        )}
+      </IndexTabs>
 
       {refusal && (
         <EvictDialog
@@ -276,14 +282,20 @@ export default function PackingLists() {
           evicting={index.evict_next}
           onSaveInstead={async () => {
             // Save the list that would go, then retry unconfirmed: the retry
-            // succeeds because there is room, not because it was forced.
-            await Promise.all(
-              index.evict_next.map((row) =>
-                patch.mutateAsync({ id: row.id, changes: { kind: 'saved' } }),
-              ),
-            )
+            // succeeds because there is room, not because it was forced. A
+            // rejection closes the dialog; the refetch shows the actual state.
+            const refused = refusal
             setRefusal(null)
-            patch.mutate(refusal)
+            try {
+              await Promise.all(
+                index.evict_next.map((row) =>
+                  patch.mutateAsync({ id: row.id, changes: { kind: 'saved' } }),
+                ),
+              )
+              patch.mutate(refused)
+            } catch {
+              // Nothing to retry: the save failed, so there is still no room.
+            }
           }}
           onConfirm={() => {
             setRefusal(null)

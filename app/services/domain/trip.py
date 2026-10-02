@@ -1,44 +1,11 @@
-"""Which trip is current, and what a copied trip carries."""
+"""What a copied trip carries."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
-from app.constants import TAIPEI, Kind, Usage
+from app.constants import TAIPEI
 from app.models import Trip, TripLeg
-
-
-def current_trip(db: Session, now: datetime) -> Trip | None:
-    """The 使用中 trip; with none, the 未來使用 one. Within a group, the trip
-    whose soonest leg still ahead is earliest; trips with nothing ahead come
-    after, newest (highest id) first, and so does a tie. A trip with no legs
-    can be current - its status, not its legs, says it is the one being taken.
-
-    Computed in Python over the candidates: there are a handful, and the rule
-    reads more plainly here than as SQL.
-    """
-    trips = (
-        db.execute(
-            select(Trip)
-            .where(Trip.kind == Kind.FREE, Trip.usage.in_([Usage.IN_USE, Usage.UPCOMING]))
-            .options(selectinload(Trip.legs))
-        )
-        .scalars()
-        .all()
-    )
-
-    def rank(trip: Trip) -> tuple:
-        ahead = [leg.departs_at for leg in trip.legs if leg.departs_at > now]
-        if ahead:
-            return (0, min(ahead), -trip.id)
-        return (1, now, -trip.id)
-
-    for usage in (Usage.IN_USE, Usage.UPCOMING):
-        group = [trip for trip in trips if trip.usage == usage]
-        if group:
-            return min(group, key=rank)
-    return None
 
 
 def copy_legs(db: Session, source: Trip, target: Trip, start_date: date | None) -> list[dict]:

@@ -311,22 +311,26 @@ export default function PackingList() {
         />
       )}
 
-      {refusal && (
+      {/* Only once the index is freshly read: a stale `evict_next` would name,
+          and offer to save, a list that is not the one about to go. */}
+      {refusal && lists.isSuccess && !lists.isFetching && (
         <EvictDialog
           noun="一份清單"
           body={`自動保存最多 ${AUTO_SAVE_LIMIT.lists} 份清單。設為過去使用會刪除最舊的：`}
-          evicting={lists.data?.evict_next ?? []}
-          onSaveInstead={
-            lists.data
-              ? async () => {
-                  // Save what would go, then retry unconfirmed: the retry
-                  // succeeds because there is room, not because it was forced.
-                  await Promise.all(lists.data.evict_next.map((row) => saveList.mutateAsync(row.id)))
-                  setRefusal(null)
-                  patchList.mutate(refusal)
-                }
-              : undefined
-          }
+          evicting={lists.data.evict_next}
+          onSaveInstead={async () => {
+            // Save what would go, then retry unconfirmed: the retry succeeds
+            // because there is room, not because it was forced. A rejection
+            // closes the dialog; the refetch shows the actual state.
+            const changes = refusal
+            setRefusal(null)
+            try {
+              await Promise.all(lists.data.evict_next.map((row) => saveList.mutateAsync(row.id)))
+              patchList.mutate(changes)
+            } catch {
+              // Nothing to retry: the save failed, so there is still no room.
+            }
+          }}
           onConfirm={() => {
             setRefusal(null)
             patchList.mutate({ ...refusal, evict_confirmed: true })

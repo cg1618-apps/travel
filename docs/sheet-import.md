@@ -12,7 +12,7 @@ Four tabs are read; any other tab is ignored. Tables are described in
 | --- | --- |
 | `彰化回台北`, `台北去彰化` | Two packing lists forming a round-trip pair (`return` and `outbound`, sharing one `pair_id`), with their items in row order. Both are 一般 (`kind` `free`) and 未使用, like any new list: nothing drops a list until its 狀態 is set to 過去使用 by hand. |
 | `Transportation` | Transport routes grouped by (`目標起點`, `目標終點`) in first-seen order, each with its options and departure times. |
-| `This time` | One trip whose legs are the rows, each linked to the packing list for its journey: the list whose name, split at 去 or 回, has its first half starting the leg's 出發地點 and its second half starting its 目的地 (`彰化回台北` for 彰化火車站 → 台北車站). The trip is 一般 and 未使用 too, so `/trip` shows it only once its 狀態 is set to 使用中 or 未來使用. |
+| `This time` | One trip whose legs are the rows, each linked to the packing list for its journey: the list whose name, split at 去 or 回, has its first half starting the leg's 出發地點 and its second half starting its 目的地 (`彰化回台北` for 彰化火車站 → 台北車站). The trip is 一般 and 未使用 too: it is on the 一般 tab of `/trips`, and reaches the dashboard only once its 狀態 is set to 使用中 or 未來使用. |
 
 Columns are found by the text of the header row, so inserting a column in the
 sheet does not break the import.

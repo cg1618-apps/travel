@@ -99,6 +99,7 @@ class TripResponse(TripBase):
     usage: Usage | None
     auto_saved_at: datetime | None
     archive_note: str | None = None
+    created_at: datetime
     legs: list[TripLegResponse] = []
 
 
@@ -115,7 +116,8 @@ class TripCreate(TripBase):
 class TripIndex(BaseModel):
     """The same four shelves as packing lists, plus what 過去使用 would drop."""
 
-    #: 一般 trips that are not 過去使用, latest departure first, legless last.
+    #: 一般 trips that are not 過去使用. Every shelf but 自動保存 is newest
+    #: `created_at` first, then highest `id`.
     free: list[TripResponse]
     #: 自動保存: newest `auto_saved_at` first.
     auto_saved: list[TripResponse]

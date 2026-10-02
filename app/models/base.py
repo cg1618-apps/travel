@@ -30,10 +30,10 @@ class TimestampMixin:
     """`created_at` and `updated_at`, defaulted by the database.
 
     The media tracker defaults these in Python from a Taipei-now helper because
-    it displays them. Nothing here displays them - `created_at` orders the
-    packing-list index - so they come from the database clock, which
-    is correct for a row written by a migration or by hand as well as by the
-    app, and needs no helper.
+    it displays them. Here `created_at` orders the list and trip indexes and
+    the leg picker shows only its Taipei date, so they come from the database
+    clock, which is correct for a row written by a migration or by hand as well
+    as by the app, and needs no helper.
     """
 
     created_at: Mapped[DateTime] = mapped_column(

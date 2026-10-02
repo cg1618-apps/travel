@@ -209,6 +209,43 @@ def test_the_index_has_four_shelves(client, db_session):
     assert body["evict_next"] == []
 
 
+# One list of every kind/usage combination: each must be on exactly one shelf.
+COMBINATIONS = [
+    {"usage": Usage.IN_USE},
+    {"usage": Usage.UPCOMING},
+    {"usage": Usage.UNUSED},
+    {"usage": Usage.PAST, "auto_saved_at": EPOCH},
+    {"kind": Kind.SAVED},
+    {"kind": Kind.TEMPLATE},
+]
+SHELVES = ("free", "auto_saved", "saved", "templates")
+
+
+def test_every_list_is_on_exactly_one_shelf(client, db_session):
+    """The regression for a row that sat in no section."""
+    for number, fields in enumerate(COMBINATIONS):
+        make_list(db_session, f"c{number}", days=number, **fields)
+    db_session.commit()
+    body = client.get("/api/packing-lists").json()
+    shown = [row["name"] for shelf in SHELVES for row in body[shelf]]
+    assert sorted(shown) == [f"c{number}" for number in range(len(COMBINATIONS))]
+
+
+@pytest.mark.parametrize(
+    "shelf,fields",
+    [("free", {}), ("saved", {"kind": Kind.SAVED}), ("templates", {"kind": Kind.TEMPLATE})],
+)
+def test_shelves_are_newest_created_first(client, db_session, shelf, fields):
+    # "tie" shares "newer"'s `created_at` and wins on the higher id.
+    older = make_list(db_session, "older", days=0, **fields)
+    make_list(db_session, "newer", days=1, **fields)
+    make_list(db_session, "tie", days=1, **fields)
+    db_session.commit()
+    rows = client.get("/api/packing-lists").json()[shelf]
+    assert [row["name"] for row in rows] == ["tie", "newer", "older"]
+    assert datetime.fromisoformat(rows[-1]["created_at"]) == older.created_at
+
+
 def test_auto_saved_is_newest_first(client, db_session):
     make_list(db_session, "older", days=5, usage=Usage.PAST, auto_saved_at=EPOCH)
     make_list(

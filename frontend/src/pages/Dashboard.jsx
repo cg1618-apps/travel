@@ -114,7 +114,7 @@ export default function Dashboard() {
       <Section title="清單" more={{ to: '/lists', label: '所有清單' }}>
         <Lists rows={onDashboard(lists.data.free)} />
       </Section>
-      <Section title="行程" more={{ to: '/trip', label: '前往行程' }}>
+      <Section title="行程" more={{ to: '/trips', label: '所有行程' }}>
         <Trips trips={onDashboard(trips.data.free)} />
       </Section>
     </main>
