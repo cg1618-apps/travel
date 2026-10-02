@@ -1,9 +1,6 @@
 /**
- * The front page: 一般 lists and trips that are 使用中 or 未來使用, 使用中
- * first. Nothing to add or edit.
- *
- * Every other shelf - 自動保存, 保存, 範本 - and every create form are on
- * their own pages, where they are managed.
+ * The front page: 一般 lists and trips that are 使用中 or 未來使用, 使用中 first.
+ * Nothing to add or edit.
  */
 
 import { Link } from 'react-router-dom'
@@ -114,7 +111,7 @@ export default function Dashboard() {
       <Section title="清單" more={{ to: '/lists', label: '所有清單' }}>
         <Lists rows={onDashboard(lists.data.free)} />
       </Section>
-      <Section title="行程" more={{ to: '/trip', label: '前往行程' }}>
+      <Section title="行程" more={{ to: '/trips', label: '所有行程' }}>
         <Trips trips={onDashboard(trips.data.free)} />
       </Section>
     </main>

@@ -8,9 +8,6 @@
  * The switch names two whole views rather than an axis to group by. The screen
  * this replaced offered "When / Category / Bag", which is a question about the
  * data model, asked of someone who wants to pack a bag.
- *
- * The header carries the list's 狀態, 保存 and 當作範本, the same controls as
- * its row on /lists, with 備註 and - where it matters - 保存備註 beneath.
  */
 
 import { useMemo, useState } from 'react'
@@ -30,9 +27,9 @@ import { required } from '../lib/cells'
 import { AUTO_SAVE_LIMIT, badgeFor, isAutoSaved, templateName } from '../lib/kinds'
 import { leavingText, progressParts } from '../lib/listHeader'
 
-const VIEW_STORAGE_KEY = 'travel.packing.view'
-
 const badge = 'shrink-0 rounded-sm bg-surface-2 px-2 text-xs text-text-muted'
+
+const VIEW_STORAGE_KEY = 'travel.packing.view'
 
 const RESET_BODY =
   '所有已打包的項目會改回未打包，已打包數量歸零，Double Check 改回未確認。不需打包的項目不變。'
@@ -120,8 +117,6 @@ export default function PackingList() {
   const [view, setView] = useState(initialView)
   const [confirmingReset, setConfirmingReset] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
-  // A refused 過去使用: the changes to retry once the person has decided.
-  const [refusal, setRefusal] = useState(null)
 
   const invalidate = [key, ['packing-lists'], ['label-options']]
 
@@ -142,31 +137,20 @@ export default function PackingList() {
     invalidate: [key, ['packing-lists']],
     mutationFn: () => send(endpoints.packingLists.reset(listId), 'POST'),
   })
+  const [refusal, setRefusal] = useState(null)
   const patchList = useApiMutation({
     invalidate: [key, ['packing-lists']],
     mutationFn: (changes) => send(endpoints.packingLists.detail(listId), 'PATCH', changes),
     onError: (error, changes) => {
-      // A 409 is a decision to put to the person, not a failure to report.
       if (error.status === 409) setRefusal(changes)
     },
   })
-  // The index is read only to name what a full 自動保存 would drop.
-  const lists = useApiQuery(['packing-lists'], endpoints.packingLists.index(), {
-    enabled: Boolean(refusal),
-  })
-  // Lists saved from the dialog: not this list's own PATCH, so a 409 here
-  // (there is none for 保存) never opens a second dialog.
-  const saveList = useApiMutation({
-    invalidate: [['packing-lists']],
-    mutationFn: (id) => send(endpoints.packingLists.detail(id), 'PATCH', { kind: 'saved' }),
-  })
+  const lists = useApiQuery(['packing-lists'], endpoints.packingLists.index(), { enabled: Boolean(refusal) })
   const makeTemplate = useApiMutation({
     invalidate: [['packing-lists']],
     mutationFn: () =>
       send(endpoints.packingLists.index(), 'POST', {
-        name: templateName(list.data.name),
-        kind: 'template',
-        copy_from_id: list.data.id,
+        name: templateName(list.data.name), kind: 'template', copy_from_id: list.data.id,
       }),
     onSuccess: (created) => navigate(`/lists/${created.id}`),
   })
@@ -258,11 +242,7 @@ export default function PackingList() {
             onMakeTemplate={() => makeTemplate.mutate()}
           />
         </div>
-        <TextCell
-          value={list.data.notes}
-          placeholder="備註"
-          onCommit={(notes) => patchList.mutate({ notes })}
-        />
+        <TextCell value={list.data.notes} placeholder="備註" onCommit={(notes) => patchList.mutate({ notes })} />
         {(list.data.kind === 'saved' || isAutoSaved(list.data) || list.data.archive_note) && (
           <TextCell
             value={list.data.archive_note}
@@ -311,30 +291,6 @@ export default function PackingList() {
         />
       )}
 
-      {refusal && (
-        <EvictDialog
-          noun="一份清單"
-          body={`自動保存最多 ${AUTO_SAVE_LIMIT.lists} 份清單。設為過去使用會刪除最舊的：`}
-          evicting={lists.data?.evict_next ?? []}
-          onSaveInstead={
-            lists.data
-              ? async () => {
-                  // Save what would go, then retry unconfirmed: the retry
-                  // succeeds because there is room, not because it was forced.
-                  await Promise.all(lists.data.evict_next.map((row) => saveList.mutateAsync(row.id)))
-                  setRefusal(null)
-                  patchList.mutate(refusal)
-                }
-              : undefined
-          }
-          onConfirm={() => {
-            setRefusal(null)
-            patchList.mutate({ ...refusal, evict_confirmed: true })
-          }}
-          onCancel={() => setRefusal(null)}
-        />
-      )}
-
       {confirmingDelete && (
         <ConfirmDialog
           title={`刪除「${list.data.name}」？`}
@@ -345,6 +301,25 @@ export default function PackingList() {
             removeList.mutate()
           }}
           onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
+
+      {refusal && (
+        <EvictDialog
+          noun="一份清單"
+          body={`自動保存最多 ${AUTO_SAVE_LIMIT.lists} 份清單。設為過去使用會刪除最舊的：`}
+          evicting={lists.data?.evict_next ?? []}
+          onSaveInstead={async () => {
+            await Promise.all((lists.data?.evict_next ?? []).map((row) =>
+              send(endpoints.packingLists.detail(row.id), 'PATCH', { kind: 'saved' })))
+            setRefusal(null)
+            patchList.mutate(refusal)
+          }}
+          onConfirm={() => {
+            setRefusal(null)
+            patchList.mutate({ ...refusal, evict_confirmed: true })
+          }}
+          onCancel={() => setRefusal(null)}
         />
       )}
     </main>
