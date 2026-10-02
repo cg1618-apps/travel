@@ -43,9 +43,10 @@ def test_an_item_named_無_is_skipped_and_reported(sheet):
     assert any("無" in line for line in sheet.report)
 
 
-def test_lists_are_a_round_trip_pair(sheet):
+def test_lists_are_a_saved_round_trip_pair(sheet):
     back, there = _list(sheet, "彰化回台北"), _list(sheet, "台北去彰化")
     assert (back.leg, there.leg) == ("return", "outbound")
+    assert back.saved and there.saved
     assert back.pair_id and back.pair_id == there.pair_id
 
 

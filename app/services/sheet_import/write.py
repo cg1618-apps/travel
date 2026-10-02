@@ -9,7 +9,7 @@ from dataclasses import asdict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.constants import LabelKind
+from app.constants import Kind, LabelKind
 from app.models import (
     PackingItem,
     PackingList,
@@ -48,7 +48,12 @@ def find_clashes(db: Session, sheet: ParsedSheet) -> list[str]:
 
 
 def _write_list(db: Session, parsed) -> PackingList:
-    row = PackingList(name=parsed.name, leg=parsed.leg, pair_id=parsed.pair_id)
+    row = PackingList(
+        name=parsed.name,
+        leg=parsed.leg,
+        kind=Kind.SAVED if parsed.saved else Kind.FREE,
+        pair_id=parsed.pair_id,
+    )
     db.add(row)
     for position, parsed_item in enumerate(parsed.items):
         item = PackingItem(position=position, **asdict(parsed_item))

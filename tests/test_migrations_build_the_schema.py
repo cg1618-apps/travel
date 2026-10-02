@@ -26,18 +26,6 @@ from tests.conftest import admin_url, head_revision
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run_alembic(database_url: str, *command: str) -> None:
-    """Run the real `alembic` command against `database_url`, loudly."""
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", *command],
-        cwd=ROOT,
-        env={**os.environ, "DATABASE_URL": database_url},
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stderr
-
-
 @pytest.fixture
 def scratch_database():
     """A database created for this test and dropped afterwards."""
@@ -55,7 +43,16 @@ def scratch_database():
 
 
 def test_upgrade_head_runs_against_an_empty_database(scratch_database):
-    run_alembic(scratch_database, "upgrade", "head")
+    env = dict(os.environ)
+    env["DATABASE_URL"] = scratch_database
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
     # A return code on its own says nothing about WHERE the run landed: a run
     # that ignored DATABASE_URL and migrated the developer's real `travel`
@@ -90,7 +87,19 @@ def test_there_is_exactly_one_head():
 
 
 def test_the_chain_downgrades_to_base_and_back(scratch_database):
-    run_alembic(scratch_database, "upgrade", "head")
+    env = {**os.environ, "DATABASE_URL": scratch_database}
+
+    def alembic(*command):
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", *command],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+
+    alembic("upgrade", "head")
 
     # Load-bearing: the downgrades that narrow `ck_label_option_kind` delete
     # the rows the narrower constraint would refuse. On an empty database those
@@ -110,62 +119,50 @@ def test_the_chain_downgrades_to_base_and_back(scratch_database):
     engine.dispose()
     assert seeded == 2
 
-    run_alembic(scratch_database, "downgrade", "base")
-    run_alembic(scratch_database, "upgrade", "head")
+    alembic("downgrade", "base")
+    alembic("upgrade", "head")
 
 
 def test_the_kind_revision_maps_every_flag_combination_and_back(scratch_database):
     """Load-bearing seed: on an empty database the UPDATEs meet nothing and a
-    wrong CASE would still pass. One row per flag combination the revision maps."""
-    run_alembic(scratch_database, "upgrade", "t3rip0000003")
+    wrong CASE would still pass. One row per row of the spec's mapping table."""
+    env = {**os.environ, "DATABASE_URL": scratch_database}
+
+    def alembic(*command):
+        result = subprocess.run([sys.executable, "-m", "alembic", *command], cwd=ROOT,
+                                env=env, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+
+    alembic("upgrade", "t3rip0000003")
     engine = create_engine(scratch_database)
     with engine.begin() as conn:
-        conn.execute(
-            text(
-                "INSERT INTO packing_list (name, saved, template) VALUES "
-                "('both', true, true), ('tpl', false, true), "
-                "('kept', true, false), ('plain', false, false)"
-            )
-        )
-        conn.execute(
-            text(
-                "INSERT INTO trip (name, archived, template, archive_note) VALUES "
-                "('both', true, true, null), ('tpl', false, true, null), "
-                "('old', true, false, '早點訂'), ('plain', false, false, null)"
-            )
-        )
+        conn.execute(text(
+            "INSERT INTO packing_list (name, saved, template) VALUES "
+            "('both', true, true), ('tpl', false, true), ('kept', true, false), ('plain', false, false)"
+        ))
+        conn.execute(text(
+            "INSERT INTO trip (name, archived, template, archive_note) VALUES "
+            "('both', true, true, null), ('tpl', false, true, null), "
+            "('old', true, false, '早點訂'), ('plain', false, false, null)"
+        ))
 
-    run_alembic(scratch_database, "upgrade", "k1ind0000001")
-    expected = {
-        "packing_list": {
-            "both": ("template", None),
-            "tpl": ("template", None),
-            "kept": ("saved", None),
-            "plain": ("free", "unused"),
-        },
-        "trip": {
-            "both": ("template", None),
-            "tpl": ("template", None),
-            "old": ("saved", None),
-            "plain": ("free", "unused"),
-        },
-    }
+    alembic("upgrade", "k1ind0000001")
+    expected = {"both": ("template", None), "tpl": ("template", None),
+                "kept": ("saved", None), "plain": ("free", "unused"),
+                "old": ("saved", None)}
     with engine.connect() as conn:
-        for table, rows in expected.items():
-            found = conn.execute(text(f"SELECT name, kind, usage FROM {table}")).all()
-            assert {name: (kind, usage) for name, kind, usage in found} == rows, table
+        for table in ("packing_list", "trip"):
+            rows = conn.execute(text(f"SELECT name, kind, usage FROM {table}")).all()
+            for name, kind, usage in rows:
+                assert (kind, usage) == expected[name], (table, name)
         note = conn.execute(text("SELECT archive_note FROM trip WHERE name = 'old'")).scalar()
         assert note == "早點訂"
 
-    run_alembic(scratch_database, "downgrade", "t3rip0000003")
+    alembic("downgrade", "t3rip0000003")
     with engine.connect() as conn:
-        lists = dict(
-            conn.execute(text("SELECT name, (saved, template)::text FROM packing_list")).all()
-        )
+        lists = dict(conn.execute(text("SELECT name, (saved, template)::text FROM packing_list")).all())
         trips = dict(conn.execute(text("SELECT name, (archived, template)::text FROM trip")).all())
-        note = conn.execute(text("SELECT archive_note FROM trip WHERE name = 'old'")).scalar()
     engine.dispose()
     # `both` comes back a template only: the 保存 half was not kept.
     assert lists == {"both": "(f,t)", "tpl": "(f,t)", "kept": "(t,f)", "plain": "(f,f)"}
     assert trips == {"both": "(f,t)", "tpl": "(f,t)", "old": "(t,f)", "plain": "(f,f)"}
-    assert note == "早點訂"

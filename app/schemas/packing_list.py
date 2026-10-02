@@ -21,8 +21,7 @@ class PackingListBase(BaseModel):
 
 class PackingListCreate(PackingListBase):
     #: 一般 by default; `template` makes a 範本 - blank, or 當作範本 with
-    #: `copy_from_id`. Nothing is created saved: saving is a move. No create
-    #: can be refused by the 自動保存 queue, since a new list is never past.
+    #: `copy_from_id`. Nothing is created saved: saving is a move.
     kind: Literal["free", "template"] = "free"
 
     #: Copy the items of an existing list, of any kind.
@@ -43,9 +42,7 @@ class PackingListUpdate(NonNullableUpdate):
     pair_id: str | None = None
     notes: str | None = None
     archive_note: str | None = None
-    #: Acknowledges that 過去使用 may drop the oldest 自動保存 slot. The first
-    #: attempt is expected to arrive without it and be refused; that refusal
-    #: is the only place the caller learns what would go.
+    #: Acknowledges that 過去使用 may drop the oldest 自動保存 slot.
     evict_confirmed: bool = False
 
 
@@ -62,10 +59,12 @@ class PackingListFields(BaseModel):
     kind: Kind
     usage: Usage | None
     auto_saved_at: datetime | None
-    leg: Leg | None
-    pair_id: str | None
     notes: str | None
     archive_note: str | None
+    #: Shown where a list is picked for a leg; also the shelves' order.
+    created_at: datetime
+    leg: Leg | None
+    pair_id: str | None
 
 
 class PackingListSummary(PackingListFields):
@@ -88,19 +87,11 @@ class PackingListIndex(BaseModel):
     """The four shelves, and what the next 過去使用 would drop.
 
     `evict_next` carries what a 409 cannot: the refusal's `detail` is a plain
-    string, matching every router in the media tracker and what the frontend's
-    fetch wrapper reads. The dialog still needs the list's id to offer "save it
-    instead", so that arrives here as data rather than being smuggled into an
-    error message. The index is already loaded on the screen where a list's
-    usage is changed, so this costs no extra request.
+    string, and the dialog needs ids to offer 保存 instead.
     """
 
-    #: 一般 lists that are not 過去使用, each with its `usage`.
     free: list[PackingListSummary]
-    #: 自動保存: 一般 and 過去使用, newest `auto_saved_at` first.
     auto_saved: list[PackingListSummary]
     saved: list[PackingListSummary]
     templates: list[PackingListSummary]
-    #: The slot the next 過去使用 would drop - every auto-saved half of a
-    #: pair - or empty when there is room.
     evict_next: list[PackingListSummary]

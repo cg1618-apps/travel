@@ -1,5 +1,4 @@
-"""The rules about a list's contents: what a copy carries, where a variant
-goes, what a reset clears.
+"""The rules about a list's contents: what a copy carries, where a variant goes, what a reset clears.
 
 Nothing here raises `HTTPException`. The router decides what a refusal looks
 like over HTTP; these functions only answer questions and perform changes.
@@ -18,10 +17,10 @@ def copy_items(db: Session, source: PackingList, target: PackingList) -> None:
     Nothing arrives pre-ticked. A duplicated list with its ticks intact is how
     you reach the airport certain you packed the charger.
 
-    The list's own fields - departure_at, kind, usage, leg, pair_id, notes,
-    archive_note, visibility - are deliberately not this function's business.
-    They describe THAT list rather than its contents, and a list copied with
-    `kind=template` is simply a new template.
+    The list's own fields - departure_at, kind, usage, leg, pair_id,
+    notes, archive_note, visibility - are deliberately not this function's business. They describe
+    THAT list rather than its contents, and a template copied with
+    `kind=template` is simply a second template.
     """
     for item in source.items:
         db.add(

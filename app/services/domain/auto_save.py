@@ -33,45 +33,32 @@ class AutoSaveFull(Exception):
 
 
 def _slot_key(model):
-    """A round-trip pair of lists is one slot; every trip is its own.
-
-    Coalescing to the id gives every unpaired list a key of its own and the
-    two lists of a pair, which share a `pair_id`, a single shared one.
-    """
+    """A round-trip pair of lists is one slot; every trip is its own."""
     if model is PackingList:
         return func.coalesce(PackingList.pair_id, cast(PackingList.id, String))
     return cast(model.id, String)
 
 
-def _auto_saved(model) -> tuple:
+def _auto_saved(model):
     return (model.kind == Kind.FREE, model.usage == Usage.PAST)
 
 
 def count_slots(db: Session, model) -> int:
-    """How many of the queue's slots are occupied."""
     key = _slot_key(model)
-    return db.execute(
-        select(func.count(func.distinct(key))).where(*_auto_saved(model))
-    ).scalar_one()
+    return db.execute(select(func.count(func.distinct(key))).where(*_auto_saved(model))).scalar_one()
 
 
 def oldest_slot(db: Session, model) -> list:
     """The auto-saved rows of the slot that would be dropped next.
 
     Ordered by the slot's earliest `auto_saved_at`, then its lowest id - the
-    tie-break is load-bearing, since two rows can carry the same stamp - one
-    `now` is taken per request, and rows written by hand or in tests share
-    whatever they were given. Only the
-    auto-saved halves of a pair come back: a half still 使用中 is not part of
-    the queue and is not dropped with it.
+    tie-break is load-bearing, since `now()` is the transaction's start. Only
+    the auto-saved halves of a pair come back: a half still 使用中 is not
+    part of the queue and is not dropped with it.
     """
     key = _slot_key(model)
     slot = db.execute(
-        select(
-            key.label("slot"),
-            func.min(model.auto_saved_at).label("at"),
-            func.min(model.id).label("id"),
-        )
+        select(key.label("slot"), func.min(model.auto_saved_at).label("at"), func.min(model.id).label("id"))
         .where(*_auto_saved(model))
         .group_by(key)
         .order_by("at", "id")
@@ -103,23 +90,18 @@ def _adds_slot(db: Session, row) -> bool:
         return True
     partner = db.execute(
         select(PackingList.id).where(
-            *_auto_saved(PackingList),
-            PackingList.pair_id == row.pair_id,
-            PackingList.id != row.id,
+            *_auto_saved(PackingList), PackingList.pair_id == row.pair_id, PackingList.id != row.id
         )
     ).first()
     return partner is None
 
 
 def _enter_queue(db: Session, row, *, confirmed: bool, now: datetime) -> None:
-    """Make room for `row` in 自動保存 - refusing, or dropping the oldest slot."""
     model = type(row)
     if _adds_slot(db, row) and count_slots(db, model) >= AUTO_SAVE_LIMIT[model]:
         slot = oldest_slot(db, model)
         if not confirmed:
             raise AutoSaveFull(slot)
-        # Items and legs go by cascade; a list linked from a dropped trip's
-        # leg is kept and unlinked, as on any trip delete.
         for dropped in slot:
             db.delete(dropped)
         db.flush()
@@ -130,7 +112,7 @@ def apply_kind(db: Session, row, changes: dict, *, confirmed: bool, now: datetim
     """Apply a PATCH's `kind` and `usage` to `row`, popping them from `changes`.
 
     Every check runs before anything is written, so a refusal leaves the row
-    as it was. `None` means "not sent": the schemas refuse an explicit null.
+    as it was.
     """
     kind = changes.pop("kind", None)
     usage = changes.pop("usage", None)
@@ -149,7 +131,6 @@ def apply_kind(db: Session, row, changes: dict, *, confirmed: bool, now: datetim
         row.kind, row.usage, row.auto_saved_at = Kind.SAVED, None, None
         return
 
-    # 取消保存 lands on 未使用 unless the same request names another usage.
     current = row.usage if row.kind == Kind.FREE else Usage.UNUSED
     target_usage = usage or current
     if target_usage == Usage.PAST and current != Usage.PAST:
