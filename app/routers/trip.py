@@ -1,4 +1,9 @@
-"""Trips and their legs, and the four shelves they sit on."""
+"""Trips and their legs, the four shelves they sit on, and the 自動保存 queue.
+
+Which moves between kinds are allowed and what fills or drops a 自動保存 slot
+live in `app.services.domain.auto_save`; this router only translates its
+refusals into 422 and 409.
+"""
 
 from datetime import datetime, timezone
 
@@ -40,6 +45,7 @@ LIST_NOT_FOUND = "Packing list not found."
 LIST_ALREADY_LINKED = "That packing list is already linked to another leg."
 COPY_SOURCE_NOT_FOUND = "Trip to copy from not found."
 START_DATE_REQUIRED = "start_date is required to copy a trip with legs."
+
 
 def _trips_query():
     return select(Trip).options(selectinload(Trip.legs).selectinload(TripLeg.packing_list))
@@ -85,41 +91,50 @@ def _commit(db: Session) -> None:
         raise HTTPException(status_code=409, detail=LIST_ALREADY_LINKED) from None
 
 
-# --- trips ------------------------------------------------------------------
-
-
 def _refusal(slot: list[Trip]) -> str:
     """A plain string naming what would go; the ids come from `evict_next`."""
     names = " and ".join(f'"{trip.name}"' for trip in slot)
     return (
-        f"Auto-save already holds {AUTO_SAVE_LIMIT[Trip]} trips. Marking this one past would delete "
-        f"{names}, the oldest. Save it first if you want to keep it, or confirm "
-        f"to replace it."
+        f"Auto-save already holds {AUTO_SAVE_LIMIT[Trip]} trips. Marking this one "
+        f"past would delete {names}, the oldest. Save it first if you want to keep "
+        f"it, or confirm to replace it."
     )
+
+
+def _responses(trips) -> list[TripResponse]:
+    return [TripResponse.model_validate(trip) for trip in trips]
+
+
+# --- trips ------------------------------------------------------------------
 
 
 @router.get("/api/trips", response_model=TripIndex)
 def list_trips(db: Session = Depends(get_db)):
-    trips = db.scalars(_trips_query()).all()
-    # Newest created first, the same order as packing lists.
-    ordered = sorted(trips, key=lambda trip: (trip.created_at, trip.id), reverse=True)
+    # Newest created first, the same order as packing lists. Every trip is on
+    # exactly one shelf: `kind` is one value, and 自動保存 is the 一般 trips
+    # whose usage is past.
+    trips = db.scalars(_trips_query().order_by(Trip.created_at.desc(), Trip.id.desc())).all()
     auto_saved = sorted(
-        (t for t in trips if t.kind == Kind.FREE and t.usage == Usage.PAST),
+        (trip for trip in trips if trip.kind == Kind.FREE and trip.usage == Usage.PAST),
         key=lambda trip: (trip.auto_saved_at, trip.id),
         reverse=True,
     )
     return TripIndex(
-        free=[t for t in ordered if t.kind == Kind.FREE and t.usage != Usage.PAST],
-        auto_saved=auto_saved,
-        saved=[t for t in ordered if t.kind == Kind.SAVED],
-        templates=[t for t in ordered if t.kind == Kind.TEMPLATE],
-        evict_next=evict_next(db, Trip),
+        free=_responses(t for t in trips if t.kind == Kind.FREE and t.usage != Usage.PAST),
+        auto_saved=_responses(auto_saved),
+        saved=_responses(t for t in trips if t.kind == Kind.SAVED),
+        templates=_responses(t for t in trips if t.kind == Kind.TEMPLATE),
+        evict_next=_responses(evict_next(db, Trip)),
     )
 
 
 @router.post("/api/trips/bulk-delete", status_code=204)
 def bulk_delete_trips(payload: TripIds, db: Session = Depends(get_db)):
-    """All or nothing: one missing id refuses the whole request."""
+    """All or nothing: one missing id refuses the whole request.
+
+    Legs go by cascade; a linked packing list is kept and unlinked, as on any
+    trip delete.
+    """
     ids = set(payload.ids)
     trips = db.scalars(select(Trip).where(Trip.id.in_(ids))).all() if ids else []
     if len(trips) != len(ids):
@@ -163,7 +178,9 @@ def update_trip(trip_id: int, payload: TripUpdate, db: Session = Depends(get_db)
     trip = _get_trip(db, trip_id)
     changes = payload.model_dump(exclude_unset=True, exclude={"evict_confirmed"})
     try:
-        apply_kind(db, trip, changes, confirmed=payload.evict_confirmed, now=datetime.now(timezone.utc))
+        apply_kind(
+            db, trip, changes, confirmed=payload.evict_confirmed, now=datetime.now(timezone.utc)
+        )
     except KindRefused as refused:
         raise HTTPException(status_code=422, detail=str(refused)) from None
     except AutoSaveFull as full:

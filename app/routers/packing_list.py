@@ -1,7 +1,9 @@
 """Packing lists: the four shelves, creating one, and the queue that refuses.
 
-The router owns wiring and status codes. What fills a slot, what eviction
-destroys and what a copy carries all live in `app.services.domain.packing`.
+The router owns wiring and status codes. What fills a 自動保存 slot, which
+moves between kinds are allowed and what dropping a slot destroys live in
+`app.services.domain.auto_save`; what a copy carries in
+`app.services.domain.packing`.
 """
 
 from datetime import datetime, timezone
@@ -42,12 +44,18 @@ def _get(db: Session, list_id: int) -> PackingList:
 
 
 def _refusal(slot: list[PackingList]) -> str:
-    """A plain string naming what would go; the ids come from `evict_next`."""
+    """The message a caller gets instead of a silently destroyed list.
+
+    A plain string, because `detail` is a plain string in every media router
+    and the frontend's fetch wrapper reads it as one. It names the lists so the
+    refusal is actionable on its own; the ids the dialog needs come from
+    `evict_next` on the index.
+    """
     names = " and ".join(f'"{packing_list.name}"' for packing_list in slot)
     return (
-        f"Auto-save already holds {AUTO_SAVE_LIMIT[PackingList]} lists. Marking this one past would delete "
-        f"{names}, the oldest. Save it first if you want to keep it, or confirm "
-        f"to replace it."
+        f"Auto-save already holds {AUTO_SAVE_LIMIT[PackingList]} lists. Marking "
+        f"this one past would delete {names}, the oldest. Save it first if you "
+        f"want to keep it, or confirm to replace it."
     )
 
 
@@ -73,7 +81,9 @@ def index(db: Session = Depends(get_db)):
         .all()
     )
 
-    def shelf(predicate):
+    # Every list is on exactly one shelf: `kind` is one value, and 自動保存 is
+    # the 一般 lists whose usage is past.
+    def shelf(predicate) -> list[PackingListSummary]:
         return [_summary(row) for row in lists if predicate(row)]
 
     auto_saved = sorted(
@@ -127,8 +137,13 @@ def update(list_id: int, payload: PackingListUpdate, db: Session = Depends(get_d
     packing_list = _get(db, list_id)
     changes = payload.model_dump(exclude_unset=True, exclude={"evict_confirmed"})
     try:
-        apply_kind(db, packing_list, changes, confirmed=payload.evict_confirmed,
-                   now=datetime.now(timezone.utc))
+        apply_kind(
+            db,
+            packing_list,
+            changes,
+            confirmed=payload.evict_confirmed,
+            now=datetime.now(timezone.utc),
+        )
     except KindRefused as refused:
         raise HTTPException(status_code=422, detail=str(refused)) from None
     except AutoSaveFull as full:

@@ -35,8 +35,8 @@ class PackingList(Base, TimestampMixin, KindMixin):
 
     # Shared by the two lists of a round trip, rather than each pointing at the
     # other. A self-pointer holds two copies of one fact and can desync - A
-    # points at B while B points at C, and nothing complains - and the
-    # 自動保存 queue counts a pair as one slot, which is a distinct-count against a shared key
+    # points at B while B points at C, and nothing complains - and 自動保存
+    # counts a pair as one slot, which is a distinct-count against a shared key
     # and an awkward self-join against a pointer.
     #
     # Navigational only. No logic crosses the pair: nothing infers that what

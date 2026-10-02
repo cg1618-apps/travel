@@ -21,13 +21,12 @@ def a_list(**overrides) -> PackingList:
     return PackingList(name=overrides.pop("name", "Tokyo"), **overrides)
 
 
-def test_a_list_defaults_to_a_working_private_list(db_session):
+def test_a_list_defaults_to_a_free_private_list(db_session):
     packing_list = a_list()
     db_session.add(packing_list)
     db_session.flush()
 
     assert packing_list.kind == Kind.FREE
-    assert packing_list.usage == Usage.UNUSED
     assert packing_list.visibility == Visibility.PRIVATE
     assert packing_list.departure_at is None
     assert packing_list.pair_id is None
@@ -205,11 +204,14 @@ def test_a_template_or_saved_row_has_no_usage(db_session, model, kind):
     "fields",
     [
         {"kind": Kind.SAVED, "usage": Usage.UNUSED},  # usage on a non-free row
-        {"kind": Kind.FREE, "usage": None},  # a free row without usage
         {"kind": Kind.FREE, "usage": Usage.PAST},  # past without auto_saved_at
-        {"kind": Kind.FREE, "usage": Usage.UNUSED,
-         "auto_saved_at": datetime(2026, 9, 1, tzinfo=timezone.utc)},  # stamp without past
+        {
+            "kind": Kind.FREE,
+            "usage": Usage.UNUSED,
+            "auto_saved_at": datetime(2026, 9, 1, tzinfo=timezone.utc),
+        },  # a stamp without past
         {"kind": "archived"},  # unknown kind
+        {"usage": "someday"},  # unknown usage
     ],
 )
 def test_the_database_refuses_impossible_combinations(db_session, model, fields):
@@ -219,9 +221,24 @@ def test_the_database_refuses_impossible_combinations(db_session, model, fields)
 
 
 @pytest.mark.parametrize("model", [PackingList, Trip])
+def test_the_database_refuses_a_free_row_without_usage(db_session, model):
+    # Through an UPDATE, not the constructor: `usage=None` passed to a new free
+    # row is taken by the column's default as "not given" and becomes unused,
+    # so only an UPDATE can put the NULL in front of the check.
+    row = model(name="x")
+    db_session.add(row)
+    db_session.flush()
+    row.usage = None
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+@pytest.mark.parametrize("model", [PackingList, Trip])
 def test_a_past_row_with_its_stamp_is_accepted(db_session, model):
     # The mirror of the refusals above: same columns, legal values.
-    row = model(name="x", usage=Usage.PAST, auto_saved_at=datetime(2026, 9, 1, tzinfo=timezone.utc))
+    row = model(
+        name="x", usage=Usage.PAST, auto_saved_at=datetime(2026, 9, 1, tzinfo=timezone.utc)
+    )
     db_session.add(row)
     db_session.flush()
     assert row.id is not None

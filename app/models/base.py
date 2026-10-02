@@ -1,9 +1,12 @@
 """Shared pieces the model modules build on."""
 
+from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, String, event, func
+from sqlalchemy import CheckConstraint, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
+
+from app.constants import Kind, Usage
 
 
 def in_clause(column: str, vocabulary: type[StrEnum], *, nullable: bool = False) -> str:
@@ -27,10 +30,10 @@ class TimestampMixin:
     """`created_at` and `updated_at`, defaulted by the database.
 
     The media tracker defaults these in Python from a Taipei-now helper because
-    it displays them. `created_at` is read by the API - it orders the index
-    shelves and the leg picker - but is shown only as a date, so they come
-    from the database clock, which is correct for a row written by a migration
-    or by hand as well as by the app, and needs no helper.
+    it displays them. Here `created_at` orders the list and trip indexes and
+    the leg picker shows only its Taipei date, so they come from the database
+    clock, which is correct for a row written by a migration or by hand as well
+    as by the app, and needs no helper.
     """
 
     created_at: Mapped[DateTime] = mapped_column(
@@ -44,12 +47,19 @@ class TimestampMixin:
     )
 
 
-def kind_constraints(table: str) -> tuple:
+def _default_usage(context) -> str | None:
+    """`unused` for a free row, nothing for a template or a saved one.
+
+    A context-sensitive default because `usage` is required exactly when
+    `kind` is free, and a constructor that only names `kind=template` should
+    not have to remember to pass `usage=None` as well.
+    """
+    kind = context.get_current_parameters().get("kind")
+    return Usage.UNUSED if kind in (None, Kind.FREE) else None
+
+
+def kind_constraints(table: str) -> tuple[CheckConstraint, ...]:
     """The four checks that make an impossible kind/usage row unstorable."""
-    from sqlalchemy import CheckConstraint
-
-    from app.constants import Kind, Usage
-
     return (
         CheckConstraint(in_clause("kind", Kind), name=f"ck_{table}_kind"),
         CheckConstraint(in_clause("usage", Usage, nullable=True), name=f"ck_{table}_usage"),
@@ -62,25 +72,15 @@ def kind_constraints(table: str) -> tuple:
 
 
 class KindMixin:
-    """`kind`, `usage` and `auto_saved_at`, identical on lists and trips."""
+    """`kind`, `usage` and `auto_saved_at`, identical on lists and trips.
 
-    kind: Mapped[str] = mapped_column(String, nullable=False, default="free", server_default="free")
-    usage: Mapped[str | None] = mapped_column(String, nullable=True)
-    #: When the row entered 自動保存; the queue's order. Set iff usage is past.
-    auto_saved_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-@event.listens_for(KindMixin, "init", propagate=True)
-def _default_usage(target, args, kwargs):
-    """`unused` for a free row, nothing for a template or a saved one.
-
-    Applied at construction rather than as a column default because `usage` is
-    required exactly when `kind` is free, so a constructor that only names
-    `kind=template` should not have to pass `usage=None` as well. A column
-    default would also swallow an explicit `usage=None` on a free row and
-    paper over the very state the database check exists to refuse.
+    自動保存 is `kind = free` with `usage = past`, not a kind of its own; the
+    checks in `kind_constraints` keep the three columns consistent.
     """
-    from app.constants import Kind, Usage
 
-    if "usage" not in kwargs and kwargs.get("kind", Kind.FREE) == Kind.FREE:
-        kwargs["usage"] = Usage.UNUSED
+    kind: Mapped[str] = mapped_column(
+        String, nullable=False, default=Kind.FREE, server_default=Kind.FREE
+    )
+    usage: Mapped[str | None] = mapped_column(String, nullable=True, default=_default_usage)
+    #: When the row entered 自動保存; the queue's order. Set iff usage is past.
+    auto_saved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
