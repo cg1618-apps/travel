@@ -70,8 +70,8 @@ serve.
 | `POST` | `/api/packing-lists/{id}/reset` | none | Reset the list's packing progress. Unpacks `packed` items, clears `quantity_packed` and `double_checked`, but leaves `no_need` and `needs_double_check` definition alone. |
 | `DELETE` | `/api/packing-lists/{id}` | none | `204`. Items go with it. |
 
-Every read of a list carries `kind`, `usage`, `auto_saved_at`, `notes` and
-`archive_note`; `departure_at` as the **effective** date; and
+Every read of a list carries `kind`, `usage`, `auto_saved_at`, `notes`,
+`archive_note` and `created_at`; `departure_at` as the **effective** date; and
 `departure_source`, `"list"` or `"trip_leg"`. While a trip leg links the list,
 `departure_at` is that leg's Asia/Taipei calendar day and `departure_source` is
 `trip_leg`; otherwise both are the list's own. A `PATCH` of `departure_at` writes
@@ -85,7 +85,8 @@ plain boolean, and refuses `null` the same way.
 ### The index
 
 `GET /api/packing-lists` returns five fields, all arrays of list summaries.
-Every list is on exactly one of the four shelves:
+Every list is on exactly one of the four shelves, and every shelf but
+`auto_saved` is newest `created_at` first, then highest `id`:
 
 | Field | What is in it |
 | --- | --- |
@@ -246,11 +247,10 @@ addressed on its own afterwards.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/trips` | none | The same four shelves as packing lists — `free`, `auto_saved`, `saved`, `templates` — plus `evict_next`, the trip the next `usage: past` would drop (or `[]`). Every trip has its legs nested. `free`, `saved` and `templates` are newest first by latest `departs_at`, a trip with no legs last; `auto_saved` is newest `auto_saved_at` first. Every trip carries `kind`, `usage`, `auto_saved_at`, `notes` and `archive_note`. |
-| `GET` | `/api/trips/current` | none | The current trip (see `business-rules.md`). `404` with `No current trip.` when there is none. |
+| `GET` | `/api/trips` | none | The same four shelves as packing lists — `free`, `auto_saved`, `saved`, `templates` — plus `evict_next`, the trip the next `usage: past` would drop (or `[]`). Every trip has its legs nested. `free`, `saved` and `templates` are newest `created_at` first, then highest `id`, as for lists; `auto_saved` is newest `auto_saved_at` first. Every trip carries `kind`, `usage`, `auto_saved_at`, `notes`, `archive_note` and `created_at`. |
 | `POST` | `/api/trips` | none | `201`. `name` is required and non-empty; `kind` is `free` (the default, 未使用) or `template`, and `saved` is a `422`. Optional `copy_from_id` copies another trip of any kind (see `business-rules.md`, "Copying a trip"): `404` `Trip to copy from not found.` for an unknown one, and `422` `start_date is required to copy a trip with legs.` when it has legs and no `start_date` (a date) was sent. Nothing is written on either refusal; a `start_date` without `copy_from_id` is ignored. The response adds `unlinked_from`, `[{from_place, to_place, packing_list_name}]`, empty unless a copied leg had a list. Never refused by 自動保存. |
 | `POST` | `/api/trips/bulk-delete` | none | `204`. Body `{"ids": [..]}`. All or nothing: an id naming no trip is a `404` and nothing is deleted. Legs go with each trip; a linked packing list is kept and unlinked. |
-| `GET` / `PATCH` / `DELETE` | `/api/trips/{id}` | none | `404` when missing. `PATCH` takes `name`, `notes`, `archive_note`, `kind`, `usage` and `evict_confirmed`, with the same kind moves and refusals as a packing list; `usage: past` into a full 自動保存 is a `409` naming the trip that would go (`Auto-save already holds 10 trips. …`). Deleting takes the legs with it. |
+| `GET` / `PATCH` / `DELETE` | `/api/trips/{id}` | none | `404` when missing; an `id` that is not an integer is a `422`, and that is what the retired `GET /api/trips/current` now answers. `PATCH` takes `name`, `notes`, `archive_note`, `kind`, `usage` and `evict_confirmed`, with the same kind moves and refusals as a packing list; `usage: past` into a full 自動保存 is a `409` naming the trip that would go (`Auto-save already holds 10 trips. …`). Deleting takes the legs with it. |
 | `POST` | `/api/trips/{trip_id}/legs` | none | `201`. `from_place`, `to_place`, `departs_at` and `arrives_at` are required. |
 | `PATCH` / `DELETE` | `/api/trip-legs/{id}` | none | `404` when missing. |
 

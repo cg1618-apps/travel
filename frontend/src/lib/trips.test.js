@@ -6,6 +6,7 @@ import {
   formatDuration,
   formatTaipei,
   fromTaipeiInput,
+  legSummary,
   needsStartDate,
   sortLegs,
   taipeiInputValue,
@@ -93,5 +94,19 @@ describe('firstLine', () => {
     expect(firstLine('a\nb')).toBe('a')
     expect(firstLine('\n  \nb')).toBe('b')
     expect(firstLine(null)).toBe(null)
+  })
+})
+
+describe('legSummary', () => {
+  const leg = {
+    from_place: '台北', to_place: '東京', service: '長榮',
+    departs_at: '2026-10-12T00:30:00Z', arrives_at: '2026-10-12T03:40:00Z',
+  }
+  it('is route, Taipei departure, duration and 車種', () => {
+    expect(legSummary(leg)).toBe('台北 → 東京 · Mon 10/12 08:30 · 3h10m · 長榮')
+  })
+  it('leaves out a blank 車種', () => {
+    expect(legSummary({ ...leg, service: null })).toBe('台北 → 東京 · Mon 10/12 08:30 · 3h10m')
+    expect(legSummary({ ...leg, service: '  ' })).toBe('台北 → 東京 · Mon 10/12 08:30 · 3h10m')
   })
 })

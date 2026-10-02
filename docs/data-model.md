@@ -67,7 +67,7 @@ constraints.
 | `notes` | text | yes | | 備註, the planning remark. |
 | `archive_note` | text | yes | | 保存備註 — the remark written afterwards, separate from `notes`. Kept whatever the kind. |
 | `visibility` | text | no | `private` | `private`, `unlisted`, `public`. **Nothing reads this yet.** |
-| `created_at` | timestamptz | no | `now()` | Orders the index, newest first. |
+| `created_at` | timestamptz | no | `now()` | Orders every index shelf but 自動保存, newest first (then highest `id`). Reads carry it; the leg picker shows its Taipei date and orders by it too. |
 | `updated_at` | timestamptz | no | `now()` | |
 
 **Constraints**
@@ -229,8 +229,7 @@ before `weekday`), then `time`.
 
 A named group of journeys, such as a round trip. It holds no dates of its own;
 they belong to its legs. `kind`, `usage` and `auto_saved_at` are the same
-columns, with the same constraints, as on `packing_list`; a 一般 trip's `usage`
-is also what makes it current (`business-rules.md`).
+columns, with the same constraints, as on `packing_list`.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
@@ -242,7 +241,7 @@ is also what makes it current (`business-rules.md`).
 | `auto_saved_at` | timestamptz | yes | | When the row entered 自動保存; orders that queue. Set exactly when `usage` is `past`. |
 | `archive_note` | text | yes | | 保存備註 — the remark written afterwards, separate from `notes`. Kept whatever the kind. |
 | `visibility` | text | no | `private` | `private`, `unlisted`, `public`. A single trip is the thing expected to be shared. **Nothing reads this yet**, as with `packing_list.visibility`. |
-| `created_at` | timestamptz | no | `now()` | |
+| `created_at` | timestamptz | no | `now()` | Orders every index shelf but 自動保存, newest first (then highest `id`), as on `packing_list`. Reads carry it. |
 | `updated_at` | timestamptz | no | `now()` | |
 
 **Constraints**

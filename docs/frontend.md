@@ -13,14 +13,15 @@ in `api.md`; the rules it renders are in `business-rules.md`.
 | `src/api/` | `client.js` — the only place that calls `fetch()`. `endpoints.js` — every URL in one map. |
 | `src/hooks/` | `useApiQuery.js` — TanStack Query over `fetchJson`, plus `useApiMutation` and `send`. `useLongPress.js` — a long-press that never also fires the click. |
 | `src/pages/` | One file per screen, PascalCase, default export. |
-| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `KindControls`, `States`. |
+| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `KindControls`, `IndexTabs`, `States`. |
 | `src/lib/` | Pure modules with no React in them. Tests sit beside them. |
 
 Routes are declared in `src/App.jsx`: `/` the dashboard, `/lists` and
-`/lists/:listId` the packing lists, `/transport` 交通, `/trip` and
-`/trips/:tripId` 行程, `/trips/auto-saved` 自動保存的行程 (declared above
-`/trips/:tripId`, which would otherwise read it as an id), `/options` 選項.
-Any other path renders the dashboard.
+`/lists/:listId` the packing lists, `/transport` 交通, `/trips` and
+`/trips/:tripId` 行程, `/options` 選項. Two old addresses redirect, so a
+bookmark still lands: `/trip` to `/trips`, and `/trips/auto-saved` to
+`/trips?tab=auto_saved` (declared above `/trips/:tripId`, which would otherwise
+read it as an id). Any other path renders the dashboard.
 The nav bar names the last four; the app's name `travel` links to `/`. Every screen is editable, so every one of
 them goes through TanStack Query — media's split is query hooks for anything
 written back from the UI and plain `fetch` for read-only pages, and this app has
@@ -44,8 +45,11 @@ so a value with no display string fails a test rather than rendering blank.
 一般), `AUTO_SAVED_LABEL` (自動保存, which is not a stored kind) and
 `USAGE_LABELS` (使用中, 未來使用, 未使用, 過去使用). The rules the screens share
 about them — which badge a row gets, which rows the dashboard shows, the
-limits shown as `n / 5` and `n / 10`, every row of an index once — are pure
-helpers in `lib/kinds.js`, tested beside it.
+limits shown as `n / 5` and `n / 10`, every row of an index once, the tabs
+(`TABS`, `tabFromSearch`, `tabFor`, `tabCounts`), the name a source fills in
+(`autofillName`) and the leg picker's choices and labels (`linkChoices`,
+`linkLabel`, `statusLabel`) — are pure helpers in `lib/kinds.js`, tested
+beside it.
 
 **An API `detail` is never rendered.** It is English by contract (`api.md`).
 `ErrorState` says 發生錯誤。 with the status code; `EvictDialog` writes its own
@@ -85,28 +89,51 @@ reads the indexes the other screens already own — `['packing-lists']` and
   the index) and `已處理 {settled} / {items}`. 所有清單 links to `/lists`.
 - **行程** — 一般 trips that are 使用中 or 未來使用, the same way, each with its
   狀態 badge and its date range or 沒有行程段, linking to `/trips/{id}`.
-  前往行程 links to `/trip`.
+  所有行程 links to `/trips`. There is no current trip and no 目前 badge.
 - **Nothing else, and nothing to add.** 自動保存, 保存 and 範本, and every
-  create form, belong to `/lists` and `/trip`; the dashboard only links there.
+  create form, belong to `/lists` and `/trips`; the dashboard only links there.
   An empty section says so plainly (目前沒有使用中或未來使用的清單。 /
   目前沒有使用中或未來使用的行程。) and offers nothing.
 
+## The index tabs
+
+`/lists` and `/trips` both open on `components/IndexTabs.jsx`, a browser-style
+tab strip: **一般（n）· 範本（n）· 保存（n）· 自動保存（n / 5）**, or `n / 10`
+for trips. The active tab joins the panel below it. The tab is held in the URL
+as `?tab=` — `template`, `saved` or `auto_saved`, and absent for 一般 — so Back
+and a reload come back to it; anything else reads as 一般 (`tabFromSearch`).
+Each tab is one of the API's four arrays, shown as it comes rather than filtered
+again, so every row is on exactly one tab. An empty tab says how a row gets
+there, in one line.
+
+The strip scrolls sideways on a narrow screen. Its baseline is drawn by an
+inner `min-w-max` row inside the scroller, not by the scroller itself: the
+active tab's `-mb-px` then overlaps that row's border — which is what joins it
+to the panel — instead of overflowing a box whose `overflow-x-auto` also makes
+it scroll vertically.
+
+## Creating from a source fills the name
+
+On both create forms, choosing a source to copy — 從哪份清單複製項目 on
+`/lists`, 從範本 on `/trips` — fills 名稱 with the source's name, a trailing
+`（範本）` removed, but only while the field is empty or still holds the
+previous fill (`autofillName`). A typed name is never overwritten; going back to
+no source (空白開始, 不使用範本) clears only a fill.
+
 ## 打包清單 (`/lists`)
 
-`pages/PackingLists.jsx` puts every list on one of four shelves, in this order,
-as sections rather than tabs because there are rarely more than a handful:
+`pages/PackingLists.jsx` shows each tab as a table:
 
 - **一般** — each row has `KindControls`: a 狀態 select, a 保存 checkbox and a
   當作範本 button.
-- **自動保存** with its count, `n / 5` — the same row; 狀態 reads 過去使用,
-  and changing it returns the list to 一般. The first line of 保存備註 sits
-  under the name.
+- **自動保存** — the same row; 狀態 reads 過去使用, and changing it returns
+  the list to 一般. The first line of 保存備註 sits under the name.
 - **保存** — the 保存 checkbox and 當作範本, and the first line of 保存備註.
 - **範本** — no controls: a template's kind never changes and it has no 狀態.
 
-Each empty shelf says how a list gets there. **+ 新增清單** opens a form with
-名稱, 出發日期, 類型 (一般 or 範本) and 從哪份清單複製項目, which offers every
-list once, any kind, with its badge.
+The first line of 保存備註 shows on 保存 and 自動保存 rows only. **+ 新增清單**
+opens a form with 名稱, 出發日期, 類型 (一般 or 範本) and 從哪份清單複製項目,
+which offers every list once, any kind, with its badge.
 
 **當作範本** creates `{name}（範本）` with the items copied and shows a notice
 linking to it, dismissed with 知道了. **Unticking 保存** asks first, in
@@ -206,7 +233,8 @@ badge, and the same `KindControls` as its row on `/lists`. 當作範本 here ope
 the new template. Then a **備註** cell, and a **保存備註** cell when the list is
 saved or auto-saved or already has a remark. 過去使用 into a full 自動保存
 opens the same `EvictDialog`; the index it names from is fetched only once a
-refusal has happened, and 改為保存它 appears when it has arrived.
+refusal has happened, and the dialog opens only once that read has arrived
+fresh, so it never names a list from a stale `evict_next`.
 
 ## Spreadsheet conventions, because that is the reference
 
@@ -266,33 +294,55 @@ journey is a card under it.
 - **Empty.** 還沒有路線。 with the add-route form; with routes present the same
   form sits at the bottom of the page.
 
-## 行程
+## 行程 (`/trips`)
 
-`/trip` is the sheet's This time tab (`pages/Trip.jsx`): the current trip, leg
-by leg. `/trips/:tripId` shows any other trip through the same component. Reads
-live under `['trips', ...]` (`current`, `detail`, `index`); every write also
+`pages/Trips.jsx` is the 行程 nav item: **+ 新增行程** at the top, then the
+tabs. Reads live under `['trips', ...]` (`index`, `detail`); every write also
 refreshes the packing-list queries, because a linked list's date comes from
 its leg.
 
-- **No trip.** `/api/trips/current` answers 404, which the page treats as an
-  answer rather than an error: 目前沒有使用中或未來使用的行程。 with the
-  new-trip form, and the sections below it so every other trip stays
-  reachable. A new trip is 未使用 (or a 範本), never current, so it opens at
-  `/trips/{id}`. A `/trips/{id}` that answers 404 reads 找不到這個行程。
+- **+ 新增行程** opens a name field, a 一般 / 範本 select and, when templates
+  exist, a 從範本 select of every template, which fills the name. Choosing a
+  template with legs adds a required 出發日期, the Taipei day its first leg
+  moves to. 建立 is disabled until it is ready and while a create is in flight,
+  and a failure says 無法建立行程，請再試一次。 Creating opens `/trips/{id}`;
+  after a copy, a notice there names each source leg whose packing list was
+  not carried
+  (「台北車站 → 彰化火車站」在範本中連結了「台北去彰化」，請自行連結打包清單。),
+  dismissed with 知道了. It travels in the navigation state, which 知道了
+  clears, so Back and a reload do not bring a dismissed one back.
+- **Cards.** Each trip is a card linking to `/trips/{id}`: its name, a 狀態
+  badge on 一般 and 自動保存 trips, then one line per leg in departure order —
+  起點 → 終點, the Taipei departure, the duration and 車種 when there is one
+  (`legSummary` in `lib/trips.js`). A trip with no legs reads 沒有行程段. 保存
+  and 自動保存 cards add the first line of 保存備註.
+- **刪除模式** lives on the 自動保存 tab, where old trips pile up. It puts a
+  checkbox on every card, with **全選** and **刪除所選（n）**, which is
+  disabled with nothing ticked or while a delete is in flight. That opens one
+  `ConfirmDialog` naming every selected trip and saying their legs go with them
+  and a linked packing list is not affected; confirming calls
+  `POST /api/trips/bulk-delete`. A failure shows 無法刪除，請再試一次。 完成
+  leaves the mode and clears the selection.
+
+## 行程 detail (`/trips/:tripId`)
+
+`pages/Trip.jsx` is the sheet's This time tab: one trip, in full, leg by leg.
+**← 行程** goes back to the index, on the tab the trip is on (`tabFor`).
+Nothing is listed below the trip. A `/trips/{id}` that answers 404 — or 422,
+for an id that is not a number — reads 找不到這個行程。
+
 - **Header.** The name is a cell that cannot be emptied, with a 範本, 保存 or
   自動保存 badge beside it. Under it `KindControls` — the 狀態 select on a
   一般 or 自動保存 trip, the 保存 checkbox and 當作範本, none of them on a 範本
   — then 備註. The ⋯ menu holds 保存 (or 取消保存, which asks first, as the
-  checkbox does), 當作範本 and 刪除行程, which asks first; a 範本's ⋯ offers
-  only 刪除行程. **當作範本** creates `{name}（範本）` with the legs on the
-  same dates — the page sends the source's own first Taipei day as
-  `start_date` — and opens it. On a saved or auto-saved trip, or whenever it
-  has a remark, a **保存備註** cell sits under 備註.
-- **Leaving current.** On `/trip`, 保存 or any change of 狀態
-  (`leavesCurrent` in `lib/kinds.js`) moves the page to `/trips/{id}` rather
-  than letting the trip vanish under the click — 使用中 → 未來使用 included,
-  since another 使用中 trip would then take `/trip` over. 過去使用 into a full
-  自動保存 opens `EvictDialog`.
+  checkbox does), 當作範本 and 刪除行程, which asks first and returns to
+  `/trips`; a 範本's ⋯ offers only 刪除行程. **當作範本** creates
+  `{name}（範本）` with the legs on the same dates — the page sends the
+  source's own first Taipei day as `start_date` — and opens it. On a saved or
+  auto-saved trip, or whenever it has a remark, a **保存備註** cell sits under
+  備註. A change of 狀態 or kind keeps the page where it is. 過去使用 into a
+  full 自動保存 opens `EvictDialog` once the index it names from has arrived
+  fresh.
 - **Legs** are cards in `departs_at` order. The top line is 起點 → 終點, each
   a cell; an emptied one keeps its value (`required` in `lib/cells.js`, as on
   交通 and the trip's name). Under it the departure, the arrival
@@ -305,46 +355,15 @@ its leg.
   two seconds; a refused clipboard shows 無法複製. ✎ edits it.
 - **已訂票 / 付款 / 取票** are three toggles, each its own field.
 - **Packing list.** A linked list shows as `打包清單：{name}`, a link to it; ✎
-  opens a select of every list (all four shelves, each once) and
-  （不連結）. A 409 shows 這份清單已經連到別的行程段. The list's own header then
-  reads 由行程設定 for its date.
+  opens a select of every list **except templates**, newest `created_at`
+  first (`linkChoices` — this order is the picker's alone), each reading
+  `{name} · {created date, Taipei} · {status}` (`linkLabel`): the 狀態 for a
+  一般 or 自動保存 list, 保存 for a saved one. A template the leg is already
+  linked to stays in the list, so the select never reads （不連結） for a
+  linked leg. （不連結） unlinks. A 409 shows 這份清單已經連到別的行程段. The
+  list's own header then reads 由行程設定 for its date.
 - **Adding and deleting.** + 新增一段 takes the places and two Taipei times;
   ⋯ 刪除這段 asks first.
-- **Below the trip**, every other trip — the trip on screen is left out of
-  every section — each row linking to the trip with its date range
-  (`tripDateRange`):
-  - **一般** — 一般 trips not 過去使用, each with its 狀態 badge.
-  - **保存** — saved trips, each with the first line of its 保存備註.
-  - **範本** — templates.
-  - then a link, **自動保存的行程（n / 10）→**, always shown.
-- **+ 新增行程** sits in the 一般 heading on a trip's page and is the only way
-  to a second trip, because once any trip is current `/trip` shows one rather
-  than the empty state. It opens a name field, a 一般 / 範本 select and, when
-  templates exist, a 從範本 select of every template. Choosing a template with
-  legs adds a required 出發日期, the Taipei day its first leg moves to.
-  Creating goes to `/trips/{id}`; after a copy, a notice names each source leg
-  whose packing list was not carried
-  (「台北車站 → 彰化火車站」在範本中連結了「台北去彰化」，請自行連結打包清單。),
-  dismissed with 知道了. It travels in the navigation state, which 知道了
-  clears, so Back and a reload do not bring a dismissed one back. With no
-  current trip the empty state offers the same form. A section with nothing to
-  list is omitted, except 一般 on a trip's page, which holds + 新增行程.
-
-## 自動保存的行程
-
-`/trips/auto-saved` (`pages/AutoSavedTrips.jsx`) lists every auto-saved trip,
-newest first, with its date range and the first line of its 保存備註, under a
-heading counting `n / 10`. It is reached from the link below the trip on the
-行程 page, and from nowhere in the nav bar; ← 行程 goes back.
-
-**刪除模式** is here because this is where old trips pile up. It puts a
-checkbox on every row, with **全選** and **刪除所選（n）**, which is disabled
-with nothing ticked or while a delete is in flight. That opens one
-`ConfirmDialog` naming every selected trip and saying their legs go with them
-and a linked packing list is not affected; confirming calls
-`POST /api/trips/bulk-delete`. A failure shows 無法刪除，請再試一次。 完成 leaves
-the mode and clears the selection. With nothing auto-saved the page says how a
-trip gets there, and offers no 刪除模式.
 
 ## Mobile first
 
@@ -367,14 +386,16 @@ rather than raw colours, so a palette change reaches every screen at once.
 ## The 409 is a decision, not an error toast
 
 The only `409` a kind change can meet is 過去使用 into a full 自動保存. On
-`/lists`, on a list's own page and on the 行程 page alike, it opens
+`/lists`, on a list's own page and on a trip's page alike, it opens
 `EvictDialog` — 這會刪除一份清單 (or 一個行程), the limit, and the names that
 would go — with *save it instead* first, as the primary action (改為保存它);
 confirming the delete (刪除並繼續) is second, and 取消 third. A destructive
 confirm whose safe option is missing, or buried, gets clicked through.
 
 Saving from that dialog saves what would go and **retries unconfirmed**, so the
-retry succeeds because there is room rather than because it was forced.
+retry succeeds because there is room rather than because it was forced. If the
+save is refused, the dialog closes and nothing is retried; the refetch shows
+what actually happened.
 Confirming retries the same change with `evict_confirmed`.
 
 The ids and names it needs come from `evict_next` on the index response — the

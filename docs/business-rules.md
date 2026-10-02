@@ -10,8 +10,7 @@ this way lives in `notes/decisions.md`.
 
 These live in `app/services/domain/`, not in the routers: kinds, usage and the
 自動保存 queue in `auto_save.py`, the copy and reset rules in `packing.py`, the
-common-options rules in `labels.py` and the current-trip and trip-copy rules in
-`trip.py`. The sheet importer is `app/services/sheet_import/`. A router owns
+common-options rules in `labels.py` and the trip-copy rule in `trip.py`. The sheet importer is `app/services/sheet_import/`. A router owns
 wiring and status codes; a rule reimplemented in a second endpoint is a rule
 with two answers.
 
@@ -156,19 +155,22 @@ not necessarily the same one.
 and everything else works. A list's date is its own `departure_at`
 unless a trip leg links it; see "Departure source".
 
-## The current trip
+## The shelves and their order
 
-`/api/trips/current` looks only at 一般 trips, and **their status decides, not
-their dates**:
+**Every list and every trip is on exactly one shelf** — 一般 (`free` and not
+`past`), 自動保存, 保存 or 範本 — because `kind` is one value and 自動保存 is
+the 一般 rows whose usage is `past`. The two indexes return the four shelves as
+four arrays, and the screens show them as they come rather than filtering them
+again, so no row can fall between two screens.
 
-1. the trips that are 使用中 (`in_use`); with none,
-2. the trips that are 未來使用 (`upcoming`).
+**Every shelf but 自動保存 is newest `created_at` first, then highest `id`** —
+lists and trips alike; trips are not ordered by their legs' dates. 自動保存 is
+newest `auto_saved_at` first, the reverse of the order its slots are dropped in.
+The leg picker orders by `created_at` too, on the client (`frontend.md`).
 
-Within the group, the trip whose soonest leg **still ahead of now** is earliest
-is current; trips with no leg ahead come after, newest (highest id) first, and
-so does a tie. A trip with no legs can be current — it is the status that says
-which trip is being taken. With no 一般 trip in either group there is no
-current trip. Templates, saved trips and 自動保存 trips are never current.
+**There is no current trip.** Nothing picks one trip as the one being taken:
+行程 opens the index, and the dashboard shows every 一般 trip that is 使用中 or
+未來使用, 使用中 first.
 
 ## Copying a trip
 

@@ -66,6 +66,8 @@ class PackingListFields(BaseModel):
     pair_id: str | None
     notes: str | None
     archive_note: str | None
+    #: Every shelf but 自動保存 is ordered by it, and the leg picker shows it.
+    created_at: datetime
 
 
 class PackingListSummary(PackingListFields):
@@ -95,7 +97,8 @@ class PackingListIndex(BaseModel):
     usage is changed, so this costs no extra request.
     """
 
-    #: 一般 lists that are not 過去使用, each with its `usage`.
+    #: 一般 lists that are not 過去使用, each with its `usage`. Every shelf
+    #: but 自動保存 is newest `created_at` first, then highest `id`.
     free: list[PackingListSummary]
     #: 自動保存: 一般 and 過去使用, newest `auto_saved_at` first.
     auto_saved: list[PackingListSummary]

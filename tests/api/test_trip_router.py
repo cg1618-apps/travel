@@ -1,5 +1,5 @@
-"""Trips: legs, the current-trip rule, kind and usage, the 自動保存 queue,
-bulk delete, and the date a linked list takes."""
+"""Trips: legs, the four shelves, kind and usage, the 自動保存 queue, bulk
+delete, and the date a linked list takes."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -7,7 +7,6 @@ import pytest
 
 from app.constants import Kind, Usage
 from app.models import Trip, TripLeg
-from app.services.domain.trip import current_trip
 
 TPE = "+08:00"
 
@@ -95,15 +94,19 @@ def test_a_legs_ticket_type_is_remembered(client, trip):
 
 
 # --------------------------------------------------------------------------
-# The current trip
+# The index, kind and usage, and the 自動保存 queue
 # --------------------------------------------------------------------------
 
 NOW = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
 
 
-def a_trip(db, name, usage=Usage.UNUSED, legs=(), **fields):
-    """A trip whose legs depart `legs` days from NOW, one hour long each."""
-    trip = Trip(name=name, usage=usage, **fields)
+def a_trip(db, name, usage=Usage.UNUSED, legs=(), created=0, **fields):
+    """A trip whose legs depart `legs` days from NOW, one hour long each.
+
+    `created_at` is set explicitly, `created` days after NOW: the column's
+    `now()` is the transaction's start, so trips made in one test would tie.
+    """
+    trip = Trip(name=name, usage=usage, created_at=NOW + timedelta(days=created), **fields)
     for days in legs:
         departs = NOW + timedelta(days=days)
         trip.legs.append(
@@ -115,82 +118,12 @@ def a_trip(db, name, usage=Usage.UNUSED, legs=(), **fields):
     return trip
 
 
-def test_in_use_beats_upcoming(db_session):
-    # The upcoming trip has the sooner leg: only the status can be deciding.
-    a_trip(db_session, "upcoming", Usage.UPCOMING, legs=[1])
-    in_use = a_trip(db_session, "in use", Usage.IN_USE, legs=[30])
-    assert current_trip(db_session, NOW).id == in_use.id
-
-
-def test_upcoming_when_nothing_is_in_use(db_session):
-    a_trip(db_session, "unused", Usage.UNUSED, legs=[1])
-    upcoming = a_trip(db_session, "upcoming", Usage.UPCOMING, legs=[30])
-    assert current_trip(db_session, NOW).id == upcoming.id
-
-
-def test_within_a_group_the_soonest_leg_ahead_wins(db_session):
-    a_trip(db_session, "later", Usage.IN_USE, legs=[10])
-    sooner = a_trip(db_session, "sooner", Usage.IN_USE, legs=[-5, 2])  # a leg behind too
-    assert current_trip(db_session, NOW).id == sooner.id
-
-
-def test_a_trip_with_nothing_ahead_comes_after_one_with_a_leg_ahead(db_session):
-    a_trip(db_session, "done", Usage.IN_USE, legs=[-3])
-    ahead = a_trip(db_session, "ahead", Usage.IN_USE, legs=[40])
-    assert current_trip(db_session, NOW).id == ahead.id
-
-
-def test_a_legless_in_use_trip_is_current_and_ties_go_to_the_newer(db_session):
-    a_trip(db_session, "first", Usage.IN_USE)
-    second = a_trip(db_session, "second", Usage.IN_USE)
-    assert current_trip(db_session, NOW).id == second.id
-
-
-def test_a_tie_on_the_soonest_leg_goes_to_the_newer_trip(db_session):
-    a_trip(db_session, "first", Usage.UPCOMING, legs=[1])
-    second = a_trip(db_session, "second", Usage.UPCOMING, legs=[1])
-    assert current_trip(db_session, NOW).id == second.id
-
-
-# Each refusal below gives the ineligible trip the SOONEST leg ahead, so a rule
-# that ignored usage or kind would pick it: the fixture is what lets the test
-# fail. The mirror adds an eligible trip to the same rows and expects it back.
-
-
-@pytest.mark.parametrize(
-    "fields",
-    [
-        {"usage": Usage.UNUSED},
-        {"usage": Usage.PAST, "auto_saved_at": NOW},
-        {"kind": Kind.SAVED, "usage": None},
-        {"kind": Kind.TEMPLATE, "usage": None},
-    ],
-)
-def test_only_in_use_or_upcoming_trips_can_be_current(db_session, fields):
-    a_trip(db_session, "other", legs=[1], **fields)
-    assert current_trip(db_session, NOW) is None
-    upcoming = a_trip(db_session, "mirror", Usage.UPCOMING, legs=[5])
-    assert current_trip(db_session, NOW).id == upcoming.id
-
-
-def test_the_current_endpoint_is_404_when_there_is_none(client):
-    response = client.get("/api/trips/current")
-    assert response.status_code == 404
-    assert response.json()["detail"] == "No current trip."
-
-
-def test_the_current_endpoint_follows_usage(client, trip):
-    assert client.get("/api/trips/current").status_code == 404
-    client.patch(f"/api/trips/{trip['id']}", json={"usage": "in_use"})
-    assert client.get("/api/trips/current").json()["id"] == trip["id"]
-    # Saving it takes it out of being current.
-    client.patch(f"/api/trips/{trip['id']}", json={"kind": "saved"})
-    assert client.get("/api/trips/current").status_code == 404
-
-
-# --------------------------------------------------------------------------
-# The index, kind and usage, and the 自動保存 queue
-# --------------------------------------------------------------------------
+def test_there_is_no_current_trip_endpoint(client, trip):
+    # The current trip is gone. "current" now falls to /api/trips/{trip_id},
+    # whose int path refuses it - a 422, not a 404 or a trip.
+    assert client.get("/api/trips/current").status_code == 422
+    # Mirror: the same route answers for a real id.
+    assert client.get(f"/api/trips/{trip['id']}").json()["id"] == trip["id"]
 
 
 def test_a_new_trip_is_free_and_unused(trip):
@@ -221,14 +154,59 @@ def test_the_index_has_four_shelves(client, db_session):
     assert body["evict_next"] == []
 
 
-def test_the_free_shelf_is_latest_departure_first_and_legless_last(client, db_session):
-    a_trip(db_session, "legless")
-    a_trip(db_session, "early", legs=[1])
-    a_trip(db_session, "late", legs=[9])
+# One trip of every kind/usage combination: each must be on exactly one shelf.
+COMBINATIONS = [
+    {"usage": Usage.IN_USE},
+    {"usage": Usage.UPCOMING},
+    {"usage": Usage.UNUSED},
+    {"usage": Usage.PAST, "auto_saved_at": NOW},
+    {"usage": None, "kind": Kind.SAVED},
+    {"usage": None, "kind": Kind.TEMPLATE},
+]
+SHELVES = ("free", "auto_saved", "saved", "templates")
+
+
+def test_every_trip_is_on_exactly_one_shelf(client, db_session):
+    """The regression for the trip that sat in no section."""
+    for number, fields in enumerate(COMBINATIONS):
+        a_trip(db_session, f"c{number}", legs=[1], created=number, **fields)
     db_session.commit()
     body = client.get("/api/trips").json()
-    assert [t["name"] for t in body["free"]] == ["late", "early", "legless"]
-    assert body["free"][0]["legs"]  # still nested with their legs
+    shown = [t["name"] for shelf in SHELVES for t in body[shelf]]
+    assert sorted(shown) == [f"c{number}" for number in range(len(COMBINATIONS))]
+
+
+@pytest.mark.parametrize("usage", [Usage.IN_USE, Usage.UPCOMING, Usage.UNUSED])
+def test_a_lone_free_trip_is_on_the_free_shelf(client, db_session, usage):
+    # The production case the old /trip page lost: the only trip there is,
+    # 一般 and not past, shown on 一般 and nowhere else.
+    a_trip(db_session, "only", usage, legs=[1])
+    db_session.commit()
+    body = client.get("/api/trips").json()
+    assert {shelf: [t["name"] for t in body[shelf]] for shelf in SHELVES} == {
+        "free": ["only"], "auto_saved": [], "saved": [], "templates": []}
+
+
+@pytest.mark.parametrize(
+    "shelf,fields",
+    [
+        ("free", {}),
+        ("saved", {"usage": None, "kind": Kind.SAVED}),
+        ("templates", {"usage": None, "kind": Kind.TEMPLATE}),
+    ],
+)
+def test_shelves_are_newest_created_first(client, db_session, shelf, fields):
+    # "older" departs latest, so the old departure order would put it first:
+    # only `created_at` can decide. "tie" shares "newer"'s `created_at` and
+    # wins on the higher id.
+    older = a_trip(db_session, "older", legs=[30], created=0, **fields)
+    a_trip(db_session, "newer", legs=[1], created=1, **fields)
+    a_trip(db_session, "tie", created=1, **fields)
+    db_session.commit()
+    rows = client.get("/api/trips").json()[shelf]
+    assert [t["name"] for t in rows] == ["tie", "newer", "older"]
+    assert datetime.fromisoformat(rows[-1]["created_at"]) == older.created_at
+    assert rows[1]["legs"]  # still nested with their legs
 
 
 def test_auto_saved_trips_are_newest_first(client, db_session):
@@ -435,16 +413,6 @@ def test_deleting_a_trip_deletes_its_legs(client, trip):
     leg = add_leg(client, trip).json()
     assert client.delete(f"/api/trips/{trip['id']}").status_code == 204
     assert client.patch(f"/api/trip-legs/{leg['id']}", json={"seat": "x"}).status_code == 404
-
-
-def test_the_current_endpoint_returns_the_trip_when_there_is_one(client, trip):
-    far = datetime.now(timezone.utc) + timedelta(days=30)
-    add_leg(client, trip, departs=far.isoformat(), arrives=(far + timedelta(hours=2)).isoformat())
-    client.patch(f"/api/trips/{trip['id']}", json={"usage": "upcoming"})
-    response = client.get("/api/trips/current")
-    assert response.status_code == 200
-    assert response.json()["id"] == trip["id"]
-    assert response.json()["legs"]
 
 
 def test_a_trip_defaults_to_private(db_session):

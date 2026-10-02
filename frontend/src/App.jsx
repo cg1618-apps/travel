@@ -1,13 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Link, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom'
 
-import AutoSavedTrips from './pages/AutoSavedTrips'
 import Dashboard from './pages/Dashboard'
 import Options from './pages/Options'
 import PackingList from './pages/PackingList'
 import PackingLists from './pages/PackingLists'
 import Transport from './pages/Transport'
 import Trip from './pages/Trip'
+import Trips from './pages/Trips'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,7 +26,7 @@ const queryClient = new QueryClient({
 const NAV_LINKS = [
   ['/lists', '打包清單'],
   ['/transport', '交通'],
-  ['/trip', '行程'],
+  ['/trips', '行程'],
   ['/options', '選項'],
 ]
 
@@ -57,9 +57,12 @@ export default function App() {
           <Route path="/lists" element={<PackingLists />} />
           <Route path="/lists/:listId" element={<PackingList />} />
           <Route path="/transport" element={<Transport />} />
-          <Route path="/trip" element={<Trip />} />
-          {/* Above /trips/:tripId, which would otherwise read it as an id. */}
-          <Route path="/trips/auto-saved" element={<AutoSavedTrips />} />
+          <Route path="/trips" element={<Trips />} />
+          {/* Old addresses, kept for bookmarks: the current trip, and the
+              自動保存 page that is now a tab. /trips/auto-saved sits above
+              /trips/:tripId, which would otherwise read it as an id. */}
+          <Route path="/trip" element={<Navigate to="/trips" replace />} />
+          <Route path="/trips/auto-saved" element={<Navigate to="/trips?tab=auto_saved" replace />} />
           <Route path="/trips/:tripId" element={<Trip />} />
           <Route path="/options" element={<Options />} />
           {/* The server's catch-all serves the bundle for any non-/api path,

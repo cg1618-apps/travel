@@ -24,7 +24,6 @@ export const endpoints = {
   },
   trips: {
     index: () => '/api/trips',
-    current: () => '/api/trips/current',
     bulkDelete: () => '/api/trips/bulk-delete',
     detail: (id) => `/api/trips/${id}`,
     legs: (tripId) => `/api/trips/${tripId}/legs`,
