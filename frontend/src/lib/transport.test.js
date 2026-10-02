@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatPrice, groupByDayType } from './transport'
+import { formatPrice, groupByDayType, optionSummary } from './transport'
 
 describe('formatPrice', () => {
   it('shows a price with its currency', () => {
@@ -26,5 +26,19 @@ describe('groupByDayType', () => {
   })
   it('keeps the weekday row first', () => {
     expect(Object.keys(groupByDayType([d(1, 'holiday')]))).toEqual(['weekday', 'holiday'])
+  })
+})
+
+describe('optionSummary', () => {
+  const option = { mode: '公車 307', price: 15, duration: '40分' }
+  it('joins mode, price and duration', () => {
+    expect(optionSummary(option)).toBe('公車 307 · NT$15 · 40分')
+  })
+  it('keeps a free ride, which is a price and not a gap', () => {
+    expect(optionSummary({ ...option, price: 0 })).toBe('公車 307 · NT$0 · 40分')
+  })
+  it('leaves out what is unset', () => {
+    expect(optionSummary({ mode: '步行', price: null, duration: null })).toBe('步行')
+    expect(optionSummary({ ...option, price: null })).toBe('公車 307 · 40分')
   })
 })

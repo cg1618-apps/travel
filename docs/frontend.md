@@ -1,6 +1,6 @@
 # Frontend
 
-Last verified: 2026-10-01
+Last verified: 2026-10-02
 
 **What this is for.** How the React app is laid out, where each kind of thing
 lives, and the decisions a new screen has to follow. The endpoints it calls are
@@ -11,18 +11,19 @@ in `api.md`; the rules it renders are in `business-rules.md`.
 | Directory | What lives there |
 | --- | --- |
 | `src/api/` | `client.js` — the only place that calls `fetch()`. `endpoints.js` — every URL in one map. |
-| `src/hooks/` | `useApiQuery.js` — TanStack Query over `fetchJson`, plus `useApiMutation` and `send`. `useLongPress.js` — a long-press that never also fires the click. |
+| `src/hooks/` | `useApiQuery.js` — TanStack Query over `fetchJson`, plus `useApiMutation` and `send`. `useLongPress.js` — a long-press that never also fires the click. `useTheme.js` — light or dark, and the toggle. |
 | `src/pages/` | One file per screen, PascalCase, default export. |
 | `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `KindControls`, `IndexTabs`, `States`. |
 | `src/lib/` | Pure modules with no React in them. Tests sit beside them. |
 
 Routes are declared in `src/App.jsx`: `/` the dashboard, `/lists` and
-`/lists/:listId` the packing lists, `/transport` 交通, `/trips` and
+`/lists/:listId` the packing lists, `/transport` and `/transport/:routeId`
+交通, `/trips` and
 `/trips/:tripId` 行程, `/options` 選項. Two old addresses redirect, so a
 bookmark still lands: `/trip` to `/trips`, and `/trips/auto-saved` to
 `/trips?tab=auto_saved` (declared above `/trips/:tripId`, which would otherwise
 read it as an id). Any other path renders the dashboard.
-The nav bar names the last four; the app's name `travel` links to `/`. Every screen is editable, so every one of
+The nav bar names the last four, ends with the theme toggle, and the app's name `travel` links to `/`. Every screen is editable, so every one of
 them goes through TanStack Query — media's split is query hooks for anything
 written back from the UI and plain `fetch` for read-only pages, and this app has
 no read-only pages.
@@ -263,14 +264,32 @@ option (—) stores null; `SelectCell` treats `''` as null for any column that
 may be unset. 取得地點 is free text with the remembered `location` values
 suggested.
 
-## 交通
+## 交通 (`/transport`)
 
-`/transport` is the sheet's Transportation tab as an editable page
-(`pages/Transport.jsx`, one query, `['transport-routes']`, invalidated by every
-write). Each route is a section headed 起點 → 終點; each way of making the
-journey is a card under it.
+`pages/Transport.jsx` is the 交通 nav item: **+ 新增路線** at the top, then
+one card per route, the way `/trips` is one card per trip. Reads live under
+`['transport-routes', ...]` (`index`, `detail`), and every write on either
+page invalidates the whole prefix.
 
-- **Cells.** Every field on a card is a cell with the sheet's rules: Enter or
+- **+ 新增路線** opens 起點 and 終點 fields; 建立 is disabled until both are
+  filled and while a create is in flight, and a failure says
+  無法建立路線，請再試一次。 Creating opens `/transport/{id}`.
+- **Cards.** Each route is a card linking to `/transport/{id}`: 起點 → 終點,
+  the first line of 備註, then one line per 交通方式 — the mode, 價錢 and 時間
+  when set (`optionSummary` in `lib/transport.js`). A route with no options
+  reads 沒有交通方式.
+- **Empty.** 還沒有路線。按「+ 新增路線」開始。
+
+## 交通 detail (`/transport/:routeId`)
+
+`pages/TransportRoute.jsx` is one route of the sheet's Transportation tab, in
+full and editable. **← 交通** goes back to the index. A `/transport/{id}` that
+answers 404 — or 422, for an id that is not a number — reads 找不到這條路線。
+
+- **Header.** 起點 → 終點, each a cell, then 備註. ⋯ 刪除路線 asks first,
+  saying the options and departures go with it, and returns to `/transport`.
+- **Cells.** Each way of making the journey is a card. Every field on it is a
+  cell with the sheet's rules: Enter or
   blur commits, Escape reverts, no Save button. 價錢 is a whole number shown as
   `NT$22`; anything else typed there is dropped rather than sent. The names
   that cannot be blank (交通方式, 起點, 終點) ignore an emptied cell and keep
@@ -288,11 +307,9 @@ journey is a card under it.
   notation, `*13:40` for an irregular one. Unparseable input shows 時間格式不對
   and sends nothing; a 409 shows 這班已經有了, rendered from the status, not
   from the API's `detail`.
-- **Deleting.** ⋯ on a route or a card opens 刪除路線 / 刪除交通方式 behind a
-  confirmation, which says the options and departures go with it. A chip's ✕
-  deletes one time without asking.
-- **Empty.** 還沒有路線。 with the add-route form; with routes present the same
-  form sits at the bottom of the page.
+- **Adding and deleting options.** + 新增交通方式 under the cards takes a mode.
+  ⋯ on a card opens 刪除交通方式 behind a confirmation, which says the
+  departures go with it. A chip's ✕ deletes one time without asking.
 
 ## 行程 (`/trips`)
 
@@ -377,7 +394,15 @@ once, and then on the control that matters.
 Tailwind 4 through `@tailwindcss/vite`, with the token names and values copied
 from `media/frontend/src/index.css`: bone paper, wisteria, flat surfaces, no
 resting shadow, corners barely eased. Dark mode follows `data-theme` with the
-OS preference as a fallback. Media-specific tokens, such as its per-media-type
+OS preference as a fallback.
+
+**The theme toggle** is the last thing in the nav bar: ☾ switches to dark, ☀
+to light. The choice is stored in `localStorage` under `cg1618:theme`, the
+media tracker's key and rule (`lib/theme.js`, tested beside it); with nothing
+stored the page follows the OS, live. `index.html` applies the same rule in an
+inline script before the first paint, so a dark phone never flashes bone paper
+on load. Every colour comes from the semantic tokens, which is what lets one
+attribute recolour every screen. Media-specific tokens, such as its per-media-type
 scope hues, are not copied.
 
 Use the semantic tokens (`bg-surface`, `text-text-muted`, `border-border`)
