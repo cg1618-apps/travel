@@ -71,7 +71,7 @@ one place the drift is invisible.
 `alembic_version`, which `create_all` never writes. If someone simplifies the
 fixture back, that test is what goes red.
 
-`tests/test_migrations_build_the_schema.py` checks three further claims:
+`tests/test_migrations_build_the_schema.py` checks four further claims:
 
 - **The chain builds from nothing** — `alembic upgrade head` run as a real
   subprocess against a scratch database created for the test, then read back
@@ -86,6 +86,12 @@ fixture back, that test is what goes red.
   `ck_label_option_kind` delete those rows first, and on an empty database that
   step would meet nothing and a downgrade missing it would still pass. The
   seeded rows are what make it bite.
+- **`k1ind0000001` maps every flag combination, and back** — on a scratch
+  database at `t3rip0000003`, one list and one trip per combination of the old
+  booleans is seeded, the revision applied, every row's `kind` and `usage`
+  checked, then downgraded and the booleans checked again (a saved-and-template
+  row comes back a template only). Without the seed the `UPDATE`s meet nothing
+  and a wrong `CASE` would still pass.
 
 None of those is the same claim as **an incremental upgrade succeeds** — a run
 against a database that already holds the earlier revisions, such as the
@@ -125,7 +131,7 @@ everywhere else.
 ## A refusal test has to be able to fail
 
 **Asserting that a gate allows is safe on an empty set; asserting that it
-refuses is not.** A rule computing over a set — auto-saved lists counting toward a limit,
+refuses is not.** A rule computing over a set — slots in a full queue,
 items in a category, granted permissions — is vacuously satisfied when the set
 is empty, and an empty set is exactly what a fresh test database gives you. A
 refusal test can pass because there was nothing to refuse: green on day one,
@@ -133,8 +139,10 @@ green through the change that breaks it, green forever.
 
 So every refusal test must make its set non-empty, and must say so. **A fixture
 that exists to make a negative test bite is load-bearing and looks like
-decoration** — `full_lists` and `full_trips` in `tests/api/test_auto_save.py` are not scene
-setting; they are the only reason the queue's refusal can fail.
+decoration** — `full_lists` and `full_trips` in `tests/api/test_auto_save.py`
+are not scene setting: five auto-saved list slots and ten auto-saved trips are
+the only reason 自動保存's refusal can fail, and
+`test_past_under_the_limit_is_not_refused` is the mirror on the same rows.
 
 Assert the mirror case with the same fixture. A green then proves the rule did
 the refusing, rather than an empty table doing it for free.

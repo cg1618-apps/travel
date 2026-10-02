@@ -54,7 +54,7 @@ it **drops what it created and everything in it**. In chain order:
 | `t1rip0000001` | `trip` and `trip_leg` — every trip and booking, and every remembered `ticket_type` option. The packing lists they linked survive. |
 | `t2rip0000002` | Each trip's `visibility`. Nothing reads it yet, so nothing visible is lost. |
 | `t3rip0000003` | Each trip's `archived`, `archive_note` and `template` — every archive remark is lost, and archived trips and templates come back as ordinary trips. |
-| `k1ind0000001` | Every list's and trip's `kind`, `usage` and `auto_saved_at`, and every list's `notes` and `archive_note` — usage statuses and list remarks are lost. A saved list or trip comes back saved (a trip archived), a template comes back a template, and one that was both saved or archived and a template before the upgrade comes back a template only. |
+| `k1ind0000001` | Each list's and trip's `kind`, `usage` and `auto_saved_at`, and each list's `notes` and `archive_note` — every 狀態 and every list remark is lost; a trip's `archive_note` survives. The booleans come back from `kind`: saved → `saved` / `archived`, template → `template`, and every 一般 row, 自動保存 included, as neither. A list or trip that was both saved (or archived) and a template before the upgrade comes back a template only. |
 
 So for a release that carried any of them:
 

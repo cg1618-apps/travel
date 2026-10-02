@@ -8,9 +8,9 @@ in `notes/`.
 | --- | --- |
 | `notes/decisions.md` | Why things are the way they are, including rejected alternatives. The one place that is allowed to talk about the past. |
 | `deployment-selfhost.md` | What a release does to the box, and what your options are when one fails. `bin/rollback` names this page when it freezes. |
-| `api.md` | Every HTTP endpoint, the shared conventions, and the two-step refusal that guards the 自動保存 queue. |
+| `api.md` | Every HTTP endpoint, the shared conventions, and the two-step refusal that guards 自動保存. |
 | `frontend.md` | How the React app is laid out, the visual language it shares with the media tracker, and the mobile-first rules a new screen follows. |
-| `business-rules.md` | Kinds, usage and the 自動保存 queue, what a copy carries, when an item is due, and how the common options behave. |
+| `business-rules.md` | Kinds, usage and what fills 自動保存, the order the shelves are in, what a copy carries, when an item is due, and how the common options behave. |
 | `data-model.md` | Every table, what each column means, and which rules the database itself enforces. |
 | `testing.md` | How the tests are laid out, what each fixture gives you, and what a refusal test has to set up before it can fail. |
 | `sheet-import.md` | How the owner's Google Sheet export is loaded into an empty database, what each tab becomes, and what is skipped or refused. |
