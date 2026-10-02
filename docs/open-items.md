@@ -79,11 +79,9 @@ and delete on `src/pages/Options.jsx`. Only the departure adder, a leg's times
 and its packing-list link await the write and show a refusal. `useApiMutation` in
 `src/hooks/useApiQuery.js` only invalidates on success, so when the server
 refuses or is unreachable the screen gives no sign that the change was not
-saved. Only creating a list or a template on `PackingLists.jsx` and the bulk
-delete on `AutoSavedTrips.jsx` show a failure; the kind and 狀態 controls act on
-a `409` (the 自動保存 dialog) and on nothing else. Nor are most buttons disabled
-while a write is pending — 重設狀態 and the reset dialog's 重設 can be pressed
-again before the first reset answers. Whether failures get
+saved. `PackingLists.jsx` is the one page that handles errors. Nor are the
+buttons disabled while a write is pending — 重設狀態 and the reset dialog's
+重設 can be pressed again before the first reset answers. Whether failures get
 one app-wide treatment (a toast, a mutation-cache `onError`) or a per-page one
 is undecided.
 

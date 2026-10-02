@@ -47,27 +47,27 @@ list's own `departure_at` is used only while no leg links it. See
 
 ## `packing_list`
 
-A list is one entity; `kind` and `usage` decide which shelf it is on —
-範本, 保存 or 一般, and a 一般 list whose `usage` is `past` is 自動保存.
-Exactly one shelf per list, and the four check constraints below make every
-other combination unstorable. The rules are in `business-rules.md`, "Kinds,
-usage and 自動保存"; `trip` carries the same three columns and the same
-constraints.
+A list is one entity, and its `kind` says which shelf it is on: a `template`
+offered as a starting point, a `saved` one kept for good, or a `free` one in
+use, whose `usage` says how. A free list whose usage is `past` is 自動保存, a
+queue capped at five slots. The rules are in `business-rules.md`; the two
+tables `packing_list` and `trip` carry the same three columns and the same
+four constraints.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | identity | |
 | `name` | text | no | | |
 | `departure_at` | date | **yes** | | What makes packing timing mean anything. Null is normal — the list still works, nothing is ever "due now". Ignored while a trip leg links the list; reads go through the effective date. |
-| `kind` | text | no | `free` | `template` (範本), `saved` (保存) or `free` (一般). |
-| `usage` | text | yes | `unused` for a free row | 狀態: `in_use`, `upcoming`, `unused` or `past`. Set exactly when `kind` is `free`. |
-| `auto_saved_at` | timestamptz | yes | | When the row entered 自動保存; orders that queue. Set exactly when `usage` is `past`. |
+| `kind` | text | no | `free` | `template`, `saved` or `free`. |
+| `usage` | text | yes | | Null unless `kind` is `free`, then one of `in_use`, `upcoming`, `unused`, `past`. New free rows get `unused` from the model's constructor, not a column default. |
+| `auto_saved_at` | timestamptz | yes | | Set exactly when `usage` is `past`: when the row entered 自動保存, and the queue's order. |
+| `notes` | text | yes | | 備註. |
+| `archive_note` | text | yes | | 保存備註 — the remark written about a kept list, separate from `notes`. Editable on every list. |
 | `leg` | text | yes | | `outbound` or `return`, or null for a list that is neither. |
-| `pair_id` | text | yes | | Shared by the two lists of a round trip, which then take one 自動保存 slot. Indexed. |
-| `notes` | text | yes | | 備註, the planning remark. |
-| `archive_note` | text | yes | | 保存備註 — the remark written afterwards, separate from `notes`. Kept whatever the kind. |
+| `pair_id` | text | yes | | Shared by the two lists of a round trip. Indexed. |
 | `visibility` | text | no | `private` | `private`, `unlisted`, `public`. **Nothing reads this yet.** |
-| `created_at` | timestamptz | no | `now()` | Orders the index, newest first. |
+| `created_at` | timestamptz | no | `now()` | The index shelves' order, and the leg picker's. |
 | `updated_at` | timestamptz | no | `now()` | |
 
 **Constraints**
@@ -75,18 +75,11 @@ constraints.
 | Name | What it enforces |
 | --- | --- |
 | `ck_packing_list_leg` | `leg IS NULL OR leg IN ('outbound', 'return')` — both arms matter: `leg IN (...)` is NULL rather than TRUE for a null column, so a constraint written without the null arm would still permit null, by accident rather than by intent. |
+| `ck_packing_list_kind` | `kind` is one of the three kinds. |
+| `ck_packing_list_usage` | `usage` is null or one of the four values. |
+| `ck_packing_list_usage_iff_free` | `(kind = 'free') = (usage IS NOT NULL)` — a free row always has a usage, and no other row has one. |
+| `ck_packing_list_auto_saved_at_iff_past` | `COALESCE(usage = 'past', false) = (auto_saved_at IS NOT NULL)` — the `COALESCE` is what lets a null usage mean "not past" rather than a null the check would pass. |
 | `ck_packing_list_visibility` | One of the three values. |
-| `ck_packing_list_kind` | `kind IN ('template', 'saved', 'free')`. |
-| `ck_packing_list_usage` | `usage IS NULL OR usage IN ('in_use', 'upcoming', 'unused', 'past')`. |
-| `ck_packing_list_usage_iff_free` | `(kind = 'free') = (usage IS NOT NULL)` — a 一般 row always has a 狀態, and nothing else has one. |
-| `ck_packing_list_auto_saved_at_iff_past` | `COALESCE(usage = 'past', false) = (auto_saved_at IS NOT NULL)` — the `COALESCE` matters: for a null `usage` the comparison is NULL, which a check constraint would let through. |
-
-**`usage`'s default is the ORM's, not the database's.** It is `unused` when the
-row being inserted is `free` and null otherwise, so a constructor that names
-only `kind=template` need not also pass `usage=None` — and a new free row given
-an explicit `usage=None` is filled the same way. A raw `INSERT` gets no default,
-and an `UPDATE` setting `usage` to null on a free row is refused by
-`ck_{table}_usage_iff_free`.
 
 ## `packing_item`
 
@@ -228,32 +221,29 @@ before `weekday`), then `time`.
 ## `trip`
 
 A named group of journeys, such as a round trip. It holds no dates of its own;
-they belong to its legs. `kind`, `usage` and `auto_saved_at` are the same
-columns, with the same constraints, as on `packing_list`; a 一般 trip's `usage`
-is also what makes it current (`business-rules.md`).
+they belong to its legs. A trip has a `kind` and a `usage` exactly as a
+`packing_list` does — a template, a saved trip, or a free one in use or in the
+自動保存 queue, which holds ten trips.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | identity | |
 | `name` | text | no | | |
 | `notes` | text | yes | | |
-| `kind` | text | no | `free` | `template` (範本), `saved` (保存) or `free` (一般). |
-| `usage` | text | yes | `unused` for a free row | 狀態: `in_use`, `upcoming`, `unused` or `past`. Set exactly when `kind` is `free`. |
-| `auto_saved_at` | timestamptz | yes | | When the row entered 自動保存; orders that queue. Set exactly when `usage` is `past`. |
-| `archive_note` | text | yes | | 保存備註 — the remark written afterwards, separate from `notes`. Kept whatever the kind. |
+| `kind` | text | no | `free` | `template`, `saved` or `free`. |
+| `usage` | text | yes | | As on `packing_list`. |
+| `auto_saved_at` | timestamptz | yes | | As on `packing_list`. |
+| `archive_note` | text | yes | | 保存備註 — the remark written afterwards, separate from `notes`. Kept when the trip is un-saved. |
 | `visibility` | text | no | `private` | `private`, `unlisted`, `public`. A single trip is the thing expected to be shared. **Nothing reads this yet**, as with `packing_list.visibility`. |
-| `created_at` | timestamptz | no | `now()` | |
+| `created_at` | timestamptz | no | `now()` | The index shelves' order. |
 | `updated_at` | timestamptz | no | `now()` | |
 
 **Constraints**
 
 | Name | What it enforces |
 | --- | --- |
+| `ck_trip_kind`, `ck_trip_usage`, `ck_trip_usage_iff_free`, `ck_trip_auto_saved_at_iff_past` | The same four checks as on `packing_list`. |
 | `ck_trip_visibility` | One of the three values. |
-| `ck_trip_kind` | `kind IN ('template', 'saved', 'free')`. |
-| `ck_trip_usage` | `usage IS NULL OR usage IN ('in_use', 'upcoming', 'unused', 'past')`. |
-| `ck_trip_usage_iff_free` | `(kind = 'free') = (usage IS NOT NULL)` — a 一般 row always has a 狀態, and nothing else has one. |
-| `ck_trip_auto_saved_at_iff_past` | `COALESCE(usage = 'past', false) = (auto_saved_at IS NOT NULL)` — the `COALESCE` matters: for a null `usage` the comparison is NULL, which a check constraint would let through. |
 
 ## `trip_leg`
 

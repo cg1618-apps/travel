@@ -10,7 +10,7 @@ the dump wins and this page is wrong:
 venv/Scripts/python.exe -c "from app.main import app; [print(r.methods, r.path) for r in app.routes]"
 ```
 
-The rules behind these endpoints — what fills 自動保存, what a copy carries —
+The rules behind these endpoints — kinds, usage and the 自動保存 queue, what a copy carries —
 are in `business-rules.md`. The tables they read and write are in
 `data-model.md`.
 
@@ -37,7 +37,7 @@ question only a probe from the open internet answers, and the platform's
 | Delete | every `DELETE` | `204` with no body. |
 | Unknown id | every `{id}` path | `404` with a generic message. |
 | Unknown enum value | any field typed as one | `422` from the schema, before the database's `CHECK` constraint is reached. The constraint is the backstop, not the error message. |
-| 自動保存 | `PATCH /api/packing-lists/{id}`, `PATCH /api/trips/{id}` | `409` when `usage: past` would drop the oldest 自動保存 slot, naming it. Repeat the request with `evict_confirmed: true` to proceed. See "Kinds, and the refusal". |
+| The 自動保存 queue | `PATCH /api/packing-lists/{id}`, `PATCH /api/trips/{id}` | `409` when setting `usage: past` would destroy the oldest slot, naming it. Repeat the request with `evict_confirmed: true` to proceed. See below. |
 
 ## Table of contents
 
@@ -64,18 +64,20 @@ serve.
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/packing-lists` | none | The four shelves, plus `evict_next`. |
-| `POST` | `/api/packing-lists` | none | Create a list — `kind` `free` (default) or `template` — optionally copying another's items. Never refused by 自動保存. |
+| `POST` | `/api/packing-lists` | none | Create a list, optionally copying another's items. Never refused by a limit. |
 | `GET` | `/api/packing-lists/{id}` | none | One list with its items, in `position` order. |
-| `PATCH` | `/api/packing-lists/{id}` | none | Change any of `name`, `departure_at`, `kind`, `usage`, `leg`, `pair_id`, `notes`, `archive_note`. `409` if `usage: past` would drop a 自動保存 slot. |
+| `PATCH` | `/api/packing-lists/{id}` | none | Change any of `name`, `departure_at`, `kind`, `usage`, `notes`, `archive_note`, `leg`, `pair_id`. `409` if `usage: past` would evict. |
 | `POST` | `/api/packing-lists/{id}/reset` | none | Reset the list's packing progress. Unpacks `packed` items, clears `quantity_packed` and `double_checked`, but leaves `no_need` and `needs_double_check` definition alone. |
 | `DELETE` | `/api/packing-lists/{id}` | none | `204`. Items go with it. |
 
-Every read of a list carries `kind`, `usage`, `auto_saved_at`, `notes` and
-`archive_note`; `departure_at` as the **effective** date; and
-`departure_source`, `"list"` or `"trip_leg"`. While a trip leg links the list,
-`departure_at` is that leg's Asia/Taipei calendar day and `departure_source` is
-`trip_leg`; otherwise both are the list's own. A `PATCH` of `departure_at` writes
-the list's own date, which stays hidden behind the leg until the link is removed.
+Every read of a list carries `kind`, `usage`, `auto_saved_at`, `notes`,
+`archive_note` and `created_at` (the vocabulary is in `business-rules.md`,
+"Kinds, usage and 自動保存"). Every read also carries `departure_at` as the
+**effective** date, and `departure_source`, `"list"` or `"trip_leg"`. While a
+trip leg links the list, `departure_at` is that leg's Asia/Taipei calendar day
+and `departure_source` is `trip_leg`; otherwise both are the list's own. A
+`PATCH` of `departure_at` writes the list's own date, which stays hidden behind
+the leg until the link is removed.
 
 **A `PATCH` cannot null a required field.** `name`, `kind` and `usage` answer
 `422` when sent as `null`; `departure_at`, `leg`, `pair_id`, `notes` and
@@ -85,15 +87,17 @@ plain boolean, and refuses `null` the same way.
 ### The index
 
 `GET /api/packing-lists` returns five fields, all arrays of list summaries.
-Every list is on exactly one of the four shelves:
+Every list is in exactly one of the first four:
 
 | Field | What is in it |
 | --- | --- |
-| `free` | 一般 lists that are not 過去使用, each with its `usage`. |
-| `auto_saved` | 自動保存: 一般 lists whose `usage` is `past`, newest `auto_saved_at` first. |
-| `saved` | Lists whose `kind` is `saved`. |
-| `templates` | Lists whose `kind` is `template`. |
-| `evict_next` | The slot the next `usage: past` would drop, or `[]` while there is room. Every auto-saved half of a round-trip pair. |
+| `free` | 一般 lists that are not `past`, each with its `usage`. |
+| `auto_saved` | 自動保存 lists (`kind` `free`, `usage` `past`), newest `auto_saved_at` first. |
+| `saved` | Lists with `kind` `saved`. |
+| `templates` | Lists with `kind` `template`. |
+| `evict_next` | The slot the next `usage: past` would destroy, or `[]` when there is room. Both auto-saved halves of a round-trip pair. |
+
+Every array but `auto_saved` is newest `created_at` first, then `id`.
 
 Each summary carries `item_count` and `settled_count` — how many items the list
 has, and how many are `packed` or `no_need`. The index renders them as a
@@ -106,46 +110,46 @@ omits the counts.
 "save it instead" arrive here instead — on a response the screen has already
 loaded, costing no extra request.
 
-### Kinds, and the refusal
+### Creating
 
-`POST /api/packing-lists` takes the list's own fields plus:
+`POST /api/packing-lists` takes the list's own fields plus two extras:
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | `free` (the default; the list starts 未使用) or `template`. `saved` is a `422` from the schema: saving is a move, not a way to create. |
-| `copy_from_id` | Copy this list's items. Any list will do, of any kind. Definition carries, state resets. With `kind: template` this is 當作範本. An unknown id is a `404` and nothing is written. |
+| `kind` | `free` (the default) or `template`. `saved` is a `422`: saving is a move, made by `PATCH`. |
+| `copy_from_id` | Copy this list's items. Any list will do, of any kind. Definition carries, state resets. With `kind: template` this is 當作範本. |
 
-A `PATCH` moves a list between kinds (`business-rules.md`, "Kinds, usage and
-自動保存"):
+A `free` list starts `usage: unused`. **No create can be refused by a limit**,
+so `evict_confirmed` is not a create field. An unknown `copy_from_id` is a
+`404` and nothing is written.
 
-| Body | Effect |
-| --- | --- |
-| `{"kind": "saved"}` | 保存. Allowed on a 一般 or 自動保存 list; clears `usage` and `auto_saved_at`. |
-| `{"kind": "free"}` | 取消保存. The list is 一般 again, `usage` `unused` unless the same body names another. |
-| `{"usage": ...}` | A 一般 list's 狀態. `past` puts it in 自動保存; anything else takes it out. |
-| `{"kind": "template"}` | `422` from the schema. A template is made by creating one. |
-| any `kind` or `usage` on a template | `422`, `A template's kind and usage cannot change.` |
-| `usage` on a list that is not 一般 and not becoming one | `422`, `Only a free list or trip has a usage.` |
+### Changing kind and usage, and the refusal
 
-Only `usage: past` can be refused by the limit, and the exchange is
-deliberately two steps:
+`PATCH` accepts `kind` (`saved` or `free`) and `usage` (`in_use`, `upcoming`,
+`unused`, `past`). `kind: template` is refused by the schema, and a template's
+`kind` or `usage` and a `usage` on a saved list answer `422` with a plain
+`detail`; a list becomes a template only by being created as one.
+
+Setting `usage: past` on a full queue is the one refusal, and it is two steps:
 
 ```
-PATCH /api/packing-lists/12 {"usage": "past"}
-  -> 409 {"detail": "Auto-save already holds 5 lists. Marking this one past
-                     would delete \"Kyoto\", the oldest. Save it first if you
-                     want to keep it, or confirm to replace it."}
+PATCH /api/packing-lists/7 {"usage": "past"}
+  -> 409 {"detail": "Auto-save already holds 5 lists. Marking this one past would
+                     delete \"Kyoto\", the oldest. Save it first if you want to
+                     keep it, or confirm to replace it."}
 
-PATCH /api/packing-lists/12 {"usage": "past", "evict_confirmed": true}
+PATCH /api/packing-lists/7 {"usage": "past", "evict_confirmed": true}
   -> 200
 ```
 
-The number in the `detail` is the limit itself (`AUTO_SAVE_LIMIT` in
-`app/services/domain/auto_save.py`), and the names are the rows `evict_next`
-lists. **A refused `PATCH` changes nothing**: every check runs before anything
-is written, and the oldest slot is deleted only inside the confirmed request's
-own transaction. The second half of a pair whose first half is already
-auto-saved joins that slot and is never refused.
+The number in the message is the queue's limit (`AUTO_SAVE_LIMIT`: 5 list
+slots, 10 trips); the names come from `evict_next`. **A refused `PATCH` changes
+nothing**: every check runs before anything is written.
+
+**Saving is never refused.** `kind: saved` clears `usage`, so it frees a slot
+rather than taking one, and `kind: free` on a saved list sets `usage: unused`.
+The second half of a pair whose first half is already auto-saved joins that
+slot and is not refused either.
 
 ## Packing items — `/api/packing-items`
 
@@ -246,15 +250,17 @@ addressed on its own afterwards.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `GET` | `/api/trips` | none | The same four shelves as packing lists — `free`, `auto_saved`, `saved`, `templates` — plus `evict_next`, the trip the next `usage: past` would drop (or `[]`). Every trip has its legs nested. `free`, `saved` and `templates` are newest first by latest `departs_at`, a trip with no legs last; `auto_saved` is newest `auto_saved_at` first. Every trip carries `kind`, `usage`, `auto_saved_at`, `notes` and `archive_note`. |
-| `GET` | `/api/trips/current` | none | The current trip (see `business-rules.md`). `404` with `No current trip.` when there is none. |
-| `POST` | `/api/trips` | none | `201`. `name` is required and non-empty; `kind` is `free` (the default, 未使用) or `template`, and `saved` is a `422`. Optional `copy_from_id` copies another trip of any kind (see `business-rules.md`, "Copying a trip"): `404` `Trip to copy from not found.` for an unknown one, and `422` `start_date is required to copy a trip with legs.` when it has legs and no `start_date` (a date) was sent. Nothing is written on either refusal; a `start_date` without `copy_from_id` is ignored. The response adds `unlinked_from`, `[{from_place, to_place, packing_list_name}]`, empty unless a copied leg had a list. Never refused by 自動保存. |
-| `POST` | `/api/trips/bulk-delete` | none | `204`. Body `{"ids": [..]}`. All or nothing: an id naming no trip is a `404` and nothing is deleted. Legs go with each trip; a linked packing list is kept and unlinked. |
-| `GET` / `PATCH` / `DELETE` | `/api/trips/{id}` | none | `404` when missing. `PATCH` takes `name`, `notes`, `archive_note`, `kind`, `usage` and `evict_confirmed`, with the same kind moves and refusals as a packing list; `usage: past` into a full 自動保存 is a `409` naming the trip that would go (`Auto-save already holds 10 trips. …`). Deleting takes the legs with it. |
+| `GET` | `/api/trips` | none | The same four shelves as packing lists — `free`, `auto_saved`, `saved`, `templates` — plus `evict_next`, each trip with its legs nested. Every array but `auto_saved` is newest `created_at` first; `auto_saved` is newest `auto_saved_at` first. `evict_next` is the trip the next `usage: past` would destroy, or `[]`. |
+| `POST` | `/api/trips/bulk-delete` | none | `{"ids": [..]}` → `204`. Every id must exist or the answer is `404` and nothing is deleted. Packing lists have no bulk endpoint; their queue holds at most five slots. |
+| `POST` | `/api/trips` | none | `201`. `name` is required and non-empty. `kind` is `free` (the default) or `template`; `saved` is a `422`, and no create is refused by a limit. A `free` trip starts `usage: unused`. Optional `copy_from_id` copies another trip (see `business-rules.md`, "Copying a trip"): `404` `Trip to copy from not found.` for an unknown one, and `422` `start_date is required to copy a trip with legs.` when it has legs and no `start_date` (a date) was sent. Nothing is written on either refusal; a `start_date` without `copy_from_id` is ignored. The response adds `unlinked_from`, `[{from_place, to_place, packing_list_name}]`, empty unless a copied leg had a list. |
+| `GET` / `PATCH` / `DELETE` | `/api/trips/{id}` | none | `404` when missing. `PATCH` takes `name`, `notes`, `archive_note`, `kind`, `usage` and `evict_confirmed`, with the same rules and the same `409` as a packing list; `name`, `kind` and `usage` refuse null with `422`. Every read carries `kind`, `usage`, `auto_saved_at`, `archive_note` and `created_at`. Deleting takes the legs with it. |
 | `POST` | `/api/trips/{trip_id}/legs` | none | `201`. `from_place`, `to_place`, `departs_at` and `arrives_at` are required. |
 | `PATCH` / `DELETE` | `/api/trip-legs/{id}` | none | `404` when missing. |
 
 A leg response carries `packing_list_name`, the linked list's name or `null`.
+
+There is no current trip: `GET /api/trips/current` does not exist, and the path
+falls to `/api/trips/{trip_id}`, which answers `422` for the non-integer id.
 
 **Times carry a zone.** `departs_at` and `arrives_at` are ISO 8601 with an
 offset, for example `2026-09-24T18:06:00+08:00`; a time without one is a `422`.
@@ -272,7 +278,7 @@ Deleting a linked list keeps the leg and clears its link.
 
 **A leg's `ticket_type` is remembered** as a `ticket_type` label option.
 
-**A `PATCH` cannot null a required field.** `name`, `kind` and `usage` on a
-trip, and `from_place`, `to_place`, `departs_at`, `arrives_at`, `booked`,
-`paid` and `collected` on a leg, answer `422` when sent as `null`; nullable
-fields such as `notes` and `archive_note` accept it and clear.
+**A `PATCH` cannot null a required field.** `name`, `kind` and `usage` on a trip, and `from_place`,
+`to_place`, `departs_at`, `arrives_at`, `booked`, `paid` and `collected` on a
+leg, answer `422` when sent as `null`; nullable fields such as `notes` accept it
+and clear.
