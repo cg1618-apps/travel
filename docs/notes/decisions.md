@@ -559,3 +559,26 @@ Rejected:
   places again, and the dashboard already answers the question.
 - **Keep the departure order for trips.** It is the order of the legs, not of
   the trips, and a trip with no legs has none.
+
+## 交通 is an index of routes, the way 行程 is
+
+`/transport` used to be every route with every option and every departure on
+one long page. It is now one card per route, linking to `/transport/:routeId`,
+because that is the shape `/lists` and `/trips` already have and the owner
+asked for the same treatment. **The entry is the route, not the option**: a
+route is what you look up ("how do I get from 彰化火車站 to 宿舍"), and the
+options under it only make sense compared side by side, so they stay together
+on the route's page. No endpoint changed — `GET /api/transport-routes/{id}`
+already existed.
+
+The index has no tabs: routes have no kinds and no 狀態, so a tab strip would
+have one tab.
+
+## Dark mode gets a toggle, copied from media
+
+The dark palette was always there and followed the OS; what was missing was a
+way to choose. The toggle copies the media tracker's rule and storage key
+(`cg1618:theme`, stored choice beats the OS, nothing stored follows it) and its
+pre-paint script in `index.html`. It is a hook rather than media's context
+provider, because only the nav bar reads it — the colours themselves come from
+the attribute through the CSS tokens, not from React.
