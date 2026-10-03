@@ -33,7 +33,6 @@ import {
   linkChoices,
   linkLabel,
   tabFor,
-  templateName,
 } from '../lib/kinds'
 import { BOOKING_LABELS } from '../lib/labels'
 import {
@@ -695,7 +694,7 @@ export default function Trip() {
   const makeTemplate = (source) =>
     createTrip.mutate(
       {
-        name: templateName(source.name),
+        name: source.name,
         kind: 'template',
         copy_from_id: source.id,
         // 當作範本 keeps the dates: the copy starts on the source's own first day.

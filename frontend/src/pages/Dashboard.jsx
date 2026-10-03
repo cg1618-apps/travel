@@ -1,6 +1,6 @@
 /**
- * The front page: 一般 lists and trips that are 使用中 or 未來使用, 使用中
- * first. Nothing to add or edit.
+ * The front page: a month calendar marking every trip's days, then 一般 lists
+ * and trips that are 使用中 or 未來使用, 使用中 first. Nothing to add or edit.
  *
  * Every other shelf - 自動保存, 保存, 範本 - and every create form are on
  * their own pages, where they are managed.
@@ -10,8 +10,9 @@ import { Link } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
 import { ErrorState, LoadingState } from '../components/States'
+import TripCalendar from '../components/TripCalendar'
 import { useApiQuery } from '../hooks/useApiQuery'
-import { onDashboard } from '../lib/kinds'
+import { everyRow, onDashboard } from '../lib/kinds'
 import { LEG_LABELS, USAGE_LABELS } from '../lib/labels'
 import { departureLabel } from '../lib/timing'
 import { tripDateRange } from '../lib/trips'
@@ -111,6 +112,8 @@ export default function Dashboard() {
   return (
     <main className="mx-auto max-w-4xl pb-16 pt-6">
       <h1 className="m-0 px-4 text-xl font-semibold">travel</h1>
+      {/* Every trip but templates, whose dates are only a starting point. */}
+      <TripCalendar trips={everyRow(trips.data).filter((trip) => trip.kind !== 'template')} />
       <Section title="清單" more={{ to: '/lists', label: '所有清單' }}>
         <Lists rows={onDashboard(lists.data.free)} />
       </Section>

@@ -25,7 +25,6 @@ import {
   badgeFor,
   everyRow,
   tabCounts,
-  templateName,
 } from '../lib/kinds'
 import { KIND_LABELS, LEG_LABELS } from '../lib/labels'
 import { departureLabel } from '../lib/timing'
@@ -124,7 +123,7 @@ export default function PackingLists() {
     invalidate: [INDEX_KEY],
     mutationFn: (row) =>
       send(endpoints.packingLists.index(), 'POST', {
-        name: templateName(row.name),
+        name: row.name,
         kind: 'template',
         copy_from_id: row.id,
       }),
