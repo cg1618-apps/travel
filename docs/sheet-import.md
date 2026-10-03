@@ -58,6 +58,7 @@ Everything skipped is printed as a `note:` line.
 | --- | --- |
 | An item named `無` | Skipped and reported. |
 | A fully blank row | Ignored silently. |
+| A blank `已打包數量` | No value (`null`), as on an item created in the app. A number, `0` included, is kept. |
 | Blank `類別` or `項目` | Inherits the value above. |
 | A Transportation row with a start and no end | Skipped and reported. |
 | A Transportation row with no `交通工具` | Makes the route; its `時間` becomes the route note `時間 <value>`. |

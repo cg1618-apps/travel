@@ -2,8 +2,8 @@
 
 The router owns wiring and status codes. What fills a 自動保存 slot, which
 moves between kinds are allowed and what dropping a slot destroys live in
-`app.services.domain.auto_save`; what a copy carries in
-`app.services.domain.packing`.
+`app.services.domain.auto_save`; what a copy carries, and which orders keep
+the groups whole, in `app.services.domain.packing`.
 """
 
 from datetime import datetime, timezone
@@ -18,6 +18,7 @@ from app.models import PackingList
 from app.schemas.packing_list import (
     PackingListCreate,
     PackingListIndex,
+    PackingListOrder,
     PackingListResponse,
     PackingListSummary,
     PackingListUpdate,
@@ -29,7 +30,7 @@ from app.services.domain.auto_save import (
     apply_kind,
     evict_next,
 )
-from app.services.domain.packing import copy_items, reset_list
+from app.services.domain.packing import OrderRefused, copy_items, reset_list, set_order
 
 router = APIRouter(prefix="/api/packing-lists", tags=["Packing lists"])
 
@@ -161,6 +162,20 @@ def update(list_id: int, payload: PackingListUpdate, db: Session = Depends(get_d
 def reset(list_id: int, db: Session = Depends(get_db)):
     packing_list = _get(db, list_id)
     reset_list(db, packing_list)
+    db.commit()
+    db.expire_all()
+    return read(list_id, db)
+
+
+@router.put("/{list_id}/order", response_model=PackingListResponse)
+def reorder(list_id: int, payload: PackingListOrder, db: Session = Depends(get_db)):
+    """The whole order in one request, so a drag that moves a group is one
+    write rather than one PATCH per item it passes."""
+    packing_list = _get(db, list_id)
+    try:
+        set_order(db, packing_list, payload.item_ids)
+    except OrderRefused as refused:
+        raise HTTPException(status_code=422, detail=str(refused)) from None
     db.commit()
     db.expire_all()
     return read(list_id, db)

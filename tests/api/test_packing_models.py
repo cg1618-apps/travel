@@ -127,14 +127,14 @@ def test_an_item_defaults_to_unpacked_unverified_and_uncounted(db_session):
     assert item.status == Status.NOT_PACKED
     assert item.timing == Timing.WHENEVER
     assert item.quantity is None
-    assert item.quantity_packed == 0
+    assert item.quantity_packed is None
     assert item.needs_double_check is False
     assert item.double_checked is False
 
 
-def test_a_quantity_may_be_null_while_the_packed_count_is_not(db_session):
-    # "How many" does not apply to a hairbrush. The count still has to be a
-    # number, because the screen renders it.
+def test_the_packed_count_starts_with_no_value(db_session):
+    # Null, not 0: nobody has counted yet, which is a different thing from
+    # having counted none. "How many" does not apply to a hairbrush either.
     packing_list = a_list()
     db_session.add(packing_list)
     db_session.flush()
@@ -142,7 +142,7 @@ def test_a_quantity_may_be_null_while_the_packed_count_is_not(db_session):
     item = PackingItem(list_id=packing_list.id, name="hairbrush", quantity=None)
     db_session.add(item)
     db_session.flush()
-    assert item.quantity_packed == 0
+    assert item.quantity_packed is None
 
 
 def test_an_item_may_be_packed_beyond_its_target(db_session):

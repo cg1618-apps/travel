@@ -4,7 +4,8 @@
  * The sheet's tab, as cards — one per leg, with the booking code large enough
  * to read off a phone at a ticket gate. `/trips/:tripId` only - the index is
  * `Trips.jsx`. A trip carries 狀態, 保存 and 當作範本 in its header; ← 行程
- * returns to the tab it is on. Every field is a cell that commits on Enter or
+ * returns to the tab it is on, and the whole header sticks to the top while
+ * the legs scroll under it. Every field is a cell that commits on Enter or
  * blur; the times, the packing list link and the three ticks are the
  * exceptions, because each has a refusal worth showing.
  */
@@ -416,7 +417,6 @@ function LegCard({ leg, ticketTypes, actions }) {
             value={leg.ticket_type}
             placeholder="—"
             options={ticketTypes}
-            listId={`ticket-types-${leg.id}`}
             onCommit={(ticket_type) => patch({ ticket_type })}
           />
         </Field>
@@ -575,41 +575,49 @@ function TripView({ trip, unlinked, ticketTypes, actions, onDeleted, onDismissNo
 
   return (
     <>
-      <Link
-        to={tab === 'free' ? '/trips' : `/trips?tab=${tab}`}
-        className="text-sm text-text-faint no-underline"
-      >
-        ← 行程
-      </Link>
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <h1 className="m-0 flex min-w-0 flex-1 items-center gap-2 text-xl font-semibold">
-          <span className="min-w-0 flex-1">
-            <TextCell
-              value={trip.name}
-              placeholder="行程名稱"
-              onCommit={required((name) => patchTrip({ name }))}
-            />
-          </span>
-          {badgeFor(trip) && <span className={badge}>{badgeFor(trip)}</span>}
-        </h1>
-        <TripMenu
-          trip={trip}
-          onToggleSaved={() =>
-            trip.kind === 'saved' ? setConfirmingUnsave(true) : patchTrip({ kind: 'saved' })
-          }
-          onMakeTemplate={makeTemplate}
-          onDelete={() => setConfirming(true)}
-        />
+      {/* The header sticks, so the trip's name, 狀態 and 備註 stay in view over
+          a long run of legs. -mx-4 px-4 carries the canvas to the column's
+          edges past the shell's padding; -mt-3 pt-3 keeps the unscrolled
+          layout where it was while leaving a little air once it is stuck. z-10
+          lifts it over the leg cards, which set no z-index of their own, and
+          stays under the z-50 dialogs and menus. */}
+      <div className="sticky top-0 z-10 -mx-4 -mt-3 border-b border-border bg-canvas px-4 pt-3 pb-3">
+        <Link
+          to={tab === 'free' ? '/trips' : `/trips?tab=${tab}`}
+          className="text-sm text-text-faint no-underline"
+        >
+          ← 行程
+        </Link>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <h1 className="m-0 flex min-w-0 flex-1 items-center gap-2 text-xl font-semibold">
+            <span className="min-w-0 flex-1">
+              <TextCell
+                value={trip.name}
+                placeholder="行程名稱"
+                onCommit={required((name) => patchTrip({ name }))}
+              />
+            </span>
+            {badgeFor(trip) && <span className={badge}>{badgeFor(trip)}</span>}
+          </h1>
+          <TripMenu
+            trip={trip}
+            onToggleSaved={() =>
+              trip.kind === 'saved' ? setConfirmingUnsave(true) : patchTrip({ kind: 'saved' })
+            }
+            onMakeTemplate={makeTemplate}
+            onDelete={() => setConfirming(true)}
+          />
+        </div>
+        <KindControls row={trip} noun="行程" onPatch={patchTrip} onMakeTemplate={makeTemplate} />
+        <TextCell value={trip.notes} placeholder="備註" onCommit={(notes) => patchTrip({ notes })} />
+        {(trip.kind === 'saved' || isAutoSaved(trip) || trip.archive_note) && (
+          <TextCell
+            value={trip.archive_note}
+            placeholder="保存備註"
+            onCommit={(archive_note) => patchTrip({ archive_note })}
+          />
+        )}
       </div>
-      <KindControls row={trip} noun="行程" onPatch={patchTrip} onMakeTemplate={makeTemplate} />
-      <TextCell value={trip.notes} placeholder="備註" onCommit={(notes) => patchTrip({ notes })} />
-      {(trip.kind === 'saved' || isAutoSaved(trip) || trip.archive_note) && (
-        <TextCell
-          value={trip.archive_note}
-          placeholder="保存備註"
-          onCommit={(archive_note) => patchTrip({ archive_note })}
-        />
-      )}
       <UnlinkedNotice entries={unlinked} onDismiss={onDismissNotice} />
 
       <div className="mt-4 flex flex-col gap-3">
@@ -703,8 +711,12 @@ export default function Trip() {
 
   if (trip.isLoading) return <LoadingState label="載入行程中…" />
 
+  // `overflow-x-clip`, not `-hidden`: both keep a wide leg card (a long
+  // booking code, two datetime inputs side by side) from scrolling the page
+  // sideways on a phone, but `hidden` also makes <main> a scroll container,
+  // and the sticky header would then stick to <main> instead of the viewport.
   const shell = (children) => (
-    <main className="mx-auto max-w-4xl overflow-x-hidden px-4 pb-16 pt-6">{children}</main>
+    <main className="mx-auto max-w-4xl overflow-x-clip px-4 pb-16 pt-6">{children}</main>
   )
 
   if (trip.isError && !notFound(trip.error)) {

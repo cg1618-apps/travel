@@ -5,6 +5,8 @@ export const endpoints = {
     index: () => '/api/packing-lists',
     detail: (id) => `/api/packing-lists/${id}`,
     items: (id) => `/api/packing-lists/${id}/items`,
+    bulkCreate: (id) => `/api/packing-lists/${id}/items/bulk-create`,
+    order: (id) => `/api/packing-lists/${id}/order`,
     reset: (id) => `/api/packing-lists/${id}/reset`,
   },
   packingItems: {

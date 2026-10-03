@@ -46,11 +46,11 @@ class PackingItem(Base, TimestampMixin):
 
     # A target and a count, which is what forces the number to be numeric:
     # "3 of 5 packed" cannot be computed from "2 pairs". The unit carries what
-    # the number cannot. Null quantity means the question does not apply.
+    # the number cannot. Null quantity means the question does not apply;
+    # null quantity_packed means nobody has counted yet, which is not the same
+    # as having counted none - so it starts null rather than 0.
     quantity: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    quantity_packed: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    quantity_packed: Mapped[int | None] = mapped_column(Integer, nullable=True)
     unit: Mapped[str | None] = mapped_column(String, nullable=True)
 
     status: Mapped[str] = mapped_column(
@@ -72,6 +72,9 @@ class PackingItem(Base, TimestampMixin):
     )
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The list's order, and with it the order of its groups: a group (the
+    # items sharing a category) has no row of its own, so it sits where its
+    # items sit. Every write keeps a group's items adjacent.
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     packing_list = relationship("PackingList", back_populates="items")

@@ -67,7 +67,8 @@ serve.
 | `POST` | `/api/packing-lists` | none | Create a list — `kind` `free` (default) or `template` — optionally copying another's items. Never refused by 自動保存. |
 | `GET` | `/api/packing-lists/{id}` | none | One list with its items, in `position` order. |
 | `PATCH` | `/api/packing-lists/{id}` | none | Change any of `name`, `departure_at`, `kind`, `usage`, `leg`, `pair_id`, `notes`, `archive_note`. `409` if `usage: past` would drop a 自動保存 slot. |
-| `POST` | `/api/packing-lists/{id}/reset` | none | Reset the list's packing progress. Unpacks `packed` items, clears `quantity_packed` and `double_checked`, but leaves `no_need` and `needs_double_check` definition alone. |
+| `POST` | `/api/packing-lists/{id}/reset` | none | Reset the list's packing progress. Unpacks `packed` items, clears `quantity_packed` to `null` and `double_checked` to `false`, but leaves `no_need` and `needs_double_check` definition alone. |
+| `PUT` | `/api/packing-lists/{id}/order` | none | Set the order of the list's items. Body `{"item_ids": [..]}`; returns the list as its `GET` does. See "Ordering" below. |
 | `DELETE` | `/api/packing-lists/{id}` | none | `204`. Items go with it. |
 
 Every read of a list carries `kind`, `usage`, `auto_saved_at`, `notes`,
@@ -148,12 +149,35 @@ is written, and the oldest slot is deleted only inside the confirmed request's
 own transaction. The second half of a pair whose first half is already
 auto-saved joins that slot and is never refused.
 
+### Ordering
+
+`PUT /api/packing-lists/{id}/order` takes `{"item_ids": [..]}` and gives the
+items `position` 0, 1, 2… in that order. The answer is `200` with the list,
+items in their new order, the same shape as `GET /api/packing-lists/{id}`. An
+unknown list is a `404`.
+
+The order must name **every item on the list exactly once**, and must keep
+**each group together** — a group being the items sharing a `category`, with
+`null` a group of its own (`business-rules.md`, "Groups"). Anything else is a
+`422` whose `detail` is a plain string, and nothing is changed:
+
+| Body | `detail` |
+| --- | --- |
+| an id named twice | `Item 7 appears more than once in the order.` |
+| an id not on this list | `Not on this list: items 7.` |
+| an item of the list left out | `The order must name every item on the list; missing items 7.` |
+| one category in two separate runs | `The order splits the "衣服" group: a group's items must be adjacent.` (`the uncategorised group` for `null`) |
+
+Moving a group is moving its items: there is no group row and no group order
+column, so a group sits where its items sit.
+
 ## Packing items — `/api/packing-items`
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
-| `POST` | `/api/packing-lists/{list_id}/items` | none | Add an item. It lands at the end of **that** list, or directly after `after_id` on that list, shifting later items. |
-| `PATCH` | `/api/packing-items/{id}` | none | Change any field. `null` clears a nullable one. |
+| `POST` | `/api/packing-lists/{list_id}/items` | none | Add an item. It lands at the end of its group on **that** list, or directly after `after_id` on that list, shifting later items. |
+| `POST` | `/api/packing-lists/{list_id}/items/bulk-create` | none | `201`. Add several items at once, all or nothing. Body `{"items": [..]}`; returns the created items in request order. |
+| `PATCH` | `/api/packing-items/{id}` | none | Change any field. `null` clears a nullable one. A changed `category` moves the item to the end of its new group. |
 | `DELETE` | `/api/packing-items/{id}` | none | `204`. |
 
 An item is created under the list that owns it and addressed on its own
@@ -163,13 +187,35 @@ Beyond the name, an item's text fields are `detail`, `category`, `bag` and
 `location`; `need` is one of `need`, `bring`, `buy` or `null`, and any other
 value is a `422`.
 
-`position` is assigned by the server. By default, it lands one past the end of
-that list. Pass `after_id` — the id of an item on **that same list** — to
-insert directly after it instead, shifting every later item down by one. An
-`after_id` naming no item on that list is a `404`. Positions are counted **per
-list rather than globally** — a shared counter would leave a new list's first
-item at position 400, sorting correctly by accident until something compared
-positions across lists.
+`quantity_packed` is `null` unless sent: no value means nobody has counted,
+which is not the same as `0`. An explicit `0` is kept.
+
+`position` is assigned by the server. By default a new item **joins its
+group**: it lands directly after the last item on that list with the same
+`category` (`null` matching `null`), shifting every later item down by one;
+when no item on the list has that category it lands one past the end. Pass
+`after_id` — the id of an item on **that same list** — to insert directly
+after it instead, whatever its category. An `after_id` naming no item on that
+list is a `404`. Positions are counted **per list rather than globally** — a
+shared counter would leave a new list's first item at position 400, sorting
+correctly by accident until something compared positions across lists.
+
+**A `PATCH` that changes `category`** moves the item by the same rule: to the
+end of its new group, or one past the end of the list for a category no other
+item carries. Sending the category it already has moves nothing, and a
+`position` sent in the same `PATCH` wins over the move.
+
+### Bulk create
+
+`POST /api/packing-lists/{list_id}/items/bulk-create` takes `{"items": [..]}`,
+at least one, each with the fields of a single create except `after_id`. It
+answers `201` with the created items, in request order.
+
+- **All or nothing.** The body is validated whole, so one bad item is a `422`
+  and nothing is created; the rows are committed together.
+- **Placed in request order**, each by the group rule above, so two new items
+  of the same new category land adjacent and in the order sent.
+- Labels are remembered as for a single create. An unknown list is a `404`.
 
 ### What does not happen automatically
 
@@ -183,10 +229,10 @@ Sending `null` clears a nullable field. The router uses `exclude_unset`, not
 `exclude_none`, so "remove this category" and "leave the category alone" are
 different requests.
 
-**A `PATCH` cannot null a required field.** `name`, `quantity_packed`,
-`status`, `timing`, `needs_double_check`, `double_checked` and `position` answer
-`422` when sent as `null`; nullable fields such as `notes`, `need` and
-`location` accept it and clear.
+**A `PATCH` cannot null a required field.** `name`, `status`, `timing`,
+`needs_double_check`, `double_checked` and `position` answer `422` when sent as
+`null`; nullable fields such as `notes`, `need`, `location` and
+`quantity_packed` accept it and clear.
 
 ## Common options — `/api/label-options`
 

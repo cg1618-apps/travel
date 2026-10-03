@@ -71,7 +71,7 @@ one place the drift is invisible.
 `alembic_version`, which `create_all` never writes. If someone simplifies the
 fixture back, that test is what goes red.
 
-`tests/test_migrations_build_the_schema.py` checks four further claims:
+`tests/test_migrations_build_the_schema.py` checks five further claims:
 
 - **The chain builds from nothing** — `alembic upgrade head` run as a real
   subprocess against a scratch database created for the test, then read back
@@ -92,6 +92,11 @@ fixture back, that test is what goes red.
   checked, then downgraded and the booleans checked again (a saved-and-template
   row comes back a template only). Without the seed the `UPDATE`s meet nothing
   and a wrong `CASE` would still pass.
+- **`p3acking0003` turns a `0` count into no value, and back** — from
+  `k1ind0000001`, one item with `quantity_packed` 0 and one with 3 are seeded;
+  after the upgrade the 0 is null and the 3 untouched, and an insert naming no
+  count stores null. The downgrade fills the nulls with 0 and the column is
+  NOT NULL again. Unseeded, both `UPDATE`s would meet nothing.
 
 None of those is the same claim as **an incremental upgrade succeeds** — a run
 against a database that already holds the earlier revisions, such as the

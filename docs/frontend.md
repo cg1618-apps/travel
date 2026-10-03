@@ -1,6 +1,6 @@
 # Frontend
 
-Last verified: 2026-10-02
+Last verified: 2026-10-03
 
 **What this is for.** How the React app is laid out, where each kind of thing
 lives, and the decisions a new screen has to follow. The endpoints it calls are
@@ -13,7 +13,7 @@ in `api.md`; the rules it renders are in `business-rules.md`.
 | `src/api/` | `client.js` — the only place that calls `fetch()`. `endpoints.js` — every URL in one map. |
 | `src/hooks/` | `useApiQuery.js` — TanStack Query over `fetchJson`, plus `useApiMutation` and `send`. `useLongPress.js` — a long-press that never also fires the click. `useTheme.js` — light or dark, and the toggle. |
 | `src/pages/` | One file per screen, PascalCase, default export. |
-| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `KindControls`, `IndexTabs`, `States`. |
+| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `NewRows`, `FilterMenu`, `GroupOrderDialog`, `Sortable`, `Combobox`, `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `KindControls`, `IndexTabs`, `States`. |
 | `src/lib/` | Pure modules with no React in them. Tests sit beside them. |
 
 Routes are declared in `src/App.jsx`: `/` the dashboard, `/lists` and
@@ -62,8 +62,9 @@ A packing list is used for two different jobs, and one screen cannot do both
 well.
 
 - **表格, the sheet** (`components/Grid.jsx`) is where a list is *planned*. Every column
-  is visible, every header sorts, every cell edits where it sits. It is what
-  you would build in a spreadsheet, because that is what people do build.
+  is visible, every cell edits where it sits, rows sit in their 類別 and
+  five columns filter. It is what you would build in a spreadsheet, because
+  that is what people do build.
 - **清單, the checklist** (`components/Checklist.jsx`) is where a list is
   *worked through*. A tick, a name, a quiet second line, one place to add, and
   finished things folded away under 已完成. Nothing is edited in place; the
@@ -72,8 +73,9 @@ well.
 The switch names the two views. **It does not offer an axis to group by.** An
 earlier version put "When / Category / Bag" on screen — internal vocabulary
 from the data model, asked as a question of someone who wants to pack a bag.
-Grouping is not a thing a person wants; seeing their list is. Sorting a column
-covers the real need without asking anything.
+Grouping is not a thing a person wants; seeing their list is. The sheet does
+group, but always by 類別 and without asking — that is how the owner's own
+sheet is laid out — and the filters cover finding things without a question.
 
 The choice is remembered in `localStorage`, and a first visit on a narrow
 screen starts on Checklist, because a sheet at 375px is a horizontal scrollbar.
@@ -148,6 +150,34 @@ In the sheet's order: **類別 · 項目 · 數量 · 已打包數量 · 打包�
 Check · 打包時機 · 需求 · 取得地點 · 備註**, then a ⋯ column for the row menu.
 項目 spans two cells: the name, and its `detail` beside it.
 
+A grip column (⠿) comes first, for dragging a row; see "Groups and order".
+The header row is sticky. On a screen wide enough for the whole sheet the page
+scrolls and the header sticks to the top of the window; on a narrower one the
+sheet scrolls sideways inside its own box, which then also scrolls vertically
+(at most a screen tall) so the header can stick to that box's top. A sticky
+element sticks to its nearest scroll container, and an `overflow-x` box is one
+whether or not it scrolls vertically.
+
+**Colour says the value.** 打包狀態, Double Check, 打包時機, 需求 and 取得地點
+tint their whole cell, a sheet's conditional colour (`lib/tones.js`, classes
+`tone tone-*` in `index.css`). Green is done (已打包, 確認), amber is waiting on
+you (未確認), 打包時機 warms as it gets closer to leaving (隨時 grey, 出發前晚
+violet, 出發當天 orange, 出發前 rose), and 需求 is sky / teal / pink. 不需打包
+and 不需確認 are deliberately plain. 取得地點 is open text, so its tone is a hash
+of the text: the same place is the same colour on every list. A tone is one hue
+mixed with the theme's text colour and laid thin over the surface, so one rule
+reads in both themes.
+
+**Filters** sit in the headers of 打包狀態, Double Check, 打包時機, 需求 and
+取得地點 (`components/FilterMenu.jsx`, rules in `lib/filters.js`): Google
+Sheets' "filter by values", a tick per value, nothing ticked meaning no filter.
+Values within a column are ORed, columns ANDed; an unset 需求 or 取得地點 is
+（空白） and can be ticked too. 取得地點 offers only the places the list
+holds. A filtered sheet says 篩選中：顯示 n / m 項 above it with 清除所有篩選,
+and cannot be dragged — a drop between two visible rows says nothing about
+where the hidden ones go. There is no sorting: the sheet is always in its own
+order.
+
 **`bag` is not shown.** The sheet has no such column. The field stays in the
 data and in the copy rule, and its remembered values are still managed on the
 選項 screen; nothing on the sheet reads or writes it.
@@ -157,17 +187,12 @@ data and in the copy rule, and its remembered values are still managed on the
 Every row is its own item. `鑰匙 · 家鑰匙` and `鑰匙 · 宿舍鑰匙` are two items
 sharing a name, each with its own status.
 
-Under the list's own order (no column sorted), rows come from `groupRuns` in
-`lib/grouping.js`: 類別 is written only on the first row of a run of equal
-categories and 項目 only on the first row of a run of equal names, the cells
-beneath left blank — how the Google Sheet reads. A row continuing a name run
-has a lighter top border, so an item and its variants read as one block. A
-blank cell is still a cell: clicking it opens the editor on the value the row
-really holds.
-
-**Sorting by any column turns grouping off** and every row shows its full
-name; a blank cell under a foreign order would be ambiguous. Clearing the sort
-(a third click on the header) brings the grouping back.
+Rows come from `groupRuns` in `lib/grouping.js`, run inside each 類別: 類別
+is written only on a group's first row and 項目 only on the first row of a run
+of equal names, the cells beneath left blank — how the Google Sheet reads. A row
+continuing a name run has a lighter top border, so an item and its variants read
+as one block. A blank cell is still a cell: clicking it opens the editor on the
+value the row really holds.
 
 **新增變化** in the row menu inserts a new item directly below the row,
 carrying its `category` and `name` (`after_id` on item create — see `api.md`).
@@ -175,12 +200,57 @@ Grouping then blanks both, so the variant appears in place, waiting for its
 `detail`.
 
 The checklist groups the same runs with `groupForChecklist`: a group of one is
-a single line (`name · detail`); a group of several is the name as a heading
+a single line (`name · detail`), in the same 類別 order as the sheet
+(`inGroupOrder`); a group of several is the name as a heading
 with each variant indented beneath it, each with its own tick. 未打包 items and
 finished ones are grouped separately, so a group can appear in both halves.
 The quiet second line is 需求, 取得地點, `已打包 {packed} / {quantity}{unit}`
+(— for a count nobody has entered)
 and 備註, joined with ` · `; an outstanding Double Check adds a 待確認 link that
 marks it confirmed.
+
+## Groups and order
+
+**A group is a 類別, and a group is always together.** `groupByCategory` puts
+every item of one category in one group — items with no category form a group
+of their own, labelled （未分類） where it needs a name — ordered by position,
+and orders the groups by where their first item sits. Each group is its own
+`<tbody>` with a strong border round it, so where one 類別 ends is visible
+without reading the cells. The server keeps the same rule on its side: a new
+or re-categorised item goes to the end of its group, and an order that splits a
+group is refused (`api.md`).
+
+**Rows are dragged within their group**, by the ⠿ grip in the first column
+(`components/Sortable.jsx`, the media tracker's dnd-kit wrapper: pointer events
+rather than HTML5 drag, which swallows the wheel on Windows and does nothing on
+touch; a short hold on touch so a swipe still scrolls). Focusing the grip and
+pressing ↑ / ↓ moves a row one place. A drop never leaves its group.
+
+**Groups are ordered in 排序類別**, a dialog of their own
+(`GroupOrderDialog.jsx`), so a drag on the sheet only ever means a row. Nothing
+is saved until its 儲存.
+
+Both write the list's whole order in one `PUT …/order`, built by `orderIds`.
+The page applies it to the cache first, so a dropped row stays where it was
+dropped during the round trip; the response replaces the cache, and a refusal
+puts the server's order back with 排序沒有儲存，已還原。
+
+## Adding rows
+
+**▸ 新增一列… opens new rows in place, every column editable, and nothing is
+saved until 儲存 n 列** (`components/NewRows.jsx`, rules in `lib/drafts.js`).
+That is the exception to "no Save button", and the reason for it: a row saved
+the moment its 類別 was typed would jump into its group, and the rest of it
+would have to be found again. Kept until 儲存, it lands in its group complete.
+
+＋ 再加一列 adds another, starting in the 類別 of the row above it. A row
+left untouched is skipped; a row with no 項目, or a 數量 / 已打包數量 that is
+not a whole number, stops the save and is outlined. Ctrl+Enter (⌘+Enter) saves;
+取消 drops them all. The save is one `POST …/items/bulk-create`, all or
+nothing, and a failure keeps every typed row on screen.
+
+The checklist keeps its one-line ⊕ 新增項目, which creates the item at once
+with only a name.
 
 ## 打包狀態: three stored, two tapped
 
@@ -188,10 +258,10 @@ All three values stay in the data — 不需打包 is a decision, and folding it
 未打包 would make it indistinguishable from forgetting. But a tap only ever
 means *packed*:
 
-- **One tap** — the 打包狀態 pill in the sheet, the tick in the checklist —
+- **One tap** — the 打包狀態 cell in the sheet, the tick in the checklist —
   toggles 未打包 ⇄ 已打包 (`tapStatus` in `lib/status.js`). A 不需打包 row, shown
   greyed and struck through, returns to 未打包 on one tap.
-- **不需打包 is one step further**: a long-press (500 ms) on the pill or the
+- **不需打包 is one step further**: a long-press (500 ms) on that cell or the
   tick, or the row's ⋯, opens `RowMenu`. `useLongPress` makes sure the click
   that follows a long-press does nothing, so one gesture never does both. A
   keyboard click (Enter or Space) is never swallowed. The menu itself ignores
@@ -209,7 +279,7 @@ screen the menu opens beside the row; on a phone it is a bottom sheet.
 ## 重設狀態
 
 A button in the list header, behind a `ConfirmDialog`. It calls
-`POST /api/packing-lists/{id}/reset`: 已打包 → 未打包, 已打包數量 → 0, Double
+`POST /api/packing-lists/{id}/reset`: 已打包 → 未打包, 已打包數量 cleared to —, Double
 Check back to 未確認. **不需打包 is left alone** — it is a choice about the
 list, not progress through it. The rule itself is the server's
 (`business-rules.md`).
@@ -245,17 +315,20 @@ has to be told it:
 - **Click a cell to edit it.** No pencil icon, no edit mode, no modal.
 - **Enter or blur commits. Escape reverts.** Escape has to be safe — it is what
   people press when they realise they clicked the wrong cell.
-- **There is no Save button** anywhere in the grid.
+- **There is no Save button** on an existing row. New rows are the one
+  exception — see "Adding rows".
 - **Every cell is one line.** A wrapping cell changes the row height and makes
   the sheet ripple while you type; the sheet scrolls sideways instead.
 
 數量 is one cell holding the target and its unit — "5 雙" is one fact.
 The number must be whole: anything else (`1.5`, `兩`) reverts the cell and
 sends nothing, unit included, the way 價錢 refuses a typo; an emptied number
-clears it. 已打包數量 refuses the same way, and an emptied one is 0. All three
-cells read their text with `parseWholeNumber` in `lib/numbers.js`.
-已打包數量 is its own cell, as in the sheet, and turns amber when it is short
-of 數量, because being short is the failure a packing list exists to catch.
+clears it. 已打包數量 refuses the same way, and an emptied one is cleared. All
+three cells read their text with `parseWholeNumber` in `lib/numbers.js`.
+已打包數量 is its own cell, as in the sheet. It shows — until someone enters a
+count, like 數量, so a blank never reads as "none packed"; once there is a
+count it turns amber when short of 數量, because being short is the failure a
+packing list exists to catch.
 
 Double Check is one select with three positions — 不需確認, 未確認, 確認 —
 rather than two checkboxes. It maps onto `needs_double_check` and
@@ -263,6 +336,15 @@ rather than two checkboxes. It maps onto `needs_double_check` and
 option (—) stores null; `SelectCell` treats `''` as null for any column that
 may be unset. 取得地點 is free text with the remembered `location` values
 suggested.
+
+**類別, 取得地點 and 車票類型 suggest as you type** (`components/Combobox.jsx`,
+matching in `lib/suggest.js`). The list opens on focus and narrows with each
+keystroke — prefix matches first, then anything containing the text — and ↑ /
+↓ / Enter or a click picks. It is only a suggestion: Enter with nothing
+highlighted keeps exactly what was typed, so a new value is as easy as a known
+one. It replaced `<datalist>`, which only opened from its own triangle and drew
+a native popup unlike anything else in the app; it renders into
+`document.body` so the sheet's scroll box cannot clip it.
 
 ## 交通 (`/transport`)
 
@@ -348,7 +430,13 @@ its leg.
 Nothing is listed below the trip. A `/trips/{id}` that answers 404 — or 422,
 for an id that is not a number — reads 找不到這個行程。
 
-- **Header.** The name is a cell that cannot be emptied, with a 範本, 保存 or
+- **Header.** It is sticky: ← 行程, the name and ⋯, `KindControls`, 備註
+  and 保存備註 stay at the top of the screen on a canvas background with a
+  rule under it while the legs scroll beneath. The page's `<main>` is
+  `overflow-x-clip` rather than `overflow-x-hidden` for that reason — both
+  stop a wide card scrolling the page sideways, but `hidden` makes `<main>` a
+  scroll container, and a sticky header inside one never sticks to the
+  viewport. The name is a cell that cannot be emptied, with a 範本, 保存 or
   自動保存 badge beside it. Under it `KindControls` — the 狀態 select on a
   一般 or 自動保存 trip, the 保存 checkbox and 當作範本, none of them on a 範本
   — then 備註. The ⋯ menu holds 保存 (or 取消保存, which asks first, as the
@@ -381,6 +469,28 @@ for an id that is not a number — reads 找不到這個行程。
   list's own header then reads 由行程設定 for its date.
 - **Adding and deleting.** + 新增一段 takes the places and two Taipei times;
   ⋯ 刪除這段 asks first.
+
+## 選項 (`/options`)
+
+`pages/Options.jsx` holds the remembered values behind the 類別, 包包, 取得地點
+and 車票類型 suggestions (see "Common options" in `business-rules.md`), with
+one tab per kind: **類別（n）· 包包（n）· 取得地點（n）· 車票類型（n）**, in
+`LABEL_KIND_LABELS` order, each counting its values (`optionCounts` in
+`lib/options.js`). The tabs look like the index tabs and keep the tab the same
+way, as `?tab=` — `bag`, `location` or `ticket_type`, and absent for 類別;
+anything else reads as 類別 (`kindFromSearch`). The tab bar is written in the
+page rather than reusing `IndexTabs`, whose tabs are the four kinds of list.
+
+**The tab bar is sticky**, on a canvas background, so a long kind scrolls
+under it and the other kinds stay one tap away. The sticky box is the outer
+one, not the sideways scroller inside it: an `overflow-x-auto` box is a scroll
+container, and a sticky element sticks only within its nearest one.
+
+Each value is an input with its use count (用了 n 次). Edited, its button
+becomes 改名; untouched, it is ✕, which removes the suggestion and leaves the
+data alone. A rename shows how many rows it rewrote — 已改名，改寫了 n
+筆資料。, or 已合併到「…」 when it lands on an existing value. A kind with no
+values says 還沒有記下任何值。輸入過一次，它就會出現在這裡。
 
 ## Mobile first
 
