@@ -133,7 +133,7 @@ def test_an_item_may_be_packed_beyond_its_target(client, packing_list):
 def test_a_quantity_may_be_left_out_entirely(client, packing_list):
     item = add_item(client, packing_list, name="hairbrush").json()
     assert item["quantity"] is None
-    assert item["quantity_packed"] == 0
+    assert item["quantity_packed"] is None
 
 
 def test_double_checked_is_independent_of_status(client, packing_list):
@@ -318,3 +318,20 @@ def test_a_patch_can_clear_need_and_location(client, packing_list):
     assert response.status_code == 200
     stored = client.get(f"/api/packing-lists/{packing_list.id}").json()["items"][0]
     assert (stored["need"], stored["location"]) == (None, None)
+
+
+def test_a_patch_can_clear_the_packed_count(client, packing_list):
+    # quantity_packed is nullable now - null is "not counted" - so it is no
+    # longer among the fields a PATCH refuses to null. `name` stays refused,
+    # which is what makes this more than an absent check.
+    item = add_item(client, packing_list, quantity_packed=2).json()
+    assert item["quantity_packed"] == 2
+    response = client.patch(f"/api/packing-items/{item['id']}", json={"quantity_packed": None})
+    assert response.status_code == 200
+    assert response.json()["quantity_packed"] is None
+    assert client.patch(f"/api/packing-items/{item['id']}", json={"name": None}).status_code == 422
+
+
+def test_an_explicit_zero_packed_count_is_kept(client, packing_list):
+    # Mirror of the null default: 0 is a count, and stays one.
+    assert add_item(client, packing_list, quantity_packed=0).json()["quantity_packed"] == 0

@@ -304,7 +304,7 @@ def test_a_copy_carries_the_definition_and_resets_the_state(client, db_session):
     assert item["notes"] == "the warm ones"
 
     assert item["status"] == "not_packed"
-    assert item["quantity_packed"] == 0
+    assert item["quantity_packed"] is None
     assert item["double_checked"] is False
 
 
@@ -492,7 +492,7 @@ def test_a_reset_unpacks_clears_counts_and_checks_but_leaves_no_need_alone(clien
     assert response.status_code == 200
     by_name = {item["name"]: item for item in response.json()["items"]}
     assert by_name["packed"]["status"] == "not_packed"
-    assert by_name["packed"]["quantity_packed"] == 0
+    assert by_name["packed"]["quantity_packed"] is None
     assert by_name["packed"]["double_checked"] is False
     assert by_name["packed"]["needs_double_check"] is True  # definition, not state
     assert by_name["skip"]["status"] == "no_need"

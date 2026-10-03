@@ -83,7 +83,7 @@ carries; the state resets.**
 
 | Carries | Resets |
 | --- | --- |
-| `name`, `detail`, `category`, `quantity`, `unit`, `bag`, `location`, `need`, `timing`, `needs_double_check`, `notes`, `position` | `status` → `not_packed`, `quantity_packed` → 0, `double_checked` → `false` |
+| `name`, `detail`, `category`, `quantity`, `unit`, `bag`, `location`, `need`, `timing`, `needs_double_check`, `notes`, `position` | `status` → `not_packed`, `quantity_packed` → `null`, `double_checked` → `false` |
 
 Nothing arrives pre-ticked. A duplicated list with its ticks intact is how you
 reach the airport certain you packed the charger.
@@ -94,12 +94,40 @@ describe *that* list rather than its contents; the new list's `kind` comes from
 the request, so 當作範本 is simply a create with `kind: template` and the
 source as `copy_from_id`.
 
+## Groups
+
+A list's **group** is its items sharing one `category`; items with no category
+are a group of their own. **A group's items are always adjacent in
+`position`**, because the sheet shows each group as one block. A group has no
+row and no order column of its own: it sits where its items sit, so moving a
+group is moving its items.
+
+Every write that places an item keeps that true:
+
+- **A new item joins the end of its group** — directly after the last item on
+  the list with the same category, later items shifting down — or, for a
+  category no item on the list carries, goes one past the end. That holds for
+  a single create without `after_id` and for every item of a bulk create, the
+  latter placed one by one in the order sent.
+- **Changing an item's category moves it** to the end of its new group, by the
+  same rule.
+- **A reorder that would split a group is refused**, and so is one that does
+  not name every item of the list exactly once.
+
+`after_id` is the deliberate exception: it inserts directly after the named
+item, whatever its category. So is a `PATCH` of `position`, which is taken as
+sent.
+
 ## Status, and the count that does not set it
 
 `status` is one of `not_packed`, `packed`, `no_need`, and **it is always set
 explicitly** — by a tap on the status cell, the row menu, or a reset. Nothing
 reads `quantity_packed` to set it: reaching the target quantity changes the
 count and nothing else, and falling short only colours the 已打包數量 cell.
+
+`quantity_packed` starts with no value (`null`): nobody has counted yet, which
+is not the same as having counted none. Copying and 重設狀態 both clear it back
+to that.
 
 An item may be marked `packed` while short. Sometimes three of five is what you
 are taking, and a status derived from the count would force you to edit the
@@ -130,7 +158,7 @@ copy rule.
 
 | Unchanged | Cleared |
 | --- | --- |
-| `name`, `detail`, `category`, `bag`, `location`, `need`, `quantity`, `unit`, `timing`, `needs_double_check`, `notes` | `status` → `not_packed` (except `no_need`, which survives), `quantity_packed` → 0, `double_checked` → `false` |
+| `name`, `detail`, `category`, `bag`, `location`, `need`, `quantity`, `unit`, `timing`, `needs_double_check`, `notes` | `status` → `not_packed` (except `no_need`, which survives), `quantity_packed` → `null`, `double_checked` → `false` |
 
 `no_need` is a choice about the list rather than progress through it, so it
 survives the reset. `needs_double_check` is definition, not state, so it
@@ -140,8 +168,8 @@ survives too; only whether the check actually happened is cleared.
 
 Every item carries one of `whenever`, `night_before`, `day_of`, `just_before`.
 **It is an attribute, not a mode.** The sheet shows it as the 打包時機 column
-and sorts by it in that escalating order rather than alphabetically, which is the
-only special handling it gets.
+and offers it in that escalating order in its select and its filter, coloured
+warmer the closer it is to leaving, which is the only special handling it gets.
 
 It used to drive the layout: the list screen grouped by it and highlighted
 whichever groups were "due", computed from `departure_at`. That was removed —

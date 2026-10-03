@@ -35,7 +35,7 @@ def test_the_sheet_vocabulary_maps_onto_stored_values(sheet):
     assert b.timing == "whenever"
     assert (c.status, c.needs_double_check, c.double_checked) == ("no_need", False, False)
     assert (c.timing, c.need, c.quantity, c.quantity_packed, c.notes) == (
-        "night_before", None, 1, 0, "8/14沒帶")
+        "night_before", None, 1, None, "8/14沒帶")
 
 
 def test_an_item_named_無_is_skipped_and_reported(sheet):
@@ -205,3 +205,9 @@ def test_a_non_numeric_price_is_refused_naming_the_cell():
     wb["This time"]["H3"] = "五百五"
     with pytest.raises(ValueError, match="This time row 3: cannot read 價錢 '五百五'"):
         _parse(wb)
+
+
+def test_a_blank_packed_count_is_no_value_and_a_number_is_kept(sheet):
+    fruit, biscuits = _list(sheet, "台北去彰化").items
+    assert fruit.quantity_packed == 1
+    assert biscuits.quantity_packed is None

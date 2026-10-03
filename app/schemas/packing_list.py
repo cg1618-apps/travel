@@ -49,6 +49,12 @@ class PackingListUpdate(NonNullableUpdate):
     evict_confirmed: bool = False
 
 
+class PackingListOrder(BaseModel):
+    """Every item on the list, each once, in the order it should read."""
+
+    item_ids: list[int]
+
+
 class PackingListFields(BaseModel):
     """What every read of a list carries, whichever shape it is asked for."""
 

@@ -101,14 +101,14 @@ and an `UPDATE` setting `usage` to null on a free row is refused by
 | `location` | text | yes | | Where the item is taken from or bought. Free text, same. |
 | `need` | text | yes | | `need`, `bring` or `buy`. Null means the question does not apply. |
 | `quantity` | integer | **yes** | | How many to pack. Null means the question does not apply. |
-| `quantity_packed` | integer | no | `0` | How many are in the bag. May exceed `quantity`; over-packing is not an error. |
+| `quantity_packed` | integer | **yes** | | How many are in the bag. Null means nobody has counted, which is not `0`. May exceed `quantity`; over-packing is not an error. |
 | `unit` | text | yes | | "pairs", "days' worth". Carries what the number cannot. |
 | `status` | text | no | `not_packed` | `not_packed`, `packed`, `no_need`. |
 | `timing` | text | no | `whenever` | `whenever`, `night_before`, `day_of`, `just_before`. |
 | `needs_double_check` | boolean | no | `false` | This one needs verifying. |
 | `double_checked` | boolean | no | `false` | Whether that verification happened. Meaningless unless the flag above is set. |
 | `notes` | text | yes | | |
-| `position` | integer | no | `0` | Order within its own list. |
+| `position` | integer | no | `0` | Order within its own list, and with it the order of the groups: a group (the items sharing a `category`) has no row of its own and sits where its items sit. |
 | `created_at` | timestamptz | no | `now()` | |
 | `updated_at` | timestamptz | no | `now()` | |
 

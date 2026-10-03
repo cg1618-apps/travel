@@ -57,7 +57,7 @@ def test_a_copy_carries_the_definition_and_resets_the_state(db_session):
     assert copied.position == 3
 
     assert copied.status == "not_packed"
-    assert copied.quantity_packed == 0
+    assert copied.quantity_packed is None
     assert copied.double_checked is False
 
 
