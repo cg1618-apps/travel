@@ -13,6 +13,7 @@
  * its row on /lists, with 備註 and - where it matters - 保存備註 beneath.
  */
 
+import { useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -133,6 +134,27 @@ export default function PackingList() {
   const add = useApiMutation({
     invalidate,
     mutationFn: (payload) => send(endpoints.packingLists.items(listId), 'POST', payload),
+  })
+  const addMany = useApiMutation({
+    invalidate,
+    mutationFn: (rows) => send(endpoints.packingLists.bulkCreate(listId), 'POST', { items: rows }),
+  })
+  // Optimistic: a dropped row stays where it was dropped rather than jumping
+  // back for the round trip. The response is the list itself, so it replaces
+  // the cache; a refusal puts the server's order back.
+  const queryClient = useQueryClient()
+  const reorder = useApiMutation({
+    mutationFn: (itemIds) => send(endpoints.packingLists.order(listId), 'PUT', { item_ids: itemIds }),
+    onMutate: (itemIds) => {
+      queryClient.setQueryData(key, (current) =>
+        current && {
+          ...current,
+          items: current.items.map((item) => ({ ...item, position: itemIds.indexOf(item.id) })),
+        },
+      )
+    },
+    onSuccess: (updated) => queryClient.setQueryData(key, updated),
+    onError: () => queryClient.invalidateQueries({ queryKey: key }),
   })
   const remove = useApiMutation({
     invalidate,
@@ -287,12 +309,22 @@ export default function PackingList() {
 
       <div className="mt-4">
         {view === 'sheet' ? (
-          <Grid
-            items={items}
-            categories={values('category')}
-            locations={values('location')}
-            {...handlers}
-          />
+          <>
+            {(addMany.isError || reorder.isError) && (
+              <p role="alert" className="mx-4 mb-2 text-sm text-danger">
+                {addMany.isError ? '新增失敗，輸入的列還在，請再試一次。' : '排序沒有儲存，已還原。'}
+              </p>
+            )}
+            <Grid
+              items={items}
+              categories={values('category')}
+              locations={values('location')}
+              adding={addMany.isPending}
+              onAddMany={(rows) => addMany.mutateAsync(rows)}
+              onReorder={reorder.mutate}
+              {...handlers}
+            />
+          </>
         ) : (
           <Checklist items={items} {...handlers} />
         )}

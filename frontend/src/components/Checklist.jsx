@@ -22,7 +22,7 @@ import { RowMenu } from './RowMenu'
 function quietLine(item) {
   const quantity =
     item.quantity !== null &&
-    `已打包 ${item.quantity_packed} / ${item.quantity}${item.unit ?? ''}`
+    `已打包 ${item.quantity_packed ?? '—'} / ${item.quantity}${item.unit ?? ''}`
   return [NEED_LABELS[item.need], item.location, quantity, item.notes]
     .filter(Boolean)
     .join(' · ')
@@ -57,7 +57,8 @@ function Line({ item, label, withMenu, onPatch }) {
   const closeMenu = useCallback(() => setMenuOpen(false), [])
 
   const outstanding = item.needs_double_check && !item.double_checked
-  const short = item.quantity !== null && item.quantity_packed < item.quantity
+  const short =
+    item.quantity !== null && item.quantity_packed !== null && item.quantity_packed < item.quantity
   const quiet = quietLine(item)
 
   return (

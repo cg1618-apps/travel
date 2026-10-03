@@ -125,3 +125,28 @@ button,
   min-height: 44px;
   touch-action: manipulation;
 }
+
+/*
+ * Tones: the colour a value carries in the sheet, so 已打包 reads apart from
+ * 未打包 at a glance. One hue each, mixed with the theme's own text colour for
+ * the foreground and laid thin over the surface for the background — so the
+ * same rule reads in light and dark without a second set of values. Which
+ * value gets which tone is `src/lib/tones.js`.
+ */
+@layer components {
+  .tone {
+    --tone: var(--c-text-faint);
+    background: color-mix(in srgb, var(--tone) 18%, transparent);
+    color: color-mix(in srgb, var(--tone) 72%, var(--c-text));
+  }
+  .tone-gray { --tone: #8f8a80; }
+  .tone-green { --tone: #10b981; }
+  .tone-amber { --tone: #f59e0b; }
+  .tone-sky { --tone: #0ea5e9; }
+  .tone-violet { --tone: #8b5cf6; }
+  .tone-rose { --tone: #f43f5e; }
+  .tone-teal { --tone: #14b8a6; }
+  .tone-orange { --tone: #f97316; }
+  .tone-lime { --tone: #84cc16; }
+  .tone-pink { --tone: #ec4899; }
+}

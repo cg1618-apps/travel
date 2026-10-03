@@ -37,7 +37,7 @@ class ParsedItem:
     name: str
     detail: str | None
     quantity: int | None
-    quantity_packed: int
+    quantity_packed: int | None
     status: str
     needs_double_check: bool
     double_checked: bool
@@ -214,7 +214,7 @@ def _parse_packing(ws, report: list[str]) -> ParsedList:
             name=name,
             detail=as_text(row[detail_at]) if detail_at < len(row) else None,
             quantity=_int(row, columns, "數量", where),
-            quantity_packed=_int(row, columns, "已打包數量", where) or 0,
+            quantity_packed=_int(row, columns, "已打包數量", where),
             status=_lookup(STATUS, _text(row, columns, "打包狀態"), Status.NOT_PACKED, where),
             needs_double_check=check[0],
             double_checked=check[1],

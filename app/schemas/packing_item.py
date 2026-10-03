@@ -17,7 +17,7 @@ class PackingItemBase(BaseModel):
     # constraint saying so. Over-packing deliberately IS allowed, so there is
     # no check that `quantity_packed <= quantity`.
     quantity: int | None = Field(default=None, ge=0)
-    quantity_packed: int = Field(default=0, ge=0)
+    quantity_packed: int | None = Field(default=None, ge=0)
     unit: str | None = None
     # Typed as the enums so an unknown value is a 422 with a usable message,
     # rather than reaching the database and coming back as a 500 from a
@@ -33,12 +33,22 @@ class PackingItemCreate(PackingItemBase):
     after_id: int | None = None
 
 
+class PackingItemBulkCreate(BaseModel):
+    """Several new rows saved at once.
+
+    The items are `PackingItemBase`, without `after_id`: each is placed by its
+    group, in the order sent. Validated as one body, so a bad item is a 422
+    before anything is written.
+    """
+
+    items: list[PackingItemBase] = Field(min_length=1)
+
+
 class PackingItemUpdate(NonNullableUpdate):
     """Every field optional: PATCH changes what it names and nothing else."""
 
     non_nullable = (
         "name",
-        "quantity_packed",
         "status",
         "timing",
         "needs_double_check",

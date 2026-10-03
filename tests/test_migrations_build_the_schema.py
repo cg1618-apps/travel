@@ -169,3 +169,51 @@ def test_the_kind_revision_maps_every_flag_combination_and_back(scratch_database
     assert lists == {"both": "(f,t)", "tpl": "(f,t)", "kept": "(t,f)", "plain": "(f,f)"}
     assert trips == {"both": "(f,t)", "tpl": "(f,t)", "old": "(t,f)", "plain": "(f,f)"}
     assert note == "早點訂"
+
+
+def test_the_packed_count_revision_turns_zero_into_no_value_and_back(scratch_database):
+    """Load-bearing seed: a 0, a real count and (after the upgrade) a null.
+
+    On an empty database the UPDATEs in both directions meet nothing, and a
+    downgrade that forgot to fill the nulls would only fail on a row holding one.
+    """
+    run_alembic(scratch_database, "upgrade", "k1ind0000001")
+    engine = create_engine(scratch_database)
+    with engine.begin() as conn:
+        list_id = conn.execute(
+            text("INSERT INTO packing_list (name, usage) VALUES ('l', 'unused') RETURNING id")
+        ).scalar()
+        conn.execute(
+            text(
+                "INSERT INTO packing_item (list_id, name, quantity_packed) VALUES "
+                "(:list_id, 'uncounted', 0), (:list_id, 'counted', 3)"
+            ),
+            {"list_id": list_id},
+        )
+
+    run_alembic(scratch_database, "upgrade", "p3acking0003")
+    with engine.begin() as conn:
+        found = dict(conn.execute(text("SELECT name, quantity_packed FROM packing_item")).all())
+        assert found == {"uncounted": None, "counted": 3}
+        # No server default any more: an insert that names no count stores null.
+        conn.execute(
+            text("INSERT INTO packing_item (list_id, name) VALUES (:list_id, 'new')"),
+            {"list_id": list_id},
+        )
+        new = conn.execute(
+            text("SELECT quantity_packed FROM packing_item WHERE name = 'new'")
+        ).scalar()
+        assert new is None
+
+    run_alembic(scratch_database, "downgrade", "k1ind0000001")
+    with engine.connect() as conn:
+        found = dict(conn.execute(text("SELECT name, quantity_packed FROM packing_item")).all())
+        nullable = conn.execute(
+            text(
+                "SELECT is_nullable FROM information_schema.columns "
+                "WHERE table_name = 'packing_item' AND column_name = 'quantity_packed'"
+            )
+        ).scalar()
+    engine.dispose()
+    assert found == {"uncounted": 0, "counted": 3, "new": 0}
+    assert nullable == "NO"

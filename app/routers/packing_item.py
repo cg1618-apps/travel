@@ -6,22 +6,23 @@ cannot express both, so the paths are written out in full.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import PackingItem, PackingList
 from app.schemas.packing_item import (
+    PackingItemBulkCreate,
     PackingItemCreate,
     PackingItemResponse,
     PackingItemUpdate,
 )
 from app.services.domain.labels import remember_item_labels
-from app.services.domain.packing import insert_after
+from app.services.domain.packing import insert_after, place_in_group
 
 router = APIRouter(tags=["Packing items"])
 
 NOT_FOUND = "Packing item not found."
+LIST_NOT_FOUND = "Packing list not found."
 
 
 def _get(db: Session, item_id: int) -> PackingItem:
@@ -31,17 +32,11 @@ def _get(db: Session, item_id: int) -> PackingItem:
     return item
 
 
-def _next_position(db: Session, list_id: int) -> int:
-    """One past the end of THIS list.
-
-    Scoped to the list rather than global: a shared counter would leave a new
-    list's first item at position 400 and sort correctly by accident, until
-    something started comparing positions between lists.
-    """
-    highest = db.execute(
-        select(func.max(PackingItem.position)).where(PackingItem.list_id == list_id)
-    ).scalar()
-    return 0 if highest is None else highest + 1
+def _get_list(db: Session, list_id: int) -> PackingList:
+    packing_list = db.get(PackingList, list_id)
+    if packing_list is None:
+        raise HTTPException(status_code=404, detail=LIST_NOT_FOUND)
+    return packing_list
 
 
 @router.post(
@@ -50,12 +45,11 @@ def _next_position(db: Session, list_id: int) -> int:
     status_code=201,
 )
 def create(list_id: int, payload: PackingItemCreate, db: Session = Depends(get_db)):
-    if db.get(PackingList, list_id) is None:
-        raise HTTPException(status_code=404, detail="Packing list not found.")
+    _get_list(db, list_id)
 
     fields = payload.model_dump(exclude={"after_id"})
     if payload.after_id is None:
-        position = _next_position(db, list_id)
+        position = place_in_group(db, list_id, payload.category)
     else:
         after = db.get(PackingItem, payload.after_id)
         if after is None or after.list_id != list_id:
@@ -70,14 +64,50 @@ def create(list_id: int, payload: PackingItemCreate, db: Session = Depends(get_d
     return item
 
 
+@router.post(
+    "/api/packing-lists/{list_id}/items/bulk-create",
+    response_model=list[PackingItemResponse],
+    status_code=201,
+)
+def bulk_create(list_id: int, payload: PackingItemBulkCreate, db: Session = Depends(get_db)):
+    """All or nothing: the body is validated whole before anything is written,
+    and the rows are committed together.
+
+    Placed one at a time in request order, each flushed before the next is
+    placed, so two new items of the same new category land adjacent and in
+    the order they were sent.
+    """
+    _get_list(db, list_id)
+
+    items = []
+    for fields in payload.items:
+        position = place_in_group(db, list_id, fields.category)
+        item = PackingItem(list_id=list_id, position=position, **fields.model_dump())
+        db.add(item)
+        db.flush()
+        remember_item_labels(db, item)
+        items.append(item)
+    db.commit()
+    for item in items:
+        db.refresh(item)
+    return items
+
+
 @router.patch("/api/packing-items/{item_id}", response_model=PackingItemResponse)
 def update(item_id: int, payload: PackingItemUpdate, db: Session = Depends(get_db)):
     item = _get(db, item_id)
     # `exclude_unset` rather than `exclude_none`: null is a legitimate value
     # here - clearing a category, or saying a quantity does not apply - and
     # excluding it would make those fields impossible to unset.
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    moved = "category" in changes and changes["category"] != item.category
+    for field, value in changes.items():
         setattr(item, field, value)
+    # A new category is a new group, and the item joins the end of it rather
+    # than staying where it was and splitting the sheet's blocks. A position
+    # sent in the same PATCH is taken as meant and wins.
+    if moved and "position" not in changes:
+        item.position = place_in_group(db, item.list_id, item.category, exclude_id=item.id)
     # After the assignment, so a value typed into this PATCH is remembered
     # too - not only the ones an item was created with.
     remember_item_labels(db, item)
