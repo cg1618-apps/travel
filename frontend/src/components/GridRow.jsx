@@ -3,7 +3,9 @@
  * changes without opening an editor.
  *
  * Split out of `Grid.jsx` so the sheet file holds the table's shape — columns,
- * sorting, grouping, adding — and this one holds what a single row does.
+ * groups, filters, adding — and this one holds what a single row does. The
+ * row is a sortable item: its grip, in the first cell, drags it within its
+ * 類別. Value columns are tinted by `lib/tones.js`.
  */
 
 import { useCallback, useState } from 'react'
@@ -22,17 +24,13 @@ import {
 } from '../lib/labels'
 import { itemTitle, rowActions } from '../lib/rowMenu'
 import { tapStatus } from '../lib/status'
+import { CHECK_TONES, NEED_TONES, STATUS_TONES, TIMING_TONES, toneClass, toneForText } from '../lib/tones'
 import { PackedCountCell, QuantityCell, SelectCell, TextCell } from './Cell'
 import { RowMenu } from './RowMenu'
+import { DragHandle, SortableItem } from './Sortable'
 
 const NEED_OPTIONS = ['', ...NEEDS]
 const NEED_OPTION_LABELS = { '': '—', ...NEED_LABELS }
-
-const PILL = {
-  packed: 'bg-brand text-on-brand',
-  not_packed: 'bg-surface-2 text-text-muted',
-  no_need: 'text-text-faint line-through',
-}
 
 /**
  * Three stored, two tapped: a tap toggles 未打包 ⇄ 已打包 (and brings 不需打包
@@ -50,12 +48,12 @@ function StatusCell({ item, onPatch, onMenu }) {
       }}
       aria-label={`${itemTitle(item)}：${STATUS_LABELS[item.status]}，點一下切換`}
       title="點一下切換，長按開啟選單"
-      className="w-full px-2 py-1 text-left select-none"
+      className={`w-full bg-transparent px-2 py-1.5 text-left text-sm select-none ${
+        item.status === 'no_need' ? 'line-through' : ''
+      }`}
       style={{ minHeight: 0, WebkitTouchCallout: 'none' }}
     >
-      <span className={`inline-block rounded-md px-2 py-0.5 text-xs ${PILL[item.status]}`}>
-        {STATUS_LABELS[item.status]}
-      </span>
+      {STATUS_LABELS[item.status]}
     </button>
   )
 }
@@ -67,6 +65,7 @@ export function GridRow({
   showCategory,
   showName,
   continuesRun,
+  sortLabel,
   categories,
   locations,
   onPatch,
@@ -79,18 +78,22 @@ export function GridRow({
   const patch = (changes) => onPatch(item.id, changes)
 
   return (
-    <tr
+    <SortableItem
+      id={item.id}
+      as="tr"
       className={`border-t ${continuesRun ? 'border-border/40' : 'border-border'} ${
         item.status === 'no_need' ? 'text-text-faint' : ''
       }`}
     >
+      <td className="text-center">
+        <DragHandle label={sortLabel} />
+      </td>
       <td className={cell}>
         <TextCell
           value={item.category}
           blank={!showCategory}
           placeholder="—"
           options={categories}
-          listId="category-options"
           onCommit={(category) => patch({ category })}
         />
       </td>
@@ -114,10 +117,10 @@ export function GridRow({
           onCommit={(quantity_packed) => patch({ quantity_packed })}
         />
       </td>
-      <td className={cell}>
+      <td className={`${cell} ${toneClass(STATUS_TONES[item.status])}`}>
         <StatusCell item={item} onPatch={onPatch} onMenu={openMenu} />
       </td>
-      <td className={cell}>
+      <td className={`${cell} ${toneClass(CHECK_TONES[checkState(item)])}`}>
         <SelectCell
           value={checkState(item)}
           options={CHECK_STATES}
@@ -126,7 +129,7 @@ export function GridRow({
           onCommit={(state) => patch(CHECK_FIELDS[state])}
         />
       </td>
-      <td className={cell}>
+      <td className={`${cell} ${toneClass(TIMING_TONES[item.timing])}`}>
         <SelectCell
           value={item.timing}
           options={TIMINGS}
@@ -135,7 +138,7 @@ export function GridRow({
           onCommit={(timing) => patch({ timing })}
         />
       </td>
-      <td className={cell}>
+      <td className={`${cell} ${toneClass(NEED_TONES[item.need])}`}>
         <SelectCell
           value={item.need}
           options={NEED_OPTIONS}
@@ -144,12 +147,11 @@ export function GridRow({
           onCommit={(need) => patch({ need })}
         />
       </td>
-      <td className={cell}>
+      <td className={`${cell} ${toneClass(toneForText(item.location))}`}>
         <TextCell
           value={item.location}
           placeholder="—"
           options={locations}
-          listId="location-options"
           onCommit={(location) => patch({ location })}
         />
       </td>
@@ -173,6 +175,6 @@ export function GridRow({
           actions={rowActions(item, { onPatch, onAddVariant, onDelete })}
         />
       </td>
-    </tr>
+    </SortableItem>
   )
 }

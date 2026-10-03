@@ -5,15 +5,21 @@
  * Renaming says how many items it will rewrite before it does, because these
  * are suggestions rather than references and a rename is a bulk edit of real
  * data wearing a tidy-up's clothes.
+ *
+ * One tab per kind, in the index tabs' look and with the tab in `?tab=` (the
+ * first kind is the bare URL), so Back and a reload come back to it. The tab
+ * bar is sticky: a long kind scrolls under it, and the other kinds stay one
+ * tap away.
  */
 
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { LABEL_KIND_LABELS } from '../lib/labels'
+import { OPTION_KINDS, kindFromSearch, optionCounts, searchForKind } from '../lib/options'
 
 const KEY = ['label-options']
 
@@ -54,16 +60,56 @@ function Option({ option, onRename, onDelete }) {
   )
 }
 
-function Group({ title, options, onRename, onDelete }) {
+/**
+ * The kind tabs. Sticky on the outer box rather than the scroller: a sticky
+ * element sticks to its nearest scrolling ancestor, and `overflow-x-auto` is
+ * one, so the inner row would only ever stick inside itself. Nothing above it
+ * on the page sets overflow, so the outer box sticks to the viewport; its
+ * canvas background keeps the rows passing under it from showing through.
+ */
+function KindTabs({ active, counts, onSelect }) {
   return (
-    <section className="mt-6">
-      <h2 className="mx-4 mb-2 text-xs font-semibold uppercase tracking-wide text-text-faint">
-        {title}
-      </h2>
+    <div className="sticky top-0 z-10 mt-4 bg-canvas pt-2">
+      {/* The scroller and the baseline are two boxes, as in IndexTabs: the
+          active tab's -mb-px overlaps the inner row's border, not a scroller's
+          edge, so no vertical scrollbar appears. */}
+      <div className="overflow-x-auto">
+        <div role="tablist" className="flex min-w-max gap-1 border-b border-border px-4">
+          {OPTION_KINDS.map((kind) => {
+            const selected = kind === active
+            return (
+              <button
+                key={kind}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => onSelect(kind)}
+                className={`-mb-px shrink-0 rounded-t-md border px-3 py-1.5 text-sm ${
+                  selected
+                    ? 'border-border border-b-surface bg-surface font-semibold text-text'
+                    : 'border-transparent text-text-muted hover:text-text'
+                }`}
+              >
+                {LABEL_KIND_LABELS[kind]}
+                <span className="ml-1 text-xs font-normal tabular-nums text-text-faint">
+                  {counts[kind]}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function OptionPanel({ options, onRename, onDelete }) {
+  return (
+    <div role="tabpanel" className="bg-surface">
       {options.length === 0 ? (
         <EmptyState>還沒有記下任何值。輸入過一次，它就會出現在這裡。</EmptyState>
       ) : (
-        <ul className="list-none border-y border-border bg-surface p-0">
+        <ul className="m-0 list-none border-b border-border p-0">
           {options.map((option) => (
             <Option
               // Keyed by value as well as id so the input resets after a merge
@@ -76,13 +122,15 @@ function Group({ title, options, onRename, onDelete }) {
           ))}
         </ul>
       )}
-    </section>
+    </div>
   )
 }
 
 export default function Options() {
   const options = useApiQuery(KEY, endpoints.labelOptions.index())
   const [notice, setNotice] = useState(null)
+  const [params, setParams] = useSearchParams()
+  const active = kindFromSearch(params.get('tab'))
 
   // Item queries are invalidated too: a rename rewrites the items themselves,
   // so a list left in the cache would still show the old spelling.
@@ -114,7 +162,7 @@ export default function Options() {
     rename.mutate({ id: option.id, value })
   }
 
-  const byKind = (kind) => options.data.filter((row) => row.kind === kind)
+  const ofActive = options.data.filter((row) => row.kind === active)
 
   return (
     <main className="mx-auto max-w-2xl pb-16">
@@ -134,15 +182,17 @@ export default function Options() {
         </p>
       )}
 
-      {Object.entries(LABEL_KIND_LABELS).map(([kind, title]) => (
-        <Group
-          key={kind}
-          title={title}
-          options={byKind(kind)}
-          onRename={onRename}
-          onDelete={(option) => remove.mutate(option.id)}
-        />
-      ))}
+      <KindTabs
+        active={active}
+        counts={optionCounts(options.data)}
+        onSelect={(kind) => setParams(searchForKind(kind), { replace: true })}
+      />
+      <OptionPanel
+        key={active}
+        options={ofActive}
+        onRename={onRename}
+        onDelete={(option) => remove.mutate(option.id)}
+      />
     </main>
   )
 }
