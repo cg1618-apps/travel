@@ -28,7 +28,7 @@ import { KindControls } from '../components/KindControls'
 import { ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { required } from '../lib/cells'
-import { AUTO_SAVE_LIMIT, badgeFor, isAutoSaved, templateName } from '../lib/kinds'
+import { AUTO_SAVE_LIMIT, badgeFor, isAutoSaved } from '../lib/kinds'
 import { leavingText, progressParts } from '../lib/listHeader'
 
 const VIEW_STORAGE_KEY = 'travel.packing.view'
@@ -186,7 +186,7 @@ export default function PackingList() {
     invalidate: [['packing-lists']],
     mutationFn: () =>
       send(endpoints.packingLists.index(), 'POST', {
-        name: templateName(list.data.name),
+        name: list.data.name,
         kind: 'template',
         copy_from_id: list.data.id,
       }),

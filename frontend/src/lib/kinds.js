@@ -37,9 +37,9 @@ export function everyRow(index) {
   })
 }
 
+// 當作範本 keeps the source's name, since the 範本 badge already says what it
+// is. Templates named before that still carry the suffix, so a fill drops it.
 const TEMPLATE_SUFFIX = '（範本）'
-
-export const templateName = (name) => `${name}${TEMPLATE_SUFFIX}`
 
 /** 使用中 and friends for a 一般 row; 保存 or 範本 for the others. */
 export const statusLabel = (row) =>
