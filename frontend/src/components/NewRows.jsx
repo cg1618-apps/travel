@@ -79,16 +79,28 @@ function DraftRow({ draft, index, showProblems, categories, locations, onChange,
         <input {...text('detail')} aria-label={`新的第 ${n} 列：細項`} placeholder="細項" className={`${field} min-w-20`} />
       </td>
       <td className="px-1 py-1">
-        <div className="flex gap-1">
+        {/* One box, as 數量 is one cell: "5 雙" is one fact. Its own min width,
+            or the table squeezes the two inputs to slivers. */}
+        <div
+          className={`flex min-w-24 items-center rounded-sm border bg-canvas text-sm focus-within:border-brand ${
+            problems.includes('quantity') ? bad : 'border-border'
+          }`}
+        >
           <input
             {...text('quantity')}
             inputMode="numeric"
             aria-label={`新的第 ${n} 列：數量`}
             aria-invalid={problems.includes('quantity')}
-            placeholder="—"
-            className={`${field} w-10 tabular-nums ${problems.includes('quantity') ? bad : ''}`}
+            placeholder="數量"
+            className="w-10 min-w-0 bg-transparent px-1.5 py-1 text-right tabular-nums outline-none"
           />
-          <input {...text('unit')} aria-label={`新的第 ${n} 列：單位`} placeholder="單位" className={`${field} w-10`} />
+          <span aria-hidden="true" className="h-4 border-l border-border" />
+          <input
+            {...text('unit')}
+            aria-label={`新的第 ${n} 列：單位`}
+            placeholder="單位"
+            className="w-12 min-w-0 bg-transparent px-1.5 py-1 outline-none"
+          />
         </div>
       </td>
       <td className="px-1 py-1">
@@ -97,8 +109,8 @@ function DraftRow({ draft, index, showProblems, categories, locations, onChange,
           inputMode="numeric"
           aria-label={`新的第 ${n} 列：已打包數量`}
           aria-invalid={problems.includes('quantity_packed')}
-          placeholder="—"
-          className={`${field} tabular-nums ${problems.includes('quantity_packed') ? bad : ''}`}
+          placeholder="已打包"
+          className={`${field} min-w-16 tabular-nums ${problems.includes('quantity_packed') ? bad : ''}`}
         />
       </td>
       <td className="px-1 py-1">

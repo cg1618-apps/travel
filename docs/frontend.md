@@ -256,6 +256,10 @@ That is the exception to "no Save button", and the reason for it: a row saved
 the moment its 類別 was typed would jump into its group, and the rest of it
 would have to be found again. Kept until 儲存, it lands in its group complete.
 
+Each field is placeholdered with its column's name, and 數量 is one box split
+into 數量 | 單位, as its cell is — with a minimum width of its own, since the
+table would otherwise squeeze the two inputs to slivers.
+
 ＋ 再加一列 adds another, starting in the 類別 of the row above it. A row
 left untouched is skipped; a row with no 項目, or a 數量 / 已打包數量 that is
 not a whole number, stops the save and is outlined. Ctrl+Enter (⌘+Enter) saves;
