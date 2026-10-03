@@ -13,7 +13,7 @@ in `api.md`; the rules it renders are in `business-rules.md`.
 | `src/api/` | `client.js` — the only place that calls `fetch()`. `endpoints.js` — every URL in one map. |
 | `src/hooks/` | `useApiQuery.js` — TanStack Query over `fetchJson`, plus `useApiMutation` and `send`. `useLongPress.js` — a long-press that never also fires the click. `useTheme.js` — light or dark, and the toggle. |
 | `src/pages/` | One file per screen, PascalCase, default export. |
-| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `NewRows`, `FilterMenu`, `GroupOrderDialog`, `Sortable`, `Combobox`, `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `KindControls`, `IndexTabs`, `States`. |
+| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `NewRows`, `FilterMenu`, `GroupOrderDialog`, `Sortable`, `Combobox`, `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `KindControls`, `IndexTabs`, `TripCalendar`, `States`. |
 | `src/lib/` | Pure modules with no React in them. Tests sit beside them. |
 
 Routes are declared in `src/App.jsx`: `/` the dashboard, `/lists` and
@@ -86,6 +86,18 @@ screen starts on Checklist, because a sheet at 375px is a horizontal scrollbar.
 reads the indexes the other screens already own — `['packing-lists']` and
 `['trips', 'index']` — so a write anywhere refreshes it.
 
+- **The calendar** (`components/TripCalendar.jsx`) is first: one month,
+  Sunday first (日 … 六), six weeks with the neighbouring months' days faded,
+  opening on the current Taipei month with today circled. ‹ and › change the
+  month; 今天 comes back to this one and shows only when away from it. Every
+  Taipei day from a trip's first departure to its last arrival is shaded and
+  links to the trip, with its name under the date on a wide screen and a dot
+  on a narrow one; a day two trips share names both and links to the first.
+  Every trip but templates is marked, whatever its kind or 狀態 — a 範本's
+  dates are only where a copy starts. The day arithmetic (`monthGrid`,
+  `tripDays`, `taipeiToday`, `shiftMonth`) is in `lib/calendar.js`, tested
+  beside it.
+
 - **清單** — 一般 lists that are 使用中 or 未來使用 (`onDashboard` in
   `lib/kinds.js`), 使用中 first, each with its 狀態 badge. Each row links to the
   list and shows its 出發 (`departureLabel` in `lib/timing.js`, shared with
@@ -93,8 +105,8 @@ reads the indexes the other screens already own — `['packing-lists']` and
 - **行程** — 一般 trips that are 使用中 or 未來使用, the same way, each with its
   狀態 badge and its date range or 沒有行程段, linking to `/trips/{id}`.
   所有行程 links to `/trips`. There is no current trip and no 目前 badge.
-- **Nothing else, and nothing to add.** 自動保存, 保存 and 範本, and every
-  create form, belong to `/lists` and `/trips`; the dashboard only links there.
+- **Nothing else, and nothing to add.** Beyond the calendar's marks, 自動保存,
+  保存 and 範本, and every create form, belong to `/lists` and `/trips`; the dashboard only links there.
   An empty section says so plainly (目前沒有使用中或未來使用的清單。 /
   目前沒有使用中或未來使用的行程。) and offers nothing.
 
@@ -119,7 +131,7 @@ it scroll vertically.
 
 On both create forms, choosing a source to copy — 從哪份清單複製項目 on
 `/lists`, 從範本 on `/trips` — fills 名稱 with the source's name, a trailing
-`（範本）` removed, but only while the field is empty or still holds the
+`（範本）` removed (templates made before 當作範本 kept the name carry one), but only while the field is empty or still holds the
 previous fill (`autofillName`). A typed name is never overwritten; going back to
 no source (空白開始, 不使用範本) clears only a fill.
 
@@ -138,7 +150,8 @@ The first line of 保存備註 shows on 保存 and 自動保存 rows only. **+ �
 opens a form with 名稱, 出發日期, 類型 (一般 or 範本) and 從哪份清單複製項目,
 which offers every list once, any kind, with its badge.
 
-**當作範本** creates `{name}（範本）` with the items copied and shows a notice
+**當作範本** creates a template of the same name — the 範本 badge already says
+what it is — with the items copied and shows a notice
 linking to it, dismissed with 知道了. **Unticking 保存** asks first, in
 `KindControls` itself so every place that shows the checkbox asks the same
 question: 取消保存後會回到一般清單（未使用）。 **過去使用 into a full 自動保存**
@@ -442,7 +455,7 @@ for an id that is not a number — reads 找不到這個行程。
   — then 備註. The ⋯ menu holds 保存 (or 取消保存, which asks first, as the
   checkbox does), 當作範本 and 刪除行程, which asks first and returns to
   `/trips`; a 範本's ⋯ offers only 刪除行程. **當作範本** creates
-  `{name}（範本）` with the legs on the same dates — the page sends the
+  a template of the same name with the legs on the same dates — the page sends the
   source's own first Taipei day as `start_date` — and opens it. On a saved or
   auto-saved trip, or whenever it has a remark, a **保存備註** cell sits under
   備註. A change of 狀態 or kind keeps the page where it is. 過去使用 into a

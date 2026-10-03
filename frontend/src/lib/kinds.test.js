@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   autofillName, badgeFor, everyRow, isAutoSaved, linkChoices, linkLabel, onDashboard,
-  statusLabel, TABS, tabCounts, tabFor, tabFromSearch, templateName,
+  statusLabel, TABS, tabCounts, tabFor, tabFromSearch,
 } from './kinds'
 
 const row = (id, kind = 'free', usage = kind === 'free' ? 'unused' : null) => ({ id, kind, usage })
@@ -38,8 +38,7 @@ describe('everyRow', () => {
   })
 })
 
-describe('templateName and statusLabel', () => {
-  it('suffixes 範本', () => expect(templateName('札幌')).toBe('札幌（範本）'))
+describe('statusLabel', () => {
   it('names usage for free rows and kind otherwise', () => {
     expect([row(1, 'free', 'in_use'), row(2, 'free', 'past'), row(3, 'saved'), row(4, 'template')]
       .map(statusLabel)).toEqual(['使用中', '過去使用', '保存', '範本'])
