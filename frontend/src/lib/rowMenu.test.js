@@ -39,7 +39,7 @@ describe('rowActions', () => {
     expect(h.onPatch).toHaveBeenCalledWith(7, { status: 'not_packed' })
   })
 
-  it('adds a variant of the row and deletes it, delete last and marked danger', () => {
+  it('adds a variant of the row and hands the whole row to delete, last and marked danger', () => {
     const h = handlers()
     const actions = rowActions(item(), h)
     expect(actions.map((a) => a.label)).toEqual(['設為不需打包', '新增變化', '刪除'])
@@ -47,7 +47,7 @@ describe('rowActions', () => {
     expect(h.onAddVariant).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }))
     expect(actions[2].danger).toBe(true)
     actions[2].onSelect()
-    expect(h.onDelete).toHaveBeenCalledWith(7)
+    expect(h.onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 7, name: '鑰匙' }))
   })
 
   it('adds the three Double Check states only when asked, marking the current one', () => {

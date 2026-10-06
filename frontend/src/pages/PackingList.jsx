@@ -30,6 +30,7 @@ import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { required } from '../lib/cells'
 import { AUTO_SAVE_LIMIT, badgeFor, isAutoSaved } from '../lib/kinds'
 import { leavingText, progressParts } from '../lib/listHeader'
+import { itemTitle } from '../lib/rowMenu'
 
 const VIEW_STORAGE_KEY = 'travel.packing.view'
 
@@ -40,6 +41,8 @@ const RESET_BODY =
 
 const DELETE_BODY =
   '這份清單和它所有的項目都會一起刪除。連結到它的行程段會保留，只是不再連結清單。'
+
+const ITEM_DELETE_BODY = '這個項目會從清單上刪除。'
 
 function initialView() {
   // Remembered per viewer; a phone-width first visit starts on the checklist,
@@ -121,6 +124,8 @@ export default function PackingList() {
   const [view, setView] = useState(initialView)
   const [confirmingReset, setConfirmingReset] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // The item whose 刪除 is waiting on a yes.
+  const [deletingItem, setDeletingItem] = useState(null)
   // A refused 過去使用: the changes to retry once the person has decided.
   const [refusal, setRefusal] = useState(null)
 
@@ -218,7 +223,7 @@ export default function PackingList() {
 
   const handlers = {
     onPatch: (id, changes) => patch.mutate({ id, changes }),
-    onDelete: (id) => remove.mutate(id),
+    onDelete: (item) => setDeletingItem(item),
     onAdd: (name) => add.mutate({ name }),
     // A variant lands directly under the row it came from, carrying its
     // category and name — the sheet then blanks both, so it reads as one item.
@@ -368,6 +373,19 @@ export default function PackingList() {
             patchList.mutate({ ...refusal, evict_confirmed: true })
           }}
           onCancel={() => setRefusal(null)}
+        />
+      )}
+
+      {deletingItem && (
+        <ConfirmDialog
+          title={`刪除「${itemTitle(deletingItem)}」？`}
+          body={ITEM_DELETE_BODY}
+          confirmLabel="刪除"
+          onConfirm={() => {
+            setDeletingItem(null)
+            remove.mutate(deletingItem.id)
+          }}
+          onCancel={() => setDeletingItem(null)}
         />
       )}
 
