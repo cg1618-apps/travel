@@ -13,6 +13,7 @@ export function itemTitle(item) {
   return item.detail ? `${item.name} · ${item.detail}` : item.name
 }
 
+/** `onDelete` gets the whole row, so the confirmation can name it. */
 export function rowActions(item, { onPatch, onAddVariant, onDelete, withChecks = false }) {
   const actions = [
     item.status === 'no_need'
@@ -29,6 +30,6 @@ export function rowActions(item, { onPatch, onAddVariant, onDelete, withChecks =
       })
     }
   }
-  actions.push({ label: '刪除', danger: true, onSelect: () => onDelete(item.id) })
+  actions.push({ label: '刪除', danger: true, onSelect: () => onDelete(item) })
   return actions
 }

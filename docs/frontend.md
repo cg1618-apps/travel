@@ -308,6 +308,10 @@ sheet's old ✕ column lives here now. The checklist's menu also holds the three
 Double Check states, since the checklist has no Double Check column. On a wide
 screen the menu opens beside the row; on a phone it is a bottom sheet.
 
+刪除 asks first, and the question names the item the way a person does — 名稱
+and 細節 together, 刪除「鑰匙 · 家鑰匙」？, or just the 名稱 when there is no
+細節 — because two variants of one item differ only by their 細節.
+
 ## 重設狀態
 
 A button in the list header, behind a `ConfirmDialog`. It calls
