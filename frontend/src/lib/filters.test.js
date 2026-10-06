@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { FILTERS, applyFilters, isFiltering, toggleValue } from './filters'
+import { FILTERS, applyFilters, isFiltering, statusScope, toggleValue, withStatusScope } from './filters'
 import { STATUS_LABELS } from './labels'
 
 const items = [
@@ -58,5 +58,34 @@ describe('toggleValue', () => {
     expect(on).toEqual({ status: ['packed'] })
     expect(isFiltering(on)).toBe(true)
     expect(toggleValue(on, 'status', 'packed')).toEqual({ status: [] })
+  })
+})
+
+describe('statusScope', () => {
+  it('is all with no 打包狀態 filter, and not_packed with exactly 未打包', () => {
+    expect(statusScope({})).toBe('all')
+    expect(statusScope({ status: [] })).toBe('all')
+    expect(statusScope({ status: ['not_packed'] })).toBe('not_packed')
+  })
+
+  it('is neither for any other choice made in the header', () => {
+    expect(statusScope({ status: ['packed'] })).toBe(null)
+    expect(statusScope({ status: ['not_packed', 'no_need'] })).toBe(null)
+  })
+
+  it('ignores the other columns', () => {
+    expect(statusScope({ timing: ['day_of'] })).toBe('all')
+  })
+})
+
+describe('withStatusScope', () => {
+  it('sets only the 打包狀態 filter, leaving the rest', () => {
+    const filters = { status: ['packed'], timing: ['day_of'] }
+    expect(withStatusScope(filters, 'not_packed')).toEqual({ status: ['not_packed'], timing: ['day_of'] })
+    expect(withStatusScope(filters, 'all')).toEqual({ status: [], timing: ['day_of'] })
+  })
+
+  it('hides what is packed once applied', () => {
+    expect(ids(applyFilters(items, withStatusScope({}, 'not_packed')))).toEqual([2, 3])
   })
 })

@@ -7,7 +7,7 @@
  *
  * Rows are grouped by 類別, and a group is always together: each one is its
  * own `<tbody>`, drawn with a border round it. Rows are dragged within their
- * group by the grip in the first column; the groups themselves are ordered in
+ * group by the grip beside their number; the groups themselves are ordered in
  * 排序類別 (`GroupOrderDialog`), so a drag never has to mean two things. Both
  * write the list's whole order in one request.
  *
@@ -15,9 +15,13 @@
  * beneath, as in the sheet, so an item and its variants read as one block.
  *
  * 打包狀態, Double Check, 打包時機, 需求 and 取得地點 filter from their
- * headers, and the header row stays on screen while the sheet scrolls. A
- * filtered sheet cannot be reordered: a drop between two visible rows says
- * nothing about where the hidden ones go.
+ * headers, and the header row stays on screen while the sheet scrolls. The
+ * toolbar's 未打包 / 全部 switch and 打包時機 chips are shortcuts onto the same
+ * filters, not filters of their own. A filtered sheet cannot be reordered: a
+ * drop between two visible rows says nothing about where the hidden ones go.
+ *
+ * Every row carries its number in the whole list, in the column pinned to the
+ * left edge, so a filter leaves gaps rather than renumbering.
  *
  * New rows are added several at a time and saved together (`NewRows`), so
  * each lands in its group complete.
@@ -25,10 +29,12 @@
 
 import { useCallback, useState } from 'react'
 
-import { applyFilters, isFiltering, toggleValue } from '../lib/filters'
-import { groupByCategory, groupRuns, moveInGroup, orderIds } from '../lib/grouping'
+import { applyFilters, isFiltering, statusScope, toggleValue, withStatusScope } from '../lib/filters'
+import { groupByCategory, groupRuns, moveInGroup, orderIds, rowNumbers } from '../lib/grouping'
 import { itemTitle } from '../lib/rowMenu'
-import { CHECK_TONES, NEED_TONES, STATUS_TONES, TIMING_TONES, toneForText } from '../lib/tones'
+import { TIMING_LABELS } from '../lib/labels'
+import { TIMINGS } from '../lib/timing'
+import { CHECK_TONES, NEED_TONES, STATUS_TONES, TIMING_TONES, toneClass, toneForText } from '../lib/tones'
 import { FilterMenu } from './FilterMenu'
 import { GroupOrderDialog, UNCATEGORISED } from './GroupOrderDialog'
 import { GridRow } from './GridRow'
@@ -48,8 +54,8 @@ const COLUMNS = [
   { key: 'location', label: '取得地點', width: 'w-28', filter: true },
   { key: 'notes', label: '備註', width: 'w-44' },
 ]
-// The grip column, the columns, and the ⋯ column.
-const CELL_COUNT = COLUMNS.reduce((sum, column) => sum + (column.span ?? 1), 0) + 2
+// The number and grip columns, the columns, and the ⋯ column.
+const CELL_COUNT = COLUMNS.reduce((sum, column) => sum + (column.span ?? 1), 0) + 3
 
 /** The tone each filterable column's values carry, for the filter list. */
 const FILTER_TONES = {
@@ -69,12 +75,69 @@ const SCROLLER =
 
 // The header's own borders scroll away under border-collapse, so the line
 // under it is a shadow.
-const HEAD_CELL =
-  'border-r border-border bg-surface-2 px-2 py-2 text-left text-xs font-semibold tracking-wide text-text-muted shadow-[inset_0_-1px_0_var(--c-border)]'
+const HEAD_BASE =
+  'border-r border-border bg-surface-2 px-2 py-2 text-left text-xs font-semibold tracking-wide text-text-muted'
+const HEAD_CELL = `${HEAD_BASE} shadow-[inset_0_-1px_0_var(--c-border)]`
+// The pinned # header: both edges as shadows, since neither border stays.
+const NUMBER_HEAD = `${HEAD_BASE} sticky left-0 z-[1] min-w-10 px-1 text-center shadow-[inset_-1px_0_0_var(--c-border),inset_0_-1px_0_var(--c-border)]`
 
 const smallButton = 'rounded-md border border-border-strong px-3 text-sm text-text-muted'
 
-function Group({ group, sortable, onMove, rowProps }) {
+const STATUS_SCOPES = [
+  ['not_packed', '未打包'],
+  ['all', '全部'],
+]
+
+/** 未打包 / 全部: the 打包狀態 filter, one tap away. */
+function StatusScope({ filters, onChange }) {
+  const scope = statusScope(filters)
+  return (
+    <div role="group" aria-label="顯示" className="flex gap-1 rounded-md border border-border p-0.5">
+      {STATUS_SCOPES.map(([value, label]) => (
+        <button
+          key={value}
+          type="button"
+          onClick={() => onChange(withStatusScope(filters, value))}
+          aria-pressed={scope === value}
+          className={`rounded-sm px-3 text-sm ${
+            scope === value ? 'bg-brand text-on-brand' : 'text-text-muted'
+          }`}
+          style={{ minHeight: 30 }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** 打包時機 as chips: the same filter as its header, ticked in the open. */
+function TimingChips({ selected, onToggle }) {
+  return (
+    <div role="group" aria-label="打包時機" className="flex flex-wrap items-center gap-1">
+      <span className="text-sm text-text-faint">打包時機</span>
+      {TIMINGS.map((timing) => {
+        const on = selected.includes(timing)
+        return (
+          <button
+            key={timing}
+            type="button"
+            onClick={() => onToggle(timing)}
+            aria-pressed={on}
+            className={`rounded-sm border px-2 text-sm ${
+              on ? `border-brand ${toneClass(TIMING_TONES[timing])}` : 'border-border text-text-muted'
+            }`}
+            style={{ minHeight: 30 }}
+          >
+            {TIMING_LABELS[timing]}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function Group({ group, numbers, sortable, onMove, rowProps }) {
   const ids = group.items.map((item) => item.id)
   const move = useCallback((from, to) => onMove(group.key, from, to), [group.key, onMove])
 
@@ -88,6 +151,7 @@ function Group({ group, sortable, onMove, rowProps }) {
           <GridRow
             key={item.id}
             item={item}
+            number={numbers.get(item.id)}
             showCategory={showCategory}
             showName={showName}
             continuesRun={!showName}
@@ -118,6 +182,8 @@ export function Grid({
   const shown = applyFilters(items, filters)
   const groups = groupByCategory(shown)
   const allGroups = groupByCategory(items)
+  const numbers = rowNumbers(items)
+  const toggleFilter = (key, value) => setFilters((current) => toggleValue(current, key, value))
 
   const onMove = useCallback(
     (groupKey, from, to) => onReorder(orderIds(moveInGroup(groupByCategory(items), groupKey, from, to))),
@@ -138,6 +204,11 @@ export function Grid({
         >
           排序類別
         </button>
+        <StatusScope filters={filters} onChange={setFilters} />
+        <TimingChips
+          selected={filters.timing ?? []}
+          onToggle={(timing) => toggleFilter('timing', timing)}
+        />
         {filtering && (
           <>
             <span className="text-sm text-text-muted">
@@ -159,6 +230,9 @@ export function Grid({
         <table className="w-full min-w-[1110px] border-collapse text-sm whitespace-nowrap">
           <thead className="sticky top-0 z-10">
             <tr>
+              <th scope="col" className={NUMBER_HEAD}>
+                #
+              </th>
               <th scope="col" className={`${HEAD_CELL} w-8 px-0`}>
                 <span className="sr-only">排序</span>
               </th>
@@ -176,7 +250,7 @@ export function Grid({
                       items={items}
                       selected={filters[column.key] ?? []}
                       toneFor={FILTER_TONES[column.key]}
-                      onToggle={(value) => setFilters((current) => toggleValue(current, column.key, value))}
+                      onToggle={(value) => toggleFilter(column.key, value)}
                       onClear={() => setFilters((current) => ({ ...current, [column.key]: [] }))}
                     />
                   ) : (
@@ -194,6 +268,7 @@ export function Grid({
             <Group
               key={group.key}
               group={group}
+              numbers={numbers}
               sortable={!filtering}
               onMove={onMove}
               rowProps={rowProps}
@@ -212,6 +287,7 @@ export function Grid({
 
           <NewRows
             cellCount={CELL_COUNT}
+            firstNumber={items.length + 1}
             categories={categories}
             locations={locations}
             saving={adding}

@@ -41,6 +41,13 @@ export function inGroupOrder(items) {
   return groupByCategory(items).flatMap((group) => group.items)
 }
 
+/**
+ * Each item's row number, from 1, in the order the sheet shows it. Numbered
+ * over the whole list, so a filter leaves gaps rather than renumbering.
+ */
+export const rowNumbers = (items) =>
+  new Map(inGroupOrder(items).map((item, index) => [item.id, index + 1]))
+
 /** The ids of every item, group after group — the body of a reorder. */
 export const orderIds = (groups) => groups.flatMap((group) => group.items.map((item) => item.id))
 
