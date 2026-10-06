@@ -4,8 +4,13 @@
  *
  * Split out of `Grid.jsx` so the sheet file holds the table's shape — columns,
  * groups, filters, adding — and this one holds what a single row does. The
- * row is a sortable item: its grip, in the first cell, drags it within its
+ * row is a sortable item: its grip, beside the number, drags it within its
  * 類別. Value columns are tinted by `lib/tones.js`.
+ *
+ * The row number is pinned to the left edge while the sheet scrolls sideways,
+ * so it is painted on the canvas: whatever slides under it must not show. Its
+ * right edge is a shadow, because a collapsed border scrolls away with the
+ * table rather than staying with the cell.
  */
 
 import { useCallback, useState } from 'react'
@@ -60,8 +65,12 @@ function StatusCell({ item, onPatch, onMenu }) {
 
 const cell = 'border-r border-border'
 
+export const NUMBER_CELL =
+  'sticky left-0 z-[1] min-w-10 bg-canvas px-1 text-center text-xs text-text-faint tabular-nums shadow-[inset_-1px_0_0_var(--c-border)]'
+
 export function GridRow({
   item,
+  number,
   showCategory,
   showName,
   continuesRun,
@@ -85,6 +94,7 @@ export function GridRow({
         item.status === 'no_need' ? 'text-text-faint' : ''
       }`}
     >
+      <td className={NUMBER_CELL}>{number}</td>
       <td className="text-center">
         <DragHandle label={sortLabel} />
       </td>
