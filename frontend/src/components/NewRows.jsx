@@ -16,6 +16,7 @@ import { CHECK_LABELS, CHECK_STATES, NEED_LABELS, NEEDS, STATUS_LABELS, TIMING_L
 import { TIMINGS } from '../lib/timing'
 import { CHECK_TONES, NEED_TONES, STATUS_TONES, TIMING_TONES, toneClass, toneForText } from '../lib/tones'
 import { Combobox } from './Combobox'
+import { NUMBER_CELL } from './GridRow'
 
 const STATUSES = ['not_packed', 'packed', 'no_need']
 const NEED_OPTIONS = ['', ...NEEDS]
@@ -24,6 +25,12 @@ const NEED_OPTION_LABELS = { '': '—', ...NEED_LABELS }
 const field =
   'w-full min-w-0 rounded-sm border border-border bg-canvas px-1.5 py-1 text-sm outline-none focus:border-brand'
 const bad = 'border-danger'
+
+// The tint of the new rows over the canvas, solid, because the pinned number
+// cell has to hide what scrolls beneath it.
+const NUMBER_TINT = {
+  background: 'linear-gradient(var(--c-brand-soft), var(--c-brand-soft)) var(--c-canvas)',
+}
 
 function Choice({ value, options, labels, tone, label, onChange }) {
   return (
@@ -42,7 +49,7 @@ function Choice({ value, options, labels, tone, label, onChange }) {
   )
 }
 
-function DraftRow({ draft, index, showProblems, categories, locations, onChange, onRemove }) {
+function DraftRow({ draft, index, number, showProblems, categories, locations, onChange, onRemove }) {
   const set = (key) => (value) => onChange({ ...draft, [key]: value })
   const text = (key) => ({
     value: draft[key],
@@ -53,7 +60,10 @@ function DraftRow({ draft, index, showProblems, categories, locations, onChange,
 
   return (
     <tr className="border-t border-border/40 align-top">
-      <td className="px-1 py-1 text-center text-xs text-text-faint tabular-nums">{n}</td>
+      <td className={`${NUMBER_CELL} py-1`} style={NUMBER_TINT}>
+        {number}
+      </td>
+      <td />
       <td className="px-1 py-1">
         <Combobox
           value={draft.category}
@@ -181,7 +191,7 @@ function DraftRow({ draft, index, showProblems, categories, locations, onChange,
   )
 }
 
-export function NewRows({ cellCount, categories, locations, saving, onSave }) {
+export function NewRows({ cellCount, firstNumber, categories, locations, saving, onSave }) {
   const [drafts, setDrafts] = useState([])
   const [showProblems, setShowProblems] = useState(false)
 
@@ -245,6 +255,7 @@ export function NewRows({ cellCount, categories, locations, saving, onSave }) {
           key={draft.key}
           draft={draft}
           index={index}
+          number={firstNumber + index}
           showProblems={showProblems && !isBlank(draft)}
           categories={categories}
           locations={locations}

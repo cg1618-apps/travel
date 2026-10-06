@@ -163,7 +163,14 @@ In the sheet's order: **類別 · 項目 · 數量 · 已打包數量 · 打包�
 Check · 打包時機 · 需求 · 取得地點 · 備註**, then a ⋯ column for the row menu.
 項目 spans two cells: the name, and its `detail` beside it.
 
-A grip column (⠿) comes first, for dragging a row; see "Groups and order".
+Before them come **#**, the row number, and a grip column (⠿) for dragging a
+row; see "Groups and order". The number is the row's place in the whole list in
+the order the sheet shows it (`rowNumbers` in `lib/grouping.js`), so a filter
+leaves gaps rather than renumbering and a drag renumbers. New rows continue the
+count. **#** is pinned to the left edge while the sheet scrolls sideways; its
+cell is painted on the canvas so nothing shows through, and its right edge is a
+shadow, since a collapsed border scrolls away with the table.
+
 The header row is sticky. On a screen wide enough for the whole sheet the page
 scrolls and the header sticks to the top of the window; on a narrower one the
 sheet scrolls sideways inside its own box, which then also scrolls vertically
@@ -190,6 +197,14 @@ holds. A filtered sheet says 篩選中：顯示 n / m 項 above it with 清除�
 and cannot be dragged — a drop between two visible rows says nothing about
 where the hidden ones go. There is no sorting: the sheet is always in its own
 order.
+
+Two shortcuts onto those same filters sit above the sheet, beside 排序類別.
+**未打包 / 全部** sets the 打包狀態 filter to exactly 未打包, or clears it; it is
+read back off that filter (`statusScope`), so it shows neither when the header
+holds any other choice. **打包時機** is the column's four values as chips,
+ticking the same filter as its header. Neither is a filter of its own, so the
+header and the toolbar cannot disagree, and like the header filters they are
+not remembered: the sheet opens on 全部.
 
 **`bag` is not shown.** The sheet has no such column. The field stays in the
 data and in the copy rule, and its remembered values are still managed on the
@@ -233,7 +248,7 @@ without reading the cells. The server keeps the same rule on its side: a new
 or re-categorised item goes to the end of its group, and an order that splits a
 group is refused (`api.md`).
 
-**Rows are dragged within their group**, by the ⠿ grip in the first column
+**Rows are dragged within their group**, by the ⠿ grip beside the row number
 (`components/Sortable.jsx`, the media tracker's dnd-kit wrapper: pointer events
 rather than HTML5 drag, which swallows the wheel on Windows and does nothing on
 touch; a short hold on touch so a swipe still scrolls). Focusing the grip and

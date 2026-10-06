@@ -66,3 +66,20 @@ export function toggleValue(filters, key, value) {
     : [...current, value]
   return { ...filters, [key]: next }
 }
+
+/**
+ * The toolbar's 未打包 / 全部 switch, read off the 打包狀態 filter rather than
+ * kept beside it, so the header and the switch cannot disagree. Any other
+ * choice made in the header is neither.
+ */
+export function statusScope(filters) {
+  const selected = filters.status ?? []
+  if (selected.length === 0) return 'all'
+  if (selected.length === 1 && selected[0] === 'not_packed') return 'not_packed'
+  return null
+}
+
+export const withStatusScope = (filters, scope) => ({
+  ...filters,
+  status: scope === 'not_packed' ? ['not_packed'] : [],
+})

@@ -7,6 +7,7 @@ import {
   inGroupOrder,
   moveInGroup,
   orderIds,
+  rowNumbers,
 } from './grouping'
 
 const item = (id, category, name, detail = null) => ({ id, category, name, detail, position: id })
@@ -92,5 +93,28 @@ describe('groupForChecklist, across categories', () => {
       { id: 3, category: 'A', name: '鑰匙', position: 2 },
     ])
     expect(groups.map((g) => g.items.map((i) => i.id))).toEqual([[1, 3], [2]])
+  })
+})
+
+describe('rowNumbers', () => {
+  it('numbers rows from 1 in the order the sheet shows them', () => {
+    // Position order is 1..4, but 3C's first item sits after 重要's, so 重要's
+    // second item (position 3) comes before it.
+    const numbers = rowNumbers([
+      item(1, '重要', '錢包'),
+      item(2, '3C', '充電器'),
+      item(3, '重要', '鑰匙'),
+      item(4, null, '雨傘'),
+    ])
+    expect([...numbers]).toEqual([
+      [1, 1],
+      [3, 2],
+      [2, 3],
+      [4, 4],
+    ])
+  })
+
+  it('is empty for an empty list', () => {
+    expect(rowNumbers([]).size).toBe(0)
   })
 })
