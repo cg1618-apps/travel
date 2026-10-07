@@ -1,0 +1,14 @@
+[Unit]
+Description=travel: nightly Google Sheets backup at 04:20 box time
+
+[Timer]
+# Ten minutes after media's sheets job (04:10), so the two do not start at
+# once on an ordinary night.
+OnCalendar=*-*-* 04:20:00
+# The box can be off when a run is due. Without this a missed run is lost
+# silently; with it, the run happens at the next boot.
+Persistent=true
+Unit=travel-sheets.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=travel: nightly Google Sheets backup
+# Ordering only: the job execs into the running app container.
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# @USER@ and @REPO@ are placeholders. deploy/backup/install.sh renders them to
+# the user who ran sudo and the checkout it was run from; this file is never
+# installed as it stands.
+User=@USER@
+ExecStart=@REPO@/deploy/backup/sheets.sh

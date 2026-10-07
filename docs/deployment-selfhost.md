@@ -91,6 +91,37 @@ fact this repository cannot keep true, and an app file holding a platform fact
 it cannot keep true is how `CLAUDE.md` came to claim this app was `status:
 planned` for a day after it went live.
 
+## The nightly sheet backup
+
+`travel-sheets.timer` runs `deploy/backup/sheets.sh` at **04:20** box time,
+ten minutes after media's sheets job. `Persistent=true`, so a night the box
+was off runs at the next boot. The script runs
+`python -m scripts.backup_sheet` inside the running `app` container, so it
+uses that container's code and its `GOOGLE_*` settings. What the backup
+writes is in `sheet-backup.md`.
+
+**Outside a deploy, this is the only copy of travel's data that leaves the
+box.** `bin/deploy`'s dumps are taken only at deploy time and stay in
+`~/backups/travel/`.
+
+Setting it up on the box is the manager session's job, done once after the
+release that ships it:
+
+1. Add `GOOGLE_CREDENTIALS_JSON` and `GOOGLE_SHEET_ID` to `~/travel/.env`,
+   which compose hands to the container. Then recreate the container so it
+   reads them.
+2. `sudo ./deploy/backup/install.sh` from the checkout. It installs the units
+   with the checkout's path and the invoking user, enables the timer, and
+   lists it. It is safe to run again.
+3. Optionally, set `HC_SHEETS_URL` in `~/travel/.env.backup`. That file is
+   kept apart from `.env`, so the app never sees it. When it is set, each run
+   pings Healthchecks (`/start`, then success or `/fail`), so a failed night is
+   seen rather than silent. A failed ping never fails the backup.
+
+To check it: `systemctl list-timers travel-sheets.timer`, and
+`journalctl -u travel-sheets.service` for the last run. Both scripts must be
+committed executable, and CI asserts it, as it does for `deploy/migrations`.
+
 ## The shared database is shared
 
 `travel` has no database of its own on the box. It uses the platform's

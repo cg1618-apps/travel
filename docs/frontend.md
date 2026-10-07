@@ -528,6 +528,17 @@ data alone. A rename shows how many rows it rewrote — 已改名，改寫了 n
 筆資料。, or 已合併到「…」 when it lands on an existing value. A kind with no
 values says 還沒有記下任何值。輸入過一次，它就會出現在這裡。
 
+**備份到 Google Sheets** sits at the bottom of the page
+(`components/BackupSection.jsx`): one 立即備份 button with no confirmation,
+because a backup cannot lose data. While the request runs, the button reads
+備份中… and is disabled. Success shows 已備份 with the Taipei time and the
+number of rows written. A refusal shows this app's own sentence for each
+status (`backupErrorMessage` in `lib/backup.js`): 409 another backup is
+running, 422 the database is empty, 503 Sheets is unreachable or not set up.
+The status code is shown faintly after the sentence, and the English `detail`
+is never shown. Restore has no button here; the section says it is
+`scripts/restore_sheet.py`. See `sheet-backup.md`.
+
 ## Mobile first
 
 Checklist is the mobile view; the sheet scrolls horizontally. Build at 375px

@@ -23,9 +23,10 @@ smallest surface on which to prove the platform's app contract end to end.
 
 ## Status
 
-**Packing lists, transport and trips are built, and the owner's Google Sheet
-can be loaded with `scripts/import_sheet.py`; there is still no buying list and
-no rules.** Under the features is the skeleton — the app runs locally, builds
+**Packing lists, transport and trips are built; the owner's Google Sheet can
+be loaded once with `scripts/import_sheet.py`, and the whole database is backed
+up to the Travel sheet and restored from it (`docs/sheet-backup.md`); there is
+still no buying list and no rules.** Under the features is the skeleton — the app runs locally, builds
 as a container, and answers a health probe that compares the revision the
 database is stamped with against the head the running code ships.
 

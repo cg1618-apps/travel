@@ -59,6 +59,27 @@ administrative connection URL from the app's own settings rather than
 hardcoding a per-machine superuser password, and an autouse fixture that
 reloads `app.config` after each test.
 
+**No test reaches Google.** `_no_real_google_sheets`, an autouse fixture in
+`tests/conftest.py`, makes constructing a `gspread.Client` raise. The guard is
+needed because the developer's `.env` holds the real key and the real sheet
+id, and a backup from the near-empty test database would overwrite the only
+off-box copy of travel's data. The block sits at gspread itself, so no helper
+path gets round it. `tests/unit/test_no_real_sheets_in_tests.py` proves it is
+armed, since deleting the fixture would otherwise break nothing visible. It
+patches by hand rather than through `monkeypatch`: as an autouse fixture,
+`monkeypatch`'s undo would run after `restore_config_defaults` reloads the
+config.
+
+`tests/fake_sheets.py` is the in-memory spreadsheet the backup and restore
+tests hand to `SheetClient`. It imitates the API's real shapes, and the code
+depends on each of them:
+
+- it refuses a write outside a tab's grid;
+- it drops trailing empty cells and rows when read;
+- it omits `values` for an empty range.
+
+It also records each call, so a test can assert what was *not* done.
+
 ## The schema is built by the migrations
 
 `migrated_database` runs `alembic upgrade head`. It does **not** call

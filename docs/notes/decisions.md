@@ -81,9 +81,11 @@ reader can tell a decision from an accident.
 
 - **A plain integer `id` primary key; media carries a UUID `system_id` plus a
   sequence-backed `public_id`.** That pair exists there to give Google-Sheets
-  round trips a stable key and users a short one. travel syncs to nothing and
-  exposes no ids to anybody, so the second key would be a column with no reader
-  and the first a wider index with no benefit. If sharing ever needs an
+  round trips a stable key and users a short one. travel exposes no ids to
+  anybody, and its sheet backup needs no stable key because a restore
+  *replaces* every table with the ids it backed up rather than merging into
+  existing rows (see "The sheet backup" below). So the second key would be a
+  column with no reader and the first a wider index with no benefit. If sharing ever needs an
   unguessable identifier it belongs on the share token, not on every row.
 
 - **`status`, `timing`, `leg`, `visibility` and `kind` carry
@@ -582,3 +584,60 @@ way to choose. The toggle copies the media tracker's rule and storage key
 pre-paint script in `index.html`. It is a hook rather than media's context
 provider, because only the nav bar reads it — the colours themselves come from
 the attribute through the CSS tokens, not from React.
+
+## The sheet backup
+
+The owner asked for one Google Sheet, **Travel**, doing two jobs: restoring
+the database, and being readable when the app is down. They asked for those
+jobs in tiers: what the dashboard shows first, then all lists and trips, then
+everything. The tiers collapsed. Eight tables copied whole cost less code than
+copying the dashboard's subset correctly, which would have to follow
+leg → list links to stay consistent. And a partial copy cannot be restored.
+So everything is backed up, and the dashboard's subset became the *readable*
+tabs instead. How it works is in `sheet-backup.md`.
+
+- **Its own Google Cloud project and service account.** `cg1618` is meant for
+  all of the platform's apps, with one service account per app, and travel's
+  is the first. The project that holds media's key was made for the legacy
+  anime site, and the owner chose not to grow it. One key per app also means a
+  leaked or revoked key reaches one sheet.
+- **Readable tabs are output only.** Restore reads only the per-table tabs.
+  The readable layout can then change freely, and it never has to be
+  parsed back.
+- **The readable set adds legs' lists to the dashboard's rule.** A trip in use
+  whose return list is still 未使用 is the case where the app dying hurts.
+  `交通` is readable too, though the owner asked for lists and trips, because
+  transport is what is needed mid-trip.
+- **`RAW`, not media's `USER_ENTERED`.** With `USER_ENTERED`, Sheets reparses
+  every value. Media escapes its date columns with `'` to stop that. In
+  travel, `booking_code` `0123` would lose its zero and text such as `TRUE`
+  would turn into a boolean. With `RAW` there is nothing to escape. The
+  `總覽` links are the one `USER_ENTERED` write, because they are formulas.
+- **One request, not media's SSE.** Media streams because a full backup of
+  its 52 tabs outlasts the tunnel's ~100-second idle limit. travel writes all
+  its tabs in one batched call and one clear, which also keeps it far below
+  Sheets' per-minute write quota. It finishes in seconds.
+- **Refuse an empty database, not an emptied tab.** Media refuses a
+  header-only write over any tab that holds data. In travel that would turn
+  one legitimately empty table (the last route deleted) into a backup that
+  refuses every night until someone clears the tab by hand. What media's guard
+  was really about is a whole empty database, such as a fresh worktree's,
+  which wiped its sheet on 2026-09-12. travel refuses exactly that, before
+  calling Google at all.
+- **Restore replaces; media's Pull upserts.** An upsert cannot remove a row
+  deleted since the backup, so media needs a separate Clean step. For one
+  person's data, the backup is the whole truth. The replace runs in one
+  transaction and is checked fully before the first delete. It refuses a
+  revision mismatch, a non-empty database without `--replace`, and a tab whose
+  row count disagrees with `Backup Info`, which is how a half-written backup
+  shows itself.
+- **Sequences move with `ALTER SEQUENCE ... RESTART`, not `setval`.**
+  `setval` is not transactional, so a dry run or a failed restore would roll
+  the rows back and leave the sequences moved.
+- **Restore is a command, not a button.** This was the owner's choice. When
+  the app is dead, a button cannot be pressed. And the one operation that
+  deletes everything should take a deliberate command. A development-only
+  button was offered and declined.
+- **The nightly job resolves its checkout from its own path.** Media's
+  `lib.sh` assumes `~/media`, which is the hazard recorded under "Renaming
+  media's checkout" in the platform's decisions.

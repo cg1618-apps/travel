@@ -1,6 +1,7 @@
 /** Every URL this app calls, in one map. */
 
 export const endpoints = {
+  backup: () => '/api/backup',
   packingLists: {
     index: () => '/api/packing-lists',
     detail: (id) => `/api/packing-lists/${id}`,
