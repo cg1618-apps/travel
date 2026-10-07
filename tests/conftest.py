@@ -79,3 +79,39 @@ def restore_config_defaults():
     from app import config
 
     importlib.reload(config)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_google_sheets():
+    """Make building a real gspread client fail, in every test.
+
+    The developer's `.env` holds the real service-account key and the real
+    sheet id, and the test database is EMPTY or nearly so. A test that reached
+    the real sheet through the backup would overwrite the owner's only
+    off-box copy with test rows - media lost 16,774 rows to exactly that shape
+    on 2026-09-12. Tests hand `SheetClient` a `FakeSpreadsheet` instead.
+
+    Blocked at `gspread.Client` itself, not at this app's helper, so no path
+    to Google - `gspread.authorize`, `service_account`, a future helper - gets
+    round it. `tests/unit/test_no_real_sheets_in_tests.py` proves it is armed:
+    without that, deleting this fixture would break nothing visible.
+
+    Patched by hand rather than through `monkeypatch`: an autouse fixture that
+    requests `monkeypatch` sets it up early, so its undo would run AFTER
+    `restore_config_defaults` reloads the config - and a test's patched
+    environment would be read into the reloaded settings.
+    """
+    import gspread
+
+    def _blocked(self, *args, **kwargs):
+        raise AssertionError(
+            "A test tried to build a real gspread client. Its writes would land "
+            "on the owner's real sheet; hand SheetClient a FakeSpreadsheet instead."
+        )
+
+    original = gspread.Client.__init__
+    gspread.Client.__init__ = _blocked
+    try:
+        yield
+    finally:
+        gspread.Client.__init__ = original

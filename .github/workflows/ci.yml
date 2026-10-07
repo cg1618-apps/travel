@@ -38,7 +38,7 @@ jobs:
       POSTGRES_DB: travel
       APP_ENV: development
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The bit has been lost six times across these repositories: both
       # development machines have core.fileMode=false, so git records 100644
@@ -48,13 +48,18 @@ jobs:
       #
       # ls-tree, not ls-files: the latter reads the index, which already
       # reflects a chmod that was never committed.
-      - name: The migration hook must be executable in the commit
+      #
+      # The backup scripts fail the same way, later and more quietly: the
+      # timer's run is refused at 04:20 with nobody watching.
+      - name: Deploy scripts must be executable in the commit
         run: |
-          mode=$(git ls-tree HEAD -- deploy/migrations | awk '{print $1}')
-          echo "deploy/migrations is $mode"
-          test "$mode" = "100755"
+          for path in deploy/migrations deploy/backup/sheets.sh deploy/backup/install.sh; do
+            mode=$(git ls-tree HEAD -- "$path" | awk '{print $1}')
+            echo "$path is $mode"
+            test "$mode" = "100755"
+          done
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           # Same interpreter as the runtime image (dockerfile: python:3.13-slim).
           python-version: "3.13"
@@ -72,7 +77,7 @@ jobs:
       - name: Run the tests
         run: python -m pytest tests/ -q
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm
