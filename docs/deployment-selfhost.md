@@ -104,12 +104,18 @@ writes is in `sheet-backup.md`.
 box.** `bin/deploy`'s dumps are taken only at deploy time and stay in
 `~/backups/travel/`.
 
-Setting it up on the box is the manager session's job, done once after the
-release that ships it:
+Setting it up on the box is done once:
 
-1. Add `GOOGLE_CREDENTIALS_JSON` and `GOOGLE_SHEET_ID` to `~/travel/.env`,
-   which compose hands to the container. Then recreate the container so it
-   reads them.
+1. Add `GOOGLE_CREDENTIALS_JSON` and `GOOGLE_SHEET_ID` (Travel's id, never
+   Travel (dev)'s) to `~/travel/.env`, which compose hands to the container.
+   **The key must be compact JSON in single quotes.** `bin/deploy` sources
+   `.env` with bash, and a key written with spaces refuses every deploy with
+   `.env: line N: service_account,: command not found`. `.env.example` has the
+   command that writes it correctly, and the check
+   `bash -c 'set -a; . ~/travel/.env' && echo sourceable` proves it. Adding the
+   lines before a release means the release's deploy recreates the container
+   with them. Added later, `docker compose -f docker-compose.prod.yml up -d`
+   recreates it.
 2. `sudo ./deploy/backup/install.sh` from the checkout. It installs the units
    with the checkout's path and the invoking user, enables the timer, and
    lists it. It is safe to run again.

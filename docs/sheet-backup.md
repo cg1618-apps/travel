@@ -25,10 +25,26 @@ endpoint is in `api.md`, the button in `frontend.md`, and the nightly job in
   platform's apps; the legacy project from the anime site is not used. Only
   the Sheets API is enabled, and the only scope requested is `spreadsheets`.
 - **The sheet holds booking codes. Keep its General access on Restricted.**
+- **Two sheets, one writer each.** A backup overwrites a whole sheet, so a
+  development machine backing up into production's sheet would replace
+  production's restore point with development data. The all-empty refusal
+  cannot catch that, because a development database is rarely empty.
+  - **Travel** is production's. Only the box writes it.
+  - **Travel (dev)** is shared by the development machines, with the same
+    service account.
+
+  To bring production's data onto a development machine, restore with
+  `--sheet-id <Travel's id>`.
 - Two settings, in `.env` on every machine that backs up or restores
   (described in `.env.example`):
-  - `GOOGLE_CREDENTIALS_JSON`: the service account's key, as one line.
+  - `GOOGLE_CREDENTIALS_JSON`: the service account's key, as **one line of
+    compact JSON in single quotes**. The box's `bin/deploy` and
+    `deploy/migrations` source `.env` with bash. A key written with spaces
+    breaks into words that bash tries to run, and the deploy refuses before
+    it starts. `.env.example` has the command that writes the line correctly
+    without printing it.
   - `GOOGLE_SHEET_ID`: the id from the sheet's URL, between `/d/` and `/edit`.
+    That is Travel on the box, and Travel (dev) everywhere else.
 
   If either is unset, the app still starts; a backup or restore answers that
   Sheets is not configured.
@@ -149,8 +165,8 @@ To move data to another machine:
    sheet.
 4. Restore with `--replace`.
 
-To restore from the sheet production writes, give that sheet's id with
-`--sheet-id`.
+A development machine's own `GOOGLE_SHEET_ID` is Travel (dev). To restore
+production's data instead, give Travel's id with `--sheet-id`.
 
 ## Tests
 
