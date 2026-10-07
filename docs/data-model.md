@@ -56,7 +56,7 @@ constraints.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `id` | integer | no | identity | |
+| `id` | integer | no | `serial` | |
 | `name` | text | no | | |
 | `departure_at` | date | **yes** | | What makes packing timing mean anything. Null is normal — the list still works, nothing is ever "due now". Ignored while a trip leg links the list; reads go through the effective date. |
 | `kind` | text | no | `free` | `template` (範本), `saved` (保存) or `free` (一般). |
@@ -92,7 +92,7 @@ and an `UPDATE` setting `usage` to null on a free row is refused by
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `id` | integer | no | identity | |
+| `id` | integer | no | `serial` | |
 | `list_id` | integer | no | | FK to `packing_list.id`, `ON DELETE CASCADE`. Indexed. |
 | `name` | text | no | | |
 | `detail` | text | yes | | A variant (家鑰匙 under 鑰匙) or a description (long c-c beside bed). Items sharing a name are grouped on screen; each is packed on its own. |
@@ -137,7 +137,7 @@ pruned.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `id` | integer | no | identity | |
+| `id` | integer | no | `serial` | |
 | `kind` | text | no | | `category`, `bag`, `location` or `ticket_type`. Indexed. |
 | `value` | text | no | | |
 | `position` | integer | no | `0` | Display order within a kind. |
@@ -160,7 +160,7 @@ Getting from one place to another. The places are free text.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `id` | integer | no | identity | |
+| `id` | integer | no | `serial` | |
 | `from_place` | text | no | | |
 | `to_place` | text | no | | |
 | `notes` | text | yes | | |
@@ -174,7 +174,7 @@ One way of doing a route — a bus line, a train service.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `id` | integer | no | identity | |
+| `id` | integer | no | `serial` | |
 | `route_id` | integer | no | | FK to `transport_route.id`, `ON DELETE CASCADE`. Indexed. |
 | `mode` | text | no | | The line or service name. |
 | `advance_ticket` | boolean | no | `false` | A ticket has to be bought ahead. |
@@ -209,7 +209,7 @@ before `weekday`), then `time`.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `id` | integer | no | identity | |
+| `id` | integer | no | `serial` | |
 | `option_id` | integer | no | | FK to `transport_option.id`, `ON DELETE CASCADE`. Indexed. |
 | `day_type` | text | no | | `weekday` or `holiday`. Public holidays are not modelled. |
 | `time` | time | no | | |
@@ -233,7 +233,7 @@ columns, with the same constraints, as on `packing_list`.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `id` | integer | no | identity | |
+| `id` | integer | no | `serial` | |
 | `name` | text | no | | |
 | `notes` | text | yes | | |
 | `kind` | text | no | `free` | `template` (範本), `saved` (保存) or `free` (一般). |
@@ -262,7 +262,7 @@ by `departs_at`.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `id` | integer | no | identity | |
+| `id` | integer | no | `serial` | |
 | `trip_id` | integer | no | | FK to `trip.id`, `ON DELETE CASCADE`. Indexed. |
 | `from_place` | text | no | | |
 | `to_place` | text | no | | |

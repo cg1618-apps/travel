@@ -53,6 +53,13 @@ class Settings(BaseSettings):
 
     database_url: str | None = None
 
+    # The Google Sheet backup (app/services/sheet_backup/). Both optional: an
+    # app without them starts and serves normally, and only a backup or a
+    # restore refuses, naming what is missing. The key is the service account's
+    # JSON on one line - there is no credentials.json fallback.
+    google_credentials_json: str | None = None
+    google_sheet_id: str | None = None
+
     @property
     def sqlalchemy_database_url(self) -> str:
         if self.database_url:

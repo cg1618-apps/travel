@@ -47,6 +47,7 @@ question only a probe from the open internet answers, and the platform's
 - [Common options — `/api/label-options`](#common-options--apilabel-options)
 - [Transport — `/api/transport-routes`](#transport--apitransport-routes)
 - [Trips — `/api/trips`](#trips--apitrips)
+- [Backup — `/api/backup`](#backup--apibackup)
 
 ## Health — `/api/health`
 
@@ -322,3 +323,19 @@ Deleting a linked list keeps the leg and clears its link.
 trip, and `from_place`, `to_place`, `departs_at`, `arrives_at`, `booked`,
 `paid` and `collected` on a leg, answer `422` when sent as `null`; nullable
 fields such as `notes` and `archive_note` accept it and clear.
+
+## Backup — `/api/backup`
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/backup` | none | Copies every table, and the readable tabs, to the Travel sheet. No body. `200` with `{"tabs": n, "rows": {"<table>": n, ...}, "backed_up_at": "<ISO 8601 with offset>"}`. |
+
+| Status | When |
+| --- | --- |
+| `409` | Another backup holds the lock. |
+| `422` | Every table is empty, so nothing was written. |
+| `503` | Sheets is not configured, cannot be reached once retries are spent, or refuses the key or the sheet (403/404). |
+
+The request returns when the backup has finished, a few seconds; it does not
+stream. There is no restore endpoint: restoring is `scripts/restore_sheet.py`.
+Both are described in `sheet-backup.md`.

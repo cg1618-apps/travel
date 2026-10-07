@@ -8,3 +8,6 @@ pydantic-settings==2.7.0
 tzdata==2025.2
 # scripts/import_sheet.py; in the runtime image so production can be loaded from inside the container
 openpyxl==3.1.5
+# The Google Sheet backup and restore (app/services/sheet_backup/); the versions media pins
+gspread==6.2.1
+google-auth==2.48.0

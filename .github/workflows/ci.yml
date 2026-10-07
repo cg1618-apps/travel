@@ -48,11 +48,16 @@ jobs:
       #
       # ls-tree, not ls-files: the latter reads the index, which already
       # reflects a chmod that was never committed.
-      - name: The migration hook must be executable in the commit
+      #
+      # The backup scripts fail the same way, later and more quietly: the
+      # timer's run is refused at 04:20 with nobody watching.
+      - name: Deploy scripts must be executable in the commit
         run: |
-          mode=$(git ls-tree HEAD -- deploy/migrations | awk '{print $1}')
-          echo "deploy/migrations is $mode"
-          test "$mode" = "100755"
+          for path in deploy/migrations deploy/backup/sheets.sh deploy/backup/install.sh; do
+            mode=$(git ls-tree HEAD -- "$path" | awk '{print $1}')
+            echo "$path is $mode"
+            test "$mode" = "100755"
+          done
 
       - uses: actions/setup-python@v7
         with:

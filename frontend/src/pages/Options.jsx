@@ -10,12 +10,16 @@
  * first kind is the bare URL), so Back and a reload come back to it. The tab
  * bar is sticky: a long kind scrolls under it, and the other kinds stay one
  * tap away.
+ *
+ * The 備份 section sits at the bottom: it is the page's one action that is not
+ * about labels, and the least often used.
  */
 
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
+import BackupSection from '../components/BackupSection'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { LABEL_KIND_LABELS } from '../lib/labels'
@@ -193,6 +197,8 @@ export default function Options() {
         onRename={onRename}
         onDelete={(option) => remove.mutate(option.id)}
       />
+
+      <BackupSection />
     </main>
   )
 }

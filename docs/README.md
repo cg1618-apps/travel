@@ -14,11 +14,12 @@ in `notes/`.
 | `data-model.md` | Every table, what each column means, and which rules the database itself enforces. |
 | `testing.md` | How the tests are laid out, what each fixture gives you, and what a refusal test has to set up before it can fail. |
 | `sheet-import.md` | How the owner's Google Sheet export is loaded into an empty database, what each tab becomes, and what is skipped or refused. |
+| `sheet-backup.md` | How the whole database is copied to the Travel sheet and restored from it, what the readable tabs show, and what a restore refuses. |
 | `logging.md` | What a log line looks like, why uvicorn's loggers are taken over, and why an inbound `X-Request-ID` is validated even though this app is gated. travel's half of a platform contract. |
 | `open-items.md` | Known defects and unmade decisions nobody is working on. Everything in it is open; an item is closed by deleting it in the change that fixes it. |
 | `superpowers/` | Where a spec and a plan live **while a task is in progress**, and nowhere else. Both are deleted when that task ends, with anything durable moved into a real page first — so the directory is absent between tasks, which is its normal state. |
 
-Packing lists, transport and trips are built, and the owner's sheet can be loaded with `scripts/import_sheet.py`. There is still no buying list and no rules. Under the feature sits the skeleton:
+Packing lists, transport and trips are built, the owner's sheet can be loaded with `scripts/import_sheet.py`, and everything is backed up to the Travel sheet and restorable from it. There is still no buying list and no rules. Under the feature sits the skeleton:
 config read once from the environment, a `/api/health` endpoint that checks
 the database's Alembic revision against the code's, the Alembic chain, a
 React/Vite frontend uvicorn serves once built, a production container and
