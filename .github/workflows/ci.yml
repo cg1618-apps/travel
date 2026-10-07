@@ -38,7 +38,7 @@ jobs:
       POSTGRES_DB: travel
       APP_ENV: development
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The bit has been lost six times across these repositories: both
       # development machines have core.fileMode=false, so git records 100644
@@ -54,7 +54,7 @@ jobs:
           echo "deploy/migrations is $mode"
           test "$mode" = "100755"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           # Same interpreter as the runtime image (dockerfile: python:3.13-slim).
           python-version: "3.13"
@@ -72,7 +72,7 @@ jobs:
       - name: Run the tests
         run: python -m pytest tests/ -q
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm
