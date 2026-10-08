@@ -1,6 +1,6 @@
 # Deployment, and getting back from a bad one
 
-Last verified: 2026-10-01
+Last verified: 2026-10-08
 
 **What this is for.** What a release of `travel` does to the box, and what your
 options are when one fails. `bin/rollback` names this page when it freezes, so
@@ -22,6 +22,15 @@ specific to this app.
 2. **`/api/health` answers 200 only when the revision the database is stamped
    with matches the head the running image ships.** A half-applied deploy
    fails this even though pages still serve, which is the whole point of it.
+
+**A release that adds or modifies a revision under `alembic/versions/` waits
+for the owner after the merge.** The platform's workflow sends it down the
+gated lane, which holds the deploy until it is approved in this repository's
+`production` environment; any other release deploys unattended.
+`./deploy/migrations added origin/main origin/dev` answers which lane a
+release will take before it is opened — any output means gated — and the
+release PR says so when its text is proposed and again when it is opened (the
+platform's `CLAUDE.md`, "Git Branches").
 
 `deploy/migrations` is the hook the platform calls. It has three subcommands —
 `current`, `added` and `downgrade` — and it must be committed executable
