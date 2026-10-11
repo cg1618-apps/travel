@@ -199,12 +199,20 @@ where the hidden ones go. There is no sorting: the sheet is always in its own
 order.
 
 Two shortcuts onto those same filters sit above the sheet, beside 排序類別.
-**未打包 / 全部** sets the 打包狀態 filter to exactly 未打包, or clears it; it is
-read back off that filter (`statusScope`), so it shows neither when the header
-holds any other choice. **打包時機** is the column's four values as chips,
+**未打包 / 未完成 / 全部** sets the 打包狀態 filter to exactly 未打包, or clears
+it; it is read back off that filter (`statusScope`), so it shows neither when the
+header holds any other choice. **打包時機** is the column's four values as chips,
 ticking the same filter as its header. Neither is a filter of its own, so the
-header and the toolbar cannot disagree, and like the header filters they are
-not remembered: the sheet opens on 全部.
+header and the toolbar cannot disagree.
+
+**未完成** is the exception: a row that is 未打包 **or** 未確認 (`isUnfinished`),
+so a 不需打包 row still waiting on its Double Check is shown. Columns combine
+with AND, so no header filter can say it, and it is a flag of its own
+(`unfinished`) beside them. Choosing it clears the 打包狀態 filter; choosing
+未打包 or 全部 turns it off. While it is on the switch shows 未完成 whatever the
+headers hold, and a header filter narrows it further. It counts as filtering,
+and 清除所有篩選 clears it with the rest. Like the header filters, none of this
+is remembered: the sheet opens on 全部.
 
 **`bag` is not shown.** The sheet has no such column. The field stays in the
 data and in the copy rule, and its remembered values are still managed on the
