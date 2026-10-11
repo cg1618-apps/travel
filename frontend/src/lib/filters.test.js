@@ -76,6 +76,11 @@ describe('statusScope', () => {
   it('ignores the other columns', () => {
     expect(statusScope({ timing: ['day_of'] })).toBe('all')
   })
+
+  it('is unfinished while that switch is on, whatever the header holds', () => {
+    expect(statusScope({ unfinished: true })).toBe('unfinished')
+    expect(statusScope({ unfinished: true, status: ['packed'] })).toBe('unfinished')
+  })
 })
 
 describe('withStatusScope', () => {
@@ -87,5 +92,37 @@ describe('withStatusScope', () => {
 
   it('hides what is packed once applied', () => {
     expect(ids(applyFilters(items, withStatusScope({}, 'not_packed')))).toEqual([2, 3])
+  })
+
+  it('turns 未完成 on with the 打包狀態 filter cleared, and any other scope turns it off', () => {
+    const filters = { status: ['packed'], timing: ['day_of'] }
+    const unfinished = withStatusScope(filters, 'unfinished')
+    expect(unfinished).toEqual({ status: [], timing: ['day_of'], unfinished: true })
+    expect(withStatusScope(unfinished, 'not_packed')).toEqual({ status: ['not_packed'], timing: ['day_of'] })
+    expect(withStatusScope(unfinished, 'all')).toEqual({ status: [], timing: ['day_of'] })
+  })
+})
+
+describe('未完成', () => {
+  // Every combination of the two things 未完成 looks at, so it has something
+  // to hide as well as something to show.
+  const grid = [
+    { id: 1, status: 'not_packed', needs_double_check: false, double_checked: false },
+    { id: 2, status: 'packed', needs_double_check: true, double_checked: false },
+    { id: 3, status: 'not_packed', needs_double_check: true, double_checked: false },
+    { id: 4, status: 'packed', needs_double_check: true, double_checked: true },
+    { id: 5, status: 'packed', needs_double_check: false, double_checked: false },
+    { id: 6, status: 'no_need', needs_double_check: false, double_checked: false },
+    { id: 7, status: 'no_need', needs_double_check: true, double_checked: false },
+  ]
+
+  it('shows rows that are 未打包 or 未確認, and hides the rest', () => {
+    expect(ids(applyFilters(grid, { unfinished: true }))).toEqual([1, 2, 3, 7])
+  })
+
+  it('is a filter, and ANDs with the column filters', () => {
+    expect(isFiltering({ unfinished: true })).toBe(true)
+    expect(isFiltering({ unfinished: false })).toBe(false)
+    expect(ids(applyFilters(grid, { unfinished: true, status: ['packed'] }))).toEqual([2])
   })
 })
