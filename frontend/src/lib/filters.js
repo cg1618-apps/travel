@@ -5,6 +5,10 @@
  * A filter is the set of values a column may show; an empty set means the
  * column is not filtered. Columns combine with AND, values within a column
  * with OR. An unset 需求 or 取得地點 is the value '' so it can be picked too.
+ *
+ * Beside the columns sits one flag, `unfinished`: the toolbar's 未完成, a row
+ * that is 未打包 or 未確認. It spans two columns with OR, which no column filter
+ * can say, so it is its own key, ANDed with the columns like any of them.
  */
 
 import { CHECK_LABELS, CHECK_STATES, NEED_LABELS, NEEDS, STATUS_LABELS, TIMING_LABELS, checkState } from './labels'
@@ -47,14 +51,21 @@ export const FILTERS = {
   },
 }
 
-export const isFiltering = (filters) =>
-  Object.values(filters).some((selected) => selected && selected.length > 0)
+/** 未完成: still to pack, or still to double-check. */
+export const isUnfinished = (item) => item.status === 'not_packed' || checkState(item) === 'needed'
+
+const activeColumns = (filters) =>
+  Object.entries(filters).filter(([key, selected]) => key in FILTERS && selected?.length)
+
+export const isFiltering = (filters) => Boolean(filters.unfinished) || activeColumns(filters).length > 0
 
 export function applyFilters(items, filters) {
-  const active = Object.entries(filters).filter(([, selected]) => selected?.length)
-  if (active.length === 0) return items
-  return items.filter((item) =>
-    active.every(([key, selected]) => selected.includes(FILTERS[key].read(item))),
+  const active = activeColumns(filters)
+  if (!filters.unfinished && active.length === 0) return items
+  return items.filter(
+    (item) =>
+      (!filters.unfinished || isUnfinished(item)) &&
+      active.every(([key, selected]) => selected.includes(FILTERS[key].read(item))),
   )
 }
 
@@ -68,18 +79,22 @@ export function toggleValue(filters, key, value) {
 }
 
 /**
- * The toolbar's 未打包 / 全部 switch, read off the 打包狀態 filter rather than
- * kept beside it, so the header and the switch cannot disagree. Any other
- * choice made in the header is neither.
+ * The toolbar's 未打包 / 未完成 / 全部 switch. 未打包 and 全部 are read off the
+ * 打包狀態 filter rather than kept beside it, so the header and the switch
+ * cannot disagree, and any other choice made in the header is neither.
+ * 未完成 is the `unfinished` flag, and wins while it is on: it is the one
+ * filter the headers cannot show.
  */
 export function statusScope(filters) {
+  if (filters.unfinished) return 'unfinished'
   const selected = filters.status ?? []
   if (selected.length === 0) return 'all'
   if (selected.length === 1 && selected[0] === 'not_packed') return 'not_packed'
   return null
 }
 
-export const withStatusScope = (filters, scope) => ({
-  ...filters,
-  status: scope === 'not_packed' ? ['not_packed'] : [],
-})
+export function withStatusScope(filters, scope) {
+  const { unfinished: _, ...rest } = filters
+  const next = { ...rest, status: scope === 'not_packed' ? ['not_packed'] : [] }
+  return scope === 'unfinished' ? { ...next, unfinished: true } : next
+}

@@ -17,7 +17,8 @@
  * 打包狀態, Double Check, 打包時機, 需求 and 取得地點 filter from their
  * headers, and the header row stays on screen while the sheet scrolls. The
  * toolbar's 未打包 / 全部 switch and 打包時機 chips are shortcuts onto the same
- * filters, not filters of their own. A filtered sheet cannot be reordered: a
+ * filters, not filters of their own; 未完成 (未打包 or 未確認) spans two columns,
+ * so it is the one toolbar filter with no header behind it. A filtered sheet cannot be reordered: a
  * drop between two visible rows says nothing about where the hidden ones go.
  *
  * Every row carries its number in the whole list, in the column pinned to the
@@ -85,10 +86,11 @@ const smallButton = 'rounded-md border border-border-strong px-3 text-sm text-te
 
 const STATUS_SCOPES = [
   ['not_packed', '未打包'],
+  ['unfinished', '未完成'],
   ['all', '全部'],
 ]
 
-/** 未打包 / 全部: the 打包狀態 filter, one tap away. */
+/** 未打包 / 未完成 / 全部: the 打包狀態 filter, or 未完成, one tap away. */
 function StatusScope({ filters, onChange }) {
   const scope = statusScope(filters)
   return (
