@@ -69,4 +69,15 @@ describe('tripDays', () => {
     expect(days.get('2026-10-06').map((t) => t.id)).toEqual([2])
     expect(days.size).toBe(2)
   })
+  it('counts a leg with one time on that day, and skips legs with none', () => {
+    const days = tripDays([
+      trip(1, [
+        leg('2026-10-05T08:00:00+08:00', null),
+        leg(null, '2026-10-07T10:00:00+08:00'),
+        leg(null, null),
+      ]),
+      trip(2, [leg(null, null)]),
+    ])
+    expect([...days.keys()]).toEqual(['2026-10-05', '2026-10-06', '2026-10-07'])
+  })
 })

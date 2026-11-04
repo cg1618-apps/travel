@@ -168,6 +168,56 @@ def test_copying_as_a_template_keeps_the_dates_when_given_the_first_day(client):
 
 def test_a_copy_of_a_done_trip_starts_not_done(client):
     source = client.post("/api/trips", json={"name": "去年"}).json()
-    # Load-bearing: the source IS done, so a copy that carried it would show.
-    assert client.patch(f"/api/trips/{source['id']}", json={"done": True}).json()["done"] is True
-    assert copy(client, source).json()["done"] is False
+    # Load-bearing: the source IS done and its tickets bought, so a copy that
+    # carried either would show.
+    marked = client.patch(f"/api/trips/{source['id']}", json={"ticket_status": "bought", "done": True})
+    assert marked.json()["done"] is True
+    new = copy(client, source).json()
+    assert (new["done"], new["ticket_status"]) == (False, "not_bought")
+
+
+def test_types_switches_and_sections_carry(client):
+    source = client.post("/api/trips", json={"name": "來回"}).json()
+    url = f"/api/trips/{source['id']}"
+    client.patch(url, json={"round_trip": True, "outbound_title": "去", "return_title": "回",
+                            "return_notes": "早點出門"})
+    for leg in (
+        {"transport_type": "car", "ride_type": "car_rental", "has_booked": True,
+         "direction": "南下", "departs_at": f"2026-09-24T08:00:00{TPE}"},
+        {"transport_type": "train", "has_collected": False, "section": "return",
+         "departs_at": f"2026-09-26T08:00:00{TPE}"},
+    ):
+        body = {"from_place": "a", "to_place": "b", **leg}
+        assert client.post(f"{url}/legs", json=body).status_code == 201
+    new = copy(client, source, start_date="2026-10-01").json()
+    assert (new["round_trip"], new["outbound_title"], new["return_title"], new["return_notes"]) == (
+        True, "去", "回", "早點出門")
+    car, train = new["legs"]
+    assert (car["transport_type"], car["ride_type"], car["direction"], car["section"]) == (
+        "car", "car_rental", "南下", "outbound")
+    assert (car["has_booked"], car["has_paid"], car["has_booking_code"]) == (True, False, False)
+    assert (train["section"], train["has_collected"]) == ("return", False)
+
+
+def test_an_untimed_entry_copies_untimed_and_moves_nothing(client):
+    source = client.post("/api/trips", json={"name": "s"}).json()
+    url = f"/api/trips/{source['id']}/legs"
+    client.post(url, json={"from_place": "a", "to_place": "b"})
+    client.post(url, json={"from_place": "b", "to_place": "c",
+                           "departs_at": f"2026-09-24T18:06:00{TPE}"})
+    new = copy(client, source, start_date="2026-09-25").json()
+    timed, untimed = new["legs"]
+    assert at(timed["departs_at"]) == at(f"2026-09-25T18:06:00{TPE}")
+    assert (untimed["departs_at"], untimed["arrives_at"]) == (None, None)
+
+
+def test_a_source_with_no_timed_entry_needs_no_start_date(client):
+    source = client.post("/api/trips", json={"name": "s"}).json()
+    client.post(f"/api/trips/{source['id']}/legs", json={"from_place": "a", "to_place": "b"})
+    response = copy(client, source)
+    assert response.status_code == 201
+    assert len(response.json()["legs"]) == 1
+    # Mirror: one timed entry, and the start date is required again.
+    client.post(f"/api/trips/{source['id']}/legs", json={
+        "from_place": "a", "to_place": "b", "departs_at": f"2026-09-24T18:06:00{TPE}"})
+    assert copy(client, source).status_code == 422

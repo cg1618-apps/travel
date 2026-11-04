@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom'
 
 import { useTheme } from './hooks/useTheme'
 import Dashboard from './pages/Dashboard'
+import Notes from './pages/Notes'
 import Options from './pages/Options'
 import PackingList from './pages/PackingList'
 import PackingLists from './pages/PackingLists'
@@ -29,6 +30,7 @@ const NAV_LINKS = [
   ['/lists', '打包清單'],
   ['/transport', '交通'],
   ['/trips', '行程'],
+  ['/notes', '筆記'],
   ['/options', '選項'],
 ]
 
@@ -86,6 +88,7 @@ export default function App() {
           <Route path="/trip" element={<Navigate to="/trips" replace />} />
           <Route path="/trips/auto-saved" element={<Navigate to="/trips?tab=auto_saved" replace />} />
           <Route path="/trips/:tripId" element={<Trip />} />
+          <Route path="/notes" element={<Notes />} />
           <Route path="/options" element={<Options />} />
           {/* The server's catch-all serves the bundle for any non-/api path,
               so an unknown URL reaches the router rather than a 404. */}

@@ -24,7 +24,7 @@ class PackingList(Base, TimestampMixin, KindMixin):
     name: Mapped[str] = mapped_column(String, nullable=False)
 
     # Nullable, and the reason the timing view works without a trip existing.
-    # Ignored while a trip leg links this list - see `effective_departure_at`.
+    # Ignored while a dated trip leg links this list - see `effective_departure_at`.
     departure_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     #: 備註, the planning remark, and 保存備註, the one written afterwards.
@@ -59,13 +59,19 @@ class PackingList(Base, TimestampMixin, KindMixin):
         "TripLeg", back_populates="packing_list", uselist=False, passive_deletes=True
     )
 
+    def _leg_departs_at(self):
+        return self.trip_leg.departs_at if self.trip_leg is not None else None
+
     @property
     def effective_departure_at(self) -> date | None:
-        """The leg's Taipei calendar day when linked, else the list's own date."""
-        if self.trip_leg is not None:
-            return self.trip_leg.departs_at.astimezone(TAIPEI).date()
+        """The linked leg's Taipei calendar day when it has a departure time,
+        else the list's own date - including while linked to an undated leg."""
+        departs = self._leg_departs_at()
+        if departs is not None:
+            return departs.astimezone(TAIPEI).date()
         return self.departure_at
 
     @property
     def departure_source(self) -> str:
-        return "trip_leg" if self.trip_leg is not None else "list"
+        """`trip_leg` only while the leg actually supplies the date."""
+        return "trip_leg" if self._leg_departs_at() is not None else "list"

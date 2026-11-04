@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   groupByCategory,
+  groupByName,
+  namedGroups,
+  orderAfterGroupSort,
+  reposition,
   groupForChecklist,
   groupRuns,
   inGroupOrder,
@@ -116,5 +120,42 @@ describe('rowNumbers', () => {
 
   it('is empty for an empty list', () => {
     expect(rowNumbers([]).size).toBe(0)
+  })
+})
+
+describe('groupByName', () => {
+  const row = (id, group_name, position = id) => ({ id, group_name, position })
+  const rows = [row(1, '日本', 0), row(2, null, 1), row(3, '台灣', 2), row(4, '日本', 3), row(5, '', 4)]
+  it('puts the ungrouped rows first, blank counted as none, groups by their first row', () => {
+    const groups = groupByName(rows)
+    expect(groups.map((g) => g.name)).toEqual([null, '日本', '台灣'])
+    expect(groups.map((g) => g.items.map((r) => r.id))).toEqual([[2, 5], [1, 4], [3]])
+  })
+  it('orders rows by position, not by the order given', () => {
+    const groups = groupByName([row(1, 'a', 5), row(2, 'a', 1)])
+    expect(groups[0].items.map((r) => r.id)).toEqual([2, 1])
+  })
+  it('offers only named groups to sort, and keeps the ungrouped first in the order sent', () => {
+    const groups = groupByName(rows)
+    const named = namedGroups(groups)
+    expect(named.map((g) => g.name)).toEqual(['日本', '台灣'])
+    expect(orderAfterGroupSort(groups, [named[1], named[0]])).toEqual([2, 5, 3, 1, 4])
+  })
+  it('moves a row inside its group with moveInGroup, the same as 類別', () => {
+    const groups = groupByName(rows)
+    expect(orderIds(moveInGroup(groups, '日本', 1, 0))).toEqual([2, 5, 4, 1, 3])
+  })
+})
+
+describe('reposition', () => {
+  it('rewrites position to the order given', () => {
+    const rows = [{ id: 1, position: 0 }, { id: 2, position: 1 }, { id: 3, position: 2 }]
+    expect(reposition(rows, [3, 1, 2])).toEqual([
+      { id: 3, position: 0 }, { id: 1, position: 1 }, { id: 2, position: 2 },
+    ])
+  })
+  it('puts a row the order leaves out at the end', () => {
+    const rows = [{ id: 1, position: 0 }, { id: 2, position: 1 }]
+    expect(reposition(rows, [2]).map((r) => r.id)).toEqual([2, 1])
   })
 })

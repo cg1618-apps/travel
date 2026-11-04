@@ -448,14 +448,24 @@ def test_a_leg_patch_remembers_its_ticket_type(client, trip):
 
 
 # --- done ---------------------------------------------------------------------
+#
+# Readiness itself - what refuses `done: true` and what clears it - is
+# tests/api/test_trip_entries.py's. These start from a ready trip: no legs and
+# tickets not needed.
 
 
 def test_a_new_trip_is_not_done(trip):
     assert trip["done"] is False
 
 
-def test_done_can_be_set_and_cleared(client, trip):
+def ready(client, trip):
     url = f"/api/trips/{trip['id']}"
+    assert client.patch(url, json={"ticket_status": "not_needed"}).json()["ready"] is True
+    return url
+
+
+def test_done_can_be_set_and_cleared(client, trip):
+    url = ready(client, trip)
     set_done = client.patch(url, json={"done": True})
     assert set_done.status_code == 200 and set_done.json()["done"] is True
     assert client.get(url).json()["done"] is True
@@ -464,7 +474,7 @@ def test_done_can_be_set_and_cleared(client, trip):
 
 
 def test_a_null_done_is_a_422(client, trip):
-    url = f"/api/trips/{trip['id']}"
+    url = ready(client, trip)
     # Load-bearing: the trip is done first, so a null that slipped through
     # and was ignored would leave True behind rather than a coincidental False.
     client.patch(url, json={"done": True})
@@ -473,7 +483,7 @@ def test_a_null_done_is_a_422(client, trip):
 
 
 def test_done_is_independent_of_usage(client, trip):
-    url = f"/api/trips/{trip['id']}"
+    url = ready(client, trip)
     done = client.patch(url, json={"done": True}).json()
     assert (done["kind"], done["usage"]) == ("free", "unused")
     # And the other way: moving the usage leaves done alone.

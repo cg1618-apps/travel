@@ -477,3 +477,98 @@ def test_a_missing_note_is_a_404(client, route):
     # Mirror.
     note = add_note(client, route, title="t").json()
     assert client.patch(f"/api/transport-notes/{note['id']}", json={"title": "x"}).status_code == 200
+
+
+# --- ordering the notes of a route --------------------------------------------------
+
+
+@pytest.fixture
+def three_notes(client, route):
+    """Three notes at positions 0..2. Load-bearing for the refusals below."""
+    return [add_note(client, route, title=title).json()["id"] for title in ("一", "二", "三")]
+
+
+def note_order(client, route):
+    return [n["id"] for n in client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"]]
+
+
+def put_note_order(client, route, note_ids):
+    return client.put(f"/api/transport-routes/{route['id']}/note-order", json={"note_ids": note_ids})
+
+
+def test_note_order_sets_positions_and_returns_the_route(client, route, three_notes):
+    a, b, c = three_notes
+    response = put_note_order(client, route, [c, a, b])
+    assert response.status_code == 200
+    assert [n["id"] for n in response.json()["note_entries"]] == [c, a, b]
+    assert note_order(client, route) == [c, a, b]
+
+
+def test_note_order_missing_a_note_is_refused(client, route, three_notes):
+    a, b, c = three_notes
+    assert put_note_order(client, route, [c, a]).status_code == 422
+    assert note_order(client, route) == [a, b, c]
+
+
+def test_note_order_naming_another_routes_note_is_refused(client, route, three_notes):
+    other = add_route(client, "台中")
+    foreign = add_note(client, other, title="外").json()["id"]
+    assert put_note_order(client, route, [*three_notes, foreign]).status_code == 422
+    assert note_order(client, route) == three_notes
+
+
+def test_note_order_on_an_unknown_route_is_a_404(client):
+    response = client.put("/api/transport-routes/999999/note-order", json={"note_ids": []})
+    assert response.status_code == 404
+
+
+# --- route groups --------------------------------------------------------------------
+
+
+def add_grouped(client, from_place, group=None):
+    return client.post(
+        "/api/transport-routes",
+        json={"from_place": from_place, "to_place": "宿舍", "group_name": group},
+    ).json()
+
+
+def route_rows(client):
+    return [(r["from_place"], r["group_name"], r["position"])
+            for r in client.get("/api/transport-routes").json()]
+
+
+@pytest.fixture
+def grouped_routes(client):
+    """彰化 ×2, ungrouped ×1, 台中 ×1: positions 0..3. Load-bearing: a group
+    with something after it, and groups for a reorder to split."""
+    ids = {name: add_grouped(client, name, group)["id"]
+           for name, group in (("a", "彰化"), ("b", "彰化"), ("c", None), ("d", "台中"))}
+    assert route_rows(client) == [("a", "彰化", 0), ("b", "彰化", 1), ("c", None, 2),
+                                  ("d", "台中", 3)]
+    return ids
+
+
+def test_a_new_route_joins_the_end_of_its_group(client, grouped_routes):
+    assert add_grouped(client, "e", "彰化")["position"] == 2
+    assert [name for name, _, _ in route_rows(client)] == ["a", "b", "e", "c", "d"]
+
+
+def test_a_blank_group_is_no_group(client, grouped_routes):
+    assert add_grouped(client, "e", "  ")["group_name"] is None
+    assert [name for name, _, _ in route_rows(client)] == ["a", "b", "c", "e", "d"]
+
+
+def test_changing_a_routes_group_moves_it_to_the_end_of_that_group(client, grouped_routes):
+    client.patch(f"/api/transport-routes/{grouped_routes['d']}", json={"group_name": "彰化"})
+    assert [name for name, _, _ in route_rows(client)] == ["a", "b", "d", "c"]
+
+
+def test_a_route_order_splitting_a_group_is_refused(client, grouped_routes):
+    ids = grouped_routes
+    refused = put_route_order(client, [ids["a"], ids["c"], ids["b"], ids["d"]])
+    assert refused.status_code == 422
+    assert refused.json()["detail"] == (
+        'The order splits the "彰化" group: a group\'s routes must be adjacent.')
+    assert [name for name, _, _ in route_rows(client)] == ["a", "b", "c", "d"]
+    # Mirror: the same routes, groups kept whole.
+    assert put_route_order(client, [ids["d"], ids["b"], ids["a"], ids["c"]]).status_code == 200

@@ -71,3 +71,45 @@ export function groupForChecklist(items) {
   }
   return groups
 }
+
+/**
+ * Notes and transport routes, by `group_name`: the same convention as a
+ * list's 類別 - a group's rows adjacent in `position`, a group placed by its
+ * first row - except that the rows with no group are always shown first,
+ * under no heading. Groups are `{ key, name, items }`, `name` null for that
+ * ungrouped one.
+ */
+export function groupByName(rows) {
+  const groups = new Map()
+  for (const row of [...rows].sort((a, b) => a.position - b.position)) {
+    const name = row.group_name || null
+    const key = name ?? ''
+    if (!groups.has(key)) groups.set(key, { key, name, items: [] })
+    groups.get(key).items.push(row)
+  }
+  const all = [...groups.values()]
+  return [...all.filter((group) => group.name === null), ...all.filter((group) => group.name !== null)]
+}
+
+/** The named groups only: what 排序群組 offers, since the ungrouped rows stay first. */
+export const namedGroups = (groups) => groups.filter((group) => group.name !== null)
+
+/**
+ * The full order after 排序群組: the ungrouped rows first, as they are shown,
+ * then the named groups in the order the dialog left them.
+ */
+export const orderAfterGroupSort = (groups, named) =>
+  orderIds([...groups.filter((group) => group.name === null), ...named])
+
+/**
+ * `rows` with `position` rewritten to the order `ids` names - a reorder
+ * applied to the cache before the server answers, for screens that group by
+ * position. A row `ids` does not name goes after the rest.
+ */
+export function reposition(rows, ids) {
+  const rank = (row) => {
+    const index = ids.indexOf(row.id)
+    return index === -1 ? ids.length + row.position : index
+  }
+  return [...rows].sort((a, b) => rank(a) - rank(b)).map((row, position) => ({ ...row, position }))
+}

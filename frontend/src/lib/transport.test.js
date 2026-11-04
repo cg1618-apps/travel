@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  canSaveNote, formatPrice, groupByDayType, inIdOrder, linkText, moveTo, notePayload, optionSummary,
+  canSaveNote, formatPrice, groupByDayType, inIdOrder, linkText, moveBy, moveTo, noteName, notePayload,
+  optionSummary,
 } from './transport'
 
 describe('formatPrice', () => {
@@ -81,6 +82,29 @@ describe('notePayload and canSaveNote', () => {
     expect(canSaveNote(fields({ description: '說明' }))).toBe(false)
     expect(canSaveNote(fields({ description: '說明', links: ['', ' '] }))).toBe(false)
   })
+  it('needs a title on the 筆記 page, links or not', () => {
+    const page = { titleRequired: true }
+    expect(canSaveNote(fields({ links: ['https://a.example'] }), page)).toBe(false)
+    expect(canSaveNote(fields({ title: ' ' }), page)).toBe(false)
+    expect(canSaveNote(fields({ title: '轉乘' }), page)).toBe(true)
+  })
+  it('sends group_name only when the form has it, blank as null', () => {
+    expect(notePayload(fields({})).group_name).toBeUndefined()
+    expect(notePayload(fields({ group_name: '  ' })).group_name).toBeNull()
+    expect(notePayload(fields({ group_name: ' 日本 ' })).group_name).toBe('日本')
+  })
+})
+
+describe('moveBy', () => {
+  it('moves one place up or down', () => {
+    expect(moveBy(['a', 'b', 'c'], 1, -1)).toEqual(['b', 'a', 'c'])
+    expect(moveBy(['a', 'b', 'c'], 1, 1)).toEqual(['a', 'c', 'b'])
+  })
+  it('leaves the list as it is past either end', () => {
+    const list = ['a', 'b']
+    expect(moveBy(list, 0, -1)).toBe(list)
+    expect(moveBy(list, 1, 1)).toBe(list)
+  })
 })
 
 describe('linkText', () => {
@@ -90,5 +114,13 @@ describe('linkText', () => {
   })
   it('shows anything that is not a URL as typed', () => {
     expect(linkText('not a url')).toBe('not a url')
+  })
+})
+
+describe('noteName', () => {
+  it('is the title, else the first link, else 筆記', () => {
+    expect(noteName({ title: '轉乘', links: [] })).toBe('轉乘')
+    expect(noteName({ title: null, links: ['https://a.example/x'] })).toBe('a.example/x')
+    expect(noteName({ title: null, links: [] })).toBe('筆記')
   })
 })

@@ -29,6 +29,7 @@ from app.schemas.transport import (
     TransportDepartureResponse,
     TransportDepartureUpdate,
     TransportNoteCreate,
+    TransportNoteOrder,
     TransportNoteResponse,
     TransportNoteUpdate,
     TransportOptionBase,
@@ -40,7 +41,14 @@ from app.schemas.transport import (
     TransportRouteResponse,
     TransportRouteUpdate,
 )
-from app.services.domain.ordering import OrderRefused, apply_order, check_order
+from app.services.domain.ordering import (
+    OrderRefused,
+    apply_order,
+    check_groups,
+    check_order,
+    place_in_group,
+    ungrouped_or_named,
+)
 
 router = APIRouter(tags=["Transport"])
 
@@ -90,9 +98,8 @@ def _get_note(db: Session, note_id: int) -> TransportNote:
     return note
 
 
-def _next_route_position(db: Session) -> int:
-    highest = db.execute(select(func.max(TransportRoute.position))).scalar()
-    return 0 if highest is None else highest + 1
+#: Every route is in one set: no scope narrows it.
+ALL_ROUTES: dict = {}
 
 
 def _next_option_position(db: Session, route_id: int) -> int:
@@ -114,9 +121,15 @@ def _link_rows(urls: list[str]) -> list[TransportNoteLink]:
     return [TransportNoteLink(url=url, position=position) for position, url in enumerate(urls)]
 
 
-def _apply_order(rows: dict, ids: list[int], *, noun: str, where: str) -> None:
+def _apply_order(
+    rows: dict, ids: list[int], *, noun: str, where: str, groups: dict | None = None
+) -> None:
+    """Check the whole order, and that it splits no group when `groups` maps
+    each row to its group; then apply it."""
     try:
         check_order(ids, rows, noun=noun, where=where)
+        if groups is not None:
+            check_groups(ids, groups, noun=noun, describe=ungrouped_or_named)
     except OrderRefused as refused:
         raise HTTPException(status_code=422, detail=str(refused)) from None
     apply_order(rows, ids)
@@ -168,7 +181,13 @@ def reorder_routes(payload: TransportRouteOrder, db: Session = Depends(get_db)):
     """Every route's position in one write. A literal path, declared before
     the `{route_id}` routes, so "order" is never read as an id."""
     routes = {route.id: route for route in db.scalars(select(TransportRoute))}
-    _apply_order(routes, payload.route_ids, noun="route", where="among the routes")
+    _apply_order(
+        routes,
+        payload.route_ids,
+        noun="route",
+        where="among the routes",
+        groups={route_id: route.group_name for route_id, route in routes.items()},
+    )
     db.commit()
     db.expire_all()
     return list_routes(db)
@@ -176,7 +195,8 @@ def reorder_routes(payload: TransportRouteOrder, db: Session = Depends(get_db)):
 
 @router.post("/api/transport-routes", response_model=TransportRouteResponse, status_code=201)
 def create_route(payload: TransportRouteBase, db: Session = Depends(get_db)):
-    route = TransportRoute(position=_next_route_position(db), **payload.model_dump())
+    position = place_in_group(db, TransportRoute, ALL_ROUTES, "group_name", payload.group_name)
+    route = TransportRoute(position=position, **payload.model_dump())
     db.add(route)
     db.commit()
     return _get_route(db, route.id)
@@ -190,8 +210,16 @@ def read_route(route_id: int, db: Session = Depends(get_db)):
 @router.patch("/api/transport-routes/{route_id}", response_model=TransportRouteResponse)
 def update_route(route_id: int, payload: TransportRouteUpdate, db: Session = Depends(get_db)):
     route = _get_route(db, route_id)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    moved = "group_name" in changes and changes["group_name"] != route.group_name
+    for field, value in changes.items():
         setattr(route, field, value)
+    # A new group: the route joins the end of it, as an item does on a new
+    # category. A position sent in the same PATCH is taken as meant and wins.
+    if moved and "position" not in changes:
+        route.position = place_in_group(
+            db, TransportRoute, ALL_ROUTES, "group_name", route.group_name, exclude_id=route.id
+        )
     db.commit()
     db.expire_all()
     return _get_route(db, route_id)
@@ -211,6 +239,18 @@ def reorder_options(route_id: int, payload: TransportOptionOrder, db: Session = 
     route = _get_route(db, route_id)
     options = {option.id: option for option in route.options}
     _apply_order(options, payload.option_ids, noun="option", where="on this route")
+    db.commit()
+    db.expire_all()
+    return _get_route(db, route_id)
+
+
+@router.put("/api/transport-routes/{route_id}/note-order", response_model=TransportRouteResponse)
+def reorder_notes(route_id: int, payload: TransportNoteOrder, db: Session = Depends(get_db)):
+    """Every note's position on this route in one write; a note of another
+    route is foreign here."""
+    route = _get_route(db, route_id)
+    notes = {note.id: note for note in route.note_entries}
+    _apply_order(notes, payload.note_ids, noun="note", where="on this route")
     db.commit()
     db.expire_all()
     return _get_route(db, route_id)

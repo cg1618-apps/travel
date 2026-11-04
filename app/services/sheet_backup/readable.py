@@ -9,7 +9,7 @@ matrix of cells, and nothing here talks to Google.
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.constants import TAIPEI, Kind, Status
+from app.constants import TAIPEI, Kind, Leg, Status
 from app.models import (
     PackingItem,
     PackingList,
@@ -19,6 +19,7 @@ from app.models import (
     Trip,
     TripLeg,
 )
+from app.services.domain.leg_types import enabled_labels, shows
 
 # --- labels.js, mirrored ----------------------------------------------------
 
@@ -34,6 +35,18 @@ LEG_LABELS = {"outbound": "去程", "return": "回程"}
 ADVANCE_TICKET_LABELS = {True: "需要", False: "不需要"}
 KIND_LABELS = {"template": "範本", "saved": "保存", "free": "一般"}
 USAGE_LABELS = {"in_use": "使用中", "upcoming": "未來使用", "unused": "未使用", "past": "過去使用"}
+TRANSPORT_TYPE_LABELS = {
+    "hsr": "高鐵", "train": "火車", "metro": "捷運", "bus": "公車", "coach": "客運",
+    "car": "開車", "bike": "腳踏車", "walk": "走路", "flight": "飛機", "ship": "船",
+    "other": "其他",
+}
+RIDE_TYPE_LABELS = {
+    "hail": "叫車", "own_car": "自駕自己的車", "car_rental": "租車",
+    "own_bike": "自己的", "youbike": "YouBike", "moovo": "Moovo", "bike_rental": "租車",
+}
+TICKET_STATUS_LABELS = {"not_bought": "未買票", "not_needed": "無需買票", "bought": "已買票"}
+DONE_LABEL = "已準備完成"
+NOT_DONE_LABEL = "未準備完成"
 
 
 def check_label(item: PackingItem) -> str:
@@ -107,8 +120,9 @@ def _tick(value: bool) -> str:
 
 ITEM_HEADERS = ["類別", "項目", "細節", "需求", "數量", "已打包數量", "單位",
                 "打包狀態", "打包時機", "Double Check", "取得地點", "備註"]
-LEG_HEADERS = ["出發地點", "目的地", "出發時間", "抵達時間", "交通工具", "車號", "座位",
-               "價錢", "車票類型", "已訂票", "付款", "取票", "訂票代碼", "備註", "打包清單"]
+LEG_HEADERS = ["出發地點", "目的地", "出發時間", "抵達時間", "類型", "方向", "交通工具", "車號",
+               "座位", "價錢", "車票類型", "已訂票", "已付款", "已取票", "訂票代碼", "備註",
+               "打包清單"]
 TRANSPORT_HEADERS = ["目標起點", "目標終點", "交通工具", "提前買票", "方向", "起點", "終點",
                      "實際起點", "實際終點", "價錢", "時間", "班次間隔", "平日班次",
                      "假日班次", "路線圖", "時刻表", "即時動態", "備註"]
@@ -148,36 +162,82 @@ def list_matrix(packing_list: PackingList) -> list[list]:
     ]
 
 
-def trip_matrix(trip: Trip) -> list[list]:
-    """The trip's header block, a blank row, then its legs in departure order."""
-    legs: list[TripLeg] = sorted(trip.legs, key=lambda leg: (leg.departs_at, leg.id))
+def _label_cell(leg: TripLeg, label: str) -> str:
+    """✓ ticked, blank unticked, - when the entry does not show that label."""
+    if label not in enabled_labels(leg):
+        return "-"
+    return _tick(getattr(leg, label))
+
+
+def _shown(leg: TripLeg, field: str):
+    """A field's value when the entry's type shows it; a hidden one is kept in
+    the row but, as on screen, not shown."""
+    return _text(getattr(leg, field)) if shows(leg, field) else ""
+
+
+def _type_cell(leg: TripLeg) -> str:
+    label = TRANSPORT_TYPE_LABELS[leg.transport_type]
+    if leg.ride_type and shows(leg, "ride_type"):
+        return f"{label} · {RIDE_TYPE_LABELS[leg.ride_type]}"
+    return label
+
+
+def leg_row(leg: TripLeg) -> list:
     return [
+        leg.from_place,
+        leg.to_place,
+        taipei(leg.departs_at),
+        taipei(leg.arrives_at),
+        _type_cell(leg),
+        _shown(leg, "direction"),
+        _shown(leg, "service"),
+        _shown(leg, "service_number"),
+        _shown(leg, "seat"),
+        _shown(leg, "price"),
+        _shown(leg, "ticket_type"),
+        _label_cell(leg, "booked"),
+        _label_cell(leg, "paid"),
+        _label_cell(leg, "collected"),
+        _text(leg.booking_code) if leg.has_booking_code else "",
+        _text(leg.notes),
+        leg.packing_list.name if leg.packing_list else "",
+    ]
+
+
+def _leg_order(leg: TripLeg) -> tuple:
+    """Departure order, undated entries last, then id: the screen's order."""
+    return (leg.departs_at is None, leg.departs_at or datetime.min.replace(tzinfo=TAIPEI), leg.id)
+
+
+def trip_matrix(trip: Trip) -> list[list]:
+    """The trip's header block, then its legs in departure order: one block
+    on a one-way trip, a 去程 block and a 回程 block on a round trip, each
+    with its title and remark."""
+    legs: list[TripLeg] = sorted(trip.legs, key=_leg_order)
+    header = [
         [trip.name],
         ["狀態", status_label(trip)],
-        ["備註", _text(trip.notes)],
-        [],
-        LEG_HEADERS,
-        *(
-            [
-                leg.from_place,
-                leg.to_place,
-                taipei(leg.departs_at),
-                taipei(leg.arrives_at),
-                _text(leg.service),
-                _text(leg.service_number),
-                _text(leg.seat),
-                _text(leg.price),
-                _text(leg.ticket_type),
-                _tick(leg.booked),
-                _tick(leg.paid),
-                _tick(leg.collected),
-                _text(leg.booking_code),
-                _text(leg.notes),
-                leg.packing_list.name if leg.packing_list else "",
-            ]
-            for leg in legs
-        ),
+        ["準備", DONE_LABEL if trip.done else NOT_DONE_LABEL],
+        ["車票", TICKET_STATUS_LABELS[trip.ticket_status]],
     ]
+    if not trip.round_trip:
+        return [*header, ["備註", _text(trip.notes)], [], LEG_HEADERS, *map(leg_row, legs)]
+    sections = (
+        (Leg.OUTBOUND, trip.outbound_title, trip.notes),
+        (Leg.RETURN, trip.return_title, trip.return_notes),
+    )
+    rows = header
+    for section, title, remark in sections:
+        rows += [
+            [],
+            [LEG_LABELS[section], _text(title)],
+            ["備註", _text(remark)],
+            LEG_HEADERS,
+            # A leg with no section on a round trip cannot be stored by the
+            # API; one put there by hand reads as 去程, as the screen shows it.
+            *(leg_row(leg) for leg in legs if (leg.section or Leg.OUTBOUND) == section),
+        ]
+    return rows
 
 
 def departures_text(option: TransportOption, day_type: str) -> str:

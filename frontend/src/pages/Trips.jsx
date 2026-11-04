@@ -17,8 +17,8 @@ import { ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { keysFor } from '../lib/keys'
 import { AUTO_SAVE_LIMIT, TABS, autofillName, isAutoSaved, tabCounts } from '../lib/kinds'
-import { DONE_LABEL, KIND_LABELS, USAGE_LABELS } from '../lib/labels'
-import { firstLine, legSummary, needsStartDate, sortLegs } from '../lib/trips'
+import { KIND_LABELS, USAGE_LABELS } from '../lib/labels'
+import { firstLine, legSummary, needsStartDate, readinessBadges, sortLegs } from '../lib/trips'
 
 const INDEX = ['trips', 'index']
 const inputClass = 'rounded-md border border-border bg-canvas px-2 py-1.5 text-sm text-text min-w-0'
@@ -34,8 +34,8 @@ const EMPTY = {
 
 /**
  * A name, 一般 or 範本, an optional 從範本 and + 新增行程. Picking a template
- * fills the name unless one was typed. A template with legs needs a 出發日期,
- * the Taipei day its first leg moves to. `pending` holds 建立 while a create
+ * fills the name unless one was typed. A template with a timed leg needs a 出發日期,
+ * the Taipei day its earliest departure moves to. `pending` holds 建立 while a create
  * is in flight, so a second click cannot make a second trip.
  */
 function CreateTrip({ templates, pending, failed, onCreate, onCancel }) {
@@ -130,8 +130,8 @@ function CreateTrip({ templates, pending, failed, onCreate, onCancel }) {
 }
 
 /**
- * One trip: name, a 狀態 badge on 一般 and 自動保存, an 已完成 badge once it
- * is done, one line per leg. 保存 and 自動保存 cards add the first line of
+ * One trip: name, 已準備完成 or 未準備完成 and 已買票 or 未買票 (none on a
+ * 範本), a 狀態 badge on 一般, one line per leg. 保存 and 自動保存 cards add the first line of
  * 保存備註.
  */
 function TripCard({ trip, selecting, selected, onToggle }) {
@@ -152,7 +152,11 @@ function TripCard({ trip, selecting, selected, onToggle }) {
         <span className="flex items-center justify-between gap-2">
           <span className="min-w-0 font-semibold">{trip.name}</span>
           <span className="flex shrink-0 gap-1">
-            {trip.done && <span className={badge}>{DONE_LABEL}</span>}
+            {readinessBadges(trip).map((label) => (
+              <span key={label} className={badge}>
+                {label}
+              </span>
+            ))}
             {trip.kind === 'free' && <span className={badge}>{USAGE_LABELS[trip.usage]}</span>}
           </span>
         </span>

@@ -115,3 +115,41 @@ class Usage(StrEnum):
 
 
 TIMING_ORDER: tuple[Timing, ...] = tuple(Timing)
+
+
+class TransportType(StrEnum):
+    """How a trip entry travels. What each one shows and which booking labels
+    it carries is `app.services.domain.leg_types.LEG_TYPES`."""
+
+    HSR = "hsr"
+    TRAIN = "train"
+    METRO = "metro"
+    BUS = "bus"
+    COACH = "coach"
+    CAR = "car"
+    BIKE = "bike"
+    WALK = "walk"
+    FLIGHT = "flight"
+    SHIP = "ship"
+    OTHER = "other"
+
+
+class RideType(StrEnum):
+    """乘車類型 for a car entry, 類型 for a bike one. One column, one CHECK over
+    the union; which members belong to which type is `LEG_TYPES`."""
+
+    HAIL = "hail"
+    OWN_CAR = "own_car"
+    CAR_RENTAL = "car_rental"
+    OWN_BIKE = "own_bike"
+    YOUBIKE = "youbike"
+    MOOVO = "moovo"
+    BIKE_RENTAL = "bike_rental"
+
+
+class TicketStatus(StrEnum):
+    """A trip's 未買票 / 無需買票 / 已買票. Only `NOT_BOUGHT` keeps it from ready."""
+
+    NOT_BOUGHT = "not_bought"
+    NOT_NEEDED = "not_needed"
+    BOUGHT = "bought"

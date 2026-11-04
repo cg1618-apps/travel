@@ -6,6 +6,7 @@ is a table missing from the next migration, with nothing to say so.
 """
 
 from app.models.label_option import LabelOption
+from app.models.note import Note, NoteLink
 from app.models.packing_item import PackingItem
 from app.models.packing_list import PackingList
 from app.models.transport import (
@@ -19,6 +20,8 @@ from app.models.trip import Trip, TripLeg
 
 __all__ = [
     "LabelOption",
+    "Note",
+    "NoteLink",
     "PackingItem",
     "PackingList",
     "TransportDeparture",

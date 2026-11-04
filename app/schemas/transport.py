@@ -5,7 +5,7 @@ from datetime import time as clock_time
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants import DayType
-from app.schemas.base import NonNullableUpdate
+from app.schemas.base import NonNullableUpdate, blank_is_null, stripped_links
 
 
 class TransportDepartureCreate(BaseModel):
@@ -76,7 +76,11 @@ class TransportOptionResponse(TransportOptionBase):
 class TransportRouteBase(BaseModel):
     from_place: str = Field(min_length=1)
     to_place: str = Field(min_length=1)
+    #: The route's group; stripped, and blank is no group.
+    group_name: str | None = None
     notes: str | None = None
+
+    _group = field_validator("group_name")(blank_is_null)
 
 
 class TransportRouteUpdate(NonNullableUpdate):
@@ -84,28 +88,14 @@ class TransportRouteUpdate(NonNullableUpdate):
 
     from_place: str | None = Field(default=None, min_length=1)
     to_place: str | None = Field(default=None, min_length=1)
+    group_name: str | None = None
     notes: str | None = None
     position: int | None = Field(default=None, ge=0)
 
+    _group = field_validator("group_name")(blank_is_null)
+
 
 NOTE_NEEDS_TITLE_OR_LINK = "A note needs a title or at least one link."
-
-
-def _blank_title_is_null(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return value.strip() or None
-
-
-def _stripped_links(value: list[str] | None) -> list[str] | None:
-    """Each link stripped; a blank one refused rather than silently dropped,
-    so a caller that sent an empty row learns it did."""
-    if value is None:
-        return None
-    links = [link.strip() for link in value]
-    if any(link == "" for link in links):
-        raise ValueError("a link cannot be blank")
-    return links
 
 
 class TransportNoteCreate(BaseModel):
@@ -116,8 +106,8 @@ class TransportNoteCreate(BaseModel):
     description: str | None = None
     links: list[str] = []
 
-    _title = field_validator("title")(_blank_title_is_null)
-    _links = field_validator("links")(_stripped_links)
+    _title = field_validator("title")(blank_is_null)
+    _links = field_validator("links")(stripped_links)
 
     @model_validator(mode="after")
     def _title_or_link(self):
@@ -137,8 +127,8 @@ class TransportNoteUpdate(NonNullableUpdate):
     description: str | None = None
     links: list[str] | None = None
 
-    _title = field_validator("title")(_blank_title_is_null)
-    _links = field_validator("links")(_stripped_links)
+    _title = field_validator("title")(blank_is_null)
+    _links = field_validator("links")(stripped_links)
 
 
 class TransportNoteResponse(BaseModel):
@@ -171,6 +161,12 @@ class TransportRouteOrder(BaseModel):
     """Every route, each once, in the order the transport page should read."""
 
     route_ids: list[int]
+
+
+class TransportNoteOrder(BaseModel):
+    """Every note of one route, each once, in the order it should read."""
+
+    note_ids: list[int]
 
 
 class TransportOptionOrder(BaseModel):

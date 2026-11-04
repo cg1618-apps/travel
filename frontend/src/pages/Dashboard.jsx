@@ -1,6 +1,8 @@
 /**
  * The front page: a month calendar marking every trip's days, then 一般 lists
- * and trips that are 使用中 or 未來使用, 使用中 first. Nothing to add or edit.
+ * and trips that are 使用中 or 未來使用, soonest start first (`onDashboard`).
+ * A row whose end has passed says 已結束; a trip says whether it is ready and
+ * whether its tickets are bought. Nothing to add or edit.
  *
  * Every other shelf - 自動保存, 保存, 範本 - and every create form are on
  * their own pages, where they are managed.
@@ -12,10 +14,10 @@ import { endpoints } from '../api/endpoints'
 import { ErrorState, LoadingState } from '../components/States'
 import TripCalendar from '../components/TripCalendar'
 import { useApiQuery } from '../hooks/useApiQuery'
-import { everyRow, onDashboard } from '../lib/kinds'
-import { DONE_LABEL, LEG_LABELS, USAGE_LABELS } from '../lib/labels'
+import { everyRow, hasEnded, legsByList, onDashboard } from '../lib/kinds'
+import { ENDED_LABEL, LEG_LABELS, USAGE_LABELS } from '../lib/labels'
 import { departureLabel } from '../lib/timing'
-import { tripDateRange } from '../lib/trips'
+import { readinessBadges, tripDateRange } from '../lib/trips'
 
 function Section({ title, more, children }) {
   return (
@@ -45,11 +47,10 @@ function Badge({ children }) {
   )
 }
 
-function Lists({ rows }) {
+function Lists({ rows, linkedLegs, now }) {
   if (rows.length === 0) {
     return <Empty>目前沒有使用中或未來使用的清單。</Empty>
   }
-  const today = new Date()
   return (
     <ul className="m-0 list-none border-t border-border p-0">
       {rows.map((row) => (
@@ -62,9 +63,10 @@ function Lists({ rows }) {
               {row.name}
               {row.leg && <span className="ml-2 text-xs text-text-faint">{LEG_LABELS[row.leg]}</span>}
               <Badge>{USAGE_LABELS[row.usage]}</Badge>
+              {hasEnded(row, now, linkedLegs) && <Badge>{ENDED_LABEL}</Badge>}
             </span>
             <span className="shrink-0 text-sm tabular-nums text-text-muted">
-              {departureLabel(row.departure_at, today)} · 已處理 {row.settled_count} /{' '}
+              {departureLabel(row.departure_at, now)} · 已處理 {row.settled_count} /{' '}
               {row.item_count}
             </span>
           </Link>
@@ -74,7 +76,7 @@ function Lists({ rows }) {
   )
 }
 
-function Trips({ trips }) {
+function Trips({ trips, now }) {
   if (trips.length === 0) {
     return <Empty>目前沒有使用中或未來使用的行程。</Empty>
   }
@@ -89,7 +91,10 @@ function Trips({ trips }) {
             <span className="min-w-0">
               {trip.name}
               <Badge>{USAGE_LABELS[trip.usage]}</Badge>
-              {trip.done && <Badge>{DONE_LABEL}</Badge>}
+              {hasEnded(trip, now) && <Badge>{ENDED_LABEL}</Badge>}
+              {readinessBadges(trip).map((label) => (
+                <Badge key={label}>{label}</Badge>
+              ))}
             </span>
             <span className="shrink-0 text-sm tabular-nums text-text-muted">
               {tripDateRange(trip.legs) ?? '沒有行程段'}
@@ -110,16 +115,20 @@ export default function Dashboard() {
     if (query.isError) return <ErrorState error={query.error} onRetry={query.refetch} />
   }
 
+  const now = new Date()
+  // A linked list ends with its leg, which only the trips know.
+  const linkedLegs = legsByList(everyRow(trips.data))
+
   return (
     <main className="mx-auto max-w-4xl pb-16 pt-6">
       <h1 className="m-0 px-4 text-xl font-semibold">travel</h1>
       {/* Every trip but templates, whose dates are only a starting point. */}
       <TripCalendar trips={everyRow(trips.data).filter((trip) => trip.kind !== 'template')} />
       <Section title="清單" more={{ to: '/lists', label: '所有清單' }}>
-        <Lists rows={onDashboard(lists.data.free)} />
+        <Lists rows={onDashboard(lists.data.free)} linkedLegs={linkedLegs} now={now} />
       </Section>
       <Section title="行程" more={{ to: '/trips', label: '所有行程' }}>
-        <Trips trips={onDashboard(trips.data.free)} />
+        <Trips trips={onDashboard(trips.data.free)} now={now} />
       </Section>
     </main>
   )
