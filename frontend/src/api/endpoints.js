@@ -19,8 +19,12 @@ export const endpoints = {
   },
   transport: {
     routes: () => '/api/transport-routes',
+    routesOrder: () => '/api/transport-routes/order',
     route: (id) => `/api/transport-routes/${id}`,
+    optionsOrder: (routeId) => `/api/transport-routes/${routeId}/order`,
     options: (routeId) => `/api/transport-routes/${routeId}/options`,
+    notes: (routeId) => `/api/transport-routes/${routeId}/notes`,
+    note: (id) => `/api/transport-notes/${id}`,
     option: (id) => `/api/transport-options/${id}`,
     departures: (optionId) => `/api/transport-options/${optionId}/departures`,
     departure: (id) => `/api/transport-departures/${id}`,

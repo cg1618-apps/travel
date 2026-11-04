@@ -3,7 +3,7 @@
  *
  * The sheet's tab, as cards — one per leg, with the booking code large enough
  * to read off a phone at a ticket gate. `/trips/:tripId` only - the index is
- * `Trips.jsx`. A trip carries 狀態, 保存 and 當作範本 in its header; ← 行程
+ * `Trips.jsx`. A trip carries 狀態, 保存, 當作範本 and 已完成 in its header; ← 行程
  * returns to the tab it is on, and the whole header sticks to the top while
  * the legs scroll under it. Every field is a cell that commits on Enter or
  * blur; the times, the packing list link and the three ticks are the
@@ -34,7 +34,7 @@ import {
   linkLabel,
   tabFor,
 } from '../lib/kinds'
-import { BOOKING_LABELS } from '../lib/labels'
+import { BOOKING_LABELS, DONE_LABEL } from '../lib/labels'
 import {
   formatArrival,
   formatDuration,
@@ -607,7 +607,23 @@ function TripView({ trip, unlinked, ticketTypes, actions, onDeleted, onDismissNo
             onDelete={() => setConfirming(true)}
           />
         </div>
-        <KindControls row={trip} noun="行程" onPatch={patchTrip} onMakeTemplate={makeTemplate} />
+        {/* 已完成 is its own flag, independent of 狀態 and kind; a 範本 is only
+            a starting point, so it has none to show. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <KindControls row={trip} noun="行程" onPatch={patchTrip} onMakeTemplate={makeTemplate} />
+          {trip.kind !== 'template' && (
+            <label className="flex items-center gap-1 text-sm text-text-muted">
+              <input
+                type="checkbox"
+                checked={Boolean(trip.done)}
+                onChange={(event) => patchTrip({ done: event.target.checked })}
+                aria-label={`「${trip.name}」${DONE_LABEL}`}
+                className="size-4"
+              />
+              {DONE_LABEL}
+            </label>
+          )}
+        </div>
         <TextCell value={trip.notes} placeholder="備註" onCommit={(notes) => patchTrip({ notes })} />
         {(trip.kind === 'saved' || isAutoSaved(trip) || trip.archive_note) && (
           <TextCell

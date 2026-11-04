@@ -13,7 +13,7 @@ import { ErrorState, LoadingState } from '../components/States'
 import TripCalendar from '../components/TripCalendar'
 import { useApiQuery } from '../hooks/useApiQuery'
 import { everyRow, onDashboard } from '../lib/kinds'
-import { LEG_LABELS, USAGE_LABELS } from '../lib/labels'
+import { DONE_LABEL, LEG_LABELS, USAGE_LABELS } from '../lib/labels'
 import { departureLabel } from '../lib/timing'
 import { tripDateRange } from '../lib/trips'
 
@@ -89,6 +89,7 @@ function Trips({ trips }) {
             <span className="min-w-0">
               {trip.name}
               <Badge>{USAGE_LABELS[trip.usage]}</Badge>
+              {trip.done && <Badge>{DONE_LABEL}</Badge>}
             </span>
             <span className="shrink-0 text-sm tabular-nums text-text-muted">
               {tripDateRange(trip.legs) ?? '沒有行程段'}

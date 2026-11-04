@@ -30,7 +30,8 @@ from app.services.domain.auto_save import (
     apply_kind,
     evict_next,
 )
-from app.services.domain.packing import OrderRefused, copy_items, reset_list, set_order
+from app.services.domain.ordering import OrderRefused
+from app.services.domain.packing import copy_items, reset_list, set_order
 
 router = APIRouter(prefix="/api/packing-lists", tags=["Packing lists"])
 

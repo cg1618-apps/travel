@@ -80,11 +80,13 @@ class TripBase(BaseModel):
 
 class TripUpdate(NonNullableUpdate):
     # `evict_confirmed` is a plain bool, so pydantic already refuses null for it.
-    non_nullable = ("name", "kind", "usage")
+    non_nullable = ("name", "kind", "usage", "done")
 
     name: str | None = Field(default=None, min_length=1)
     notes: str | None = None
     archive_note: str | None = None
+    #: 已完成. Independent of `kind` and `usage`: setting it moves no shelf.
+    done: bool | None = None
     #: 保存 or 取消保存. A template is made by creating one.
     kind: Literal["saved", "free"] | None = None
     usage: Usage | None = None
@@ -99,6 +101,7 @@ class TripResponse(TripBase):
     usage: Usage | None
     auto_saved_at: datetime | None
     archive_note: str | None = None
+    done: bool = False
     created_at: datetime
     legs: list[TripLegResponse] = []
 

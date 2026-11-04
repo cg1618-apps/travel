@@ -35,6 +35,15 @@ class TransportRoute(Base, TimestampMixin):
         passive_deletes=True,
         order_by="TransportOption.position",
     )
+    # Not `notes`: that is the route's 備註, the plain text column above.
+    # These are the titled notes with links shown under it.
+    note_entries = relationship(
+        "TransportNote",
+        back_populates="route",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="TransportNote.position",
+    )
 
 
 class TransportOption(Base, TimestampMixin):
@@ -111,3 +120,53 @@ class TransportDeparture(Base, TimestampMixin):
     )
 
     option = relationship("TransportOption", back_populates="departures")
+
+
+class TransportNote(Base, TimestampMixin):
+    """A note on a route: a title, a description and links.
+
+    At least a title or a link - the router enforces that, on create and on
+    the merged result of a patch; the table only stores it.
+    """
+
+    __tablename__ = "transport_note"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    route_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "transport_route.id", ondelete="CASCADE", name="fk_transport_note_transport_route"
+        ),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str | None] = mapped_column(String, nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+    route = relationship("TransportRoute", back_populates="note_entries")
+    links = relationship(
+        "TransportNoteLink",
+        back_populates="note",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="TransportNoteLink.position",
+    )
+
+
+class TransportNoteLink(Base, TimestampMixin):
+    """One URL on a note, in the order the note lists them."""
+
+    __tablename__ = "transport_note_link"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "transport_note.id", ondelete="CASCADE", name="fk_transport_note_link_transport_note"
+        ),
+        nullable=False,
+        index=True,
+    )
+    url: Mapped[str] = mapped_column(String, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+
+    note = relationship("TransportNote", back_populates="links")

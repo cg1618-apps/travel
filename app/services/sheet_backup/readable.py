@@ -10,7 +10,15 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.constants import TAIPEI, Kind, Status
-from app.models import PackingItem, PackingList, TransportOption, TransportRoute, Trip, TripLeg
+from app.models import (
+    PackingItem,
+    PackingList,
+    TransportNote,
+    TransportOption,
+    TransportRoute,
+    Trip,
+    TripLeg,
+)
 
 # --- labels.js, mirrored ----------------------------------------------------
 
@@ -178,18 +186,32 @@ def departures_text(option: TransportOption, day_type: str) -> str:
     return " ".join(f"{'*' if d.irregular else ''}{d.time.strftime('%H:%M')}" for d in times)
 
 
+def note_text(note: TransportNote) -> str:
+    """`title · description · link link`: one route note on one line, its
+    missing parts left out."""
+    parts = [note.title, note.description, " ".join(link.url for link in note.links)]
+    return " · ".join(part for part in parts if part)
+
+
+def route_notes_text(route: TransportRoute) -> str:
+    """The route's 備註, then each of its notes on a line of its own."""
+    notes = sorted(route.note_entries, key=lambda n: (n.position, n.id))
+    return "\n".join(text for text in [route.notes, *map(note_text, notes)] if text)
+
+
 def transport_matrix(routes: list[TransportRoute]) -> list[list]:
     """One row per option, grouped by route.
 
     A route with no options gets a row of its own, so it is not lost. So does
-    a route with notes: the 備註 column belongs to the option on an option's
-    row, and the route's own notes would otherwise have nowhere to go.
+    a route with 備註 or notes: the 備註 column belongs to the option on an
+    option's row, and the route's own would otherwise have nowhere to go.
     """
     rows = [TRANSPORT_HEADERS]
     for route in sorted(routes, key=lambda r: (r.position, r.id)):
         options = sorted(route.options, key=lambda o: (o.position, o.id))
-        if not options or route.notes:
-            rows.append([route.from_place, route.to_place, *[""] * 15, _text(route.notes)])
+        notes = route_notes_text(route)
+        if not options or notes:
+            rows.append([route.from_place, route.to_place, *[""] * 15, notes])
         for option in options:
             rows.append([
                 route.from_place,

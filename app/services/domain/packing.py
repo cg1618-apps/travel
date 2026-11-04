@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.constants import Status
 from app.models import PackingItem, PackingList
+from app.services.domain.ordering import OrderRefused, apply_order, check_order
 
 
 def copy_items(db: Session, source: PackingList, target: PackingList) -> None:
@@ -109,10 +110,6 @@ def place_in_group(
     return insert_after(db, last)
 
 
-class OrderRefused(ValueError):
-    """An order `set_order` will not apply. The message is the 422's `detail`."""
-
-
 def _group_name(category: str | None) -> str:
     return "the uncategorised group" if category is None else f'the "{category}" group'
 
@@ -130,20 +127,7 @@ def set_order(db: Session, packing_list: PackingList, item_ids: list[int]) -> No
         for item in db.scalars(select(PackingItem).where(PackingItem.list_id == packing_list.id))
     }
 
-    seen: set[int] = set()
-    for item_id in item_ids:
-        if item_id in seen:
-            raise OrderRefused(f"Item {item_id} appears more than once in the order.")
-        seen.add(item_id)
-    foreign = [item_id for item_id in item_ids if item_id not in items]
-    if foreign:
-        raise OrderRefused(f"Not on this list: items {', '.join(map(str, foreign))}.")
-    missing = sorted(set(items) - seen)
-    if missing:
-        raise OrderRefused(
-            f"The order must name every item on the list; missing items "
-            f"{', '.join(map(str, missing))}."
-        )
+    check_order(item_ids, items, noun="item", where="on this list")
 
     # One entry per run of equal categories; a category with two runs is a
     # group the order would split.
@@ -157,8 +141,7 @@ def set_order(db: Session, packing_list: PackingList, item_ids: list[int]) -> No
             )
         started.add(category)
 
-    for position, item_id in enumerate(item_ids):
-        items[item_id].position = position
+    apply_order(items, item_ids)
     db.flush()
 
 

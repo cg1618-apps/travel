@@ -58,9 +58,9 @@ The tabs, in the order the backup leaves them:
 | `總覽` | reading | When the backup ran, and a link to each readable tab. |
 | `清單 · <name>` | reading | One per list in the readable set (below). A header block with name, 狀態, 出發, 去程/回程, 備註 and 已處理 x / y, then one row per item in `position` order. |
 | `行程 · <name>` | reading | One per trip in the readable set. A header block, then one row per leg in departure order, with Taipei times, booking state shown as ✓, the 訂票代碼 and the linked list's name. |
-| `交通` | reading | Every route and option, with departures written as `06:10 *08:15`, where `*` marks an irregular departure. |
+| `交通` | reading | Every route and option, with departures written as `06:10 *08:15`, where `*` marks an irregular departure. A route with no options, or with a 備註 or notes, also gets a row of its own whose 備註 cell holds the 備註 and then each note on its own line, as `title · description · link link`. |
 | `Backup Info` | restore | `backed_up_at`, the Alembic revision the database was at, and each table's row count. |
-| `Label Option` … `Trip Leg` | restore | One tab per table, in restore order: every column, headed by its column name, and every row by `id`. |
+| `Label Option` … `Trip Leg` | restore | One tab per table, in restore order: every column, headed by its column name, and every row by `id`. The transport tabs are `Transport Route`, `Transport Option`, `Transport Departure`, `Transport Note` and `Transport Note Link`, in that order; the order and its reasons are in `app/services/sheet_backup/tabs.py`. |
 
 **The readable set** is what the dashboard shows, plus one more rule:
 
@@ -129,7 +129,7 @@ production it runs inside the container, by the manager session:
 **A restore replaces; it never merges.** Within one transaction it does three
 things:
 
-1. deletes every row of all eight tables;
+1. deletes every row of every table;
 2. inserts every row from the restore tabs with its original `id`;
 3. moves each id sequence past the highest restored id, using
    `ALTER SEQUENCE ... RESTART` rather than `setval`, because `setval` would
@@ -144,7 +144,7 @@ printing the counts. Readable tabs are never read.
 | Condition | Why |
 | --- | --- |
 | `Backup Info` or a restore tab is missing | It is not a backup. |
-| The sheet's Alembic revision is not the database's | The columns would not line up. Migrate first, or restore into a database at the sheet's revision. |
+| The sheet's Alembic revision is not the database's | The columns would not line up. Migrate first, or restore into a database at the sheet's revision. This is also what refuses a backup taken before a table existed — one from before `t2ransport02` has no `Transport Note` tab. There is no cross-revision restore: restore into a database at the backup's revision, upgrade, then back up again. |
 | The database holds rows and `--replace` was not passed | Every table's count is printed, so you see what would be deleted. |
 | A tab's row count differs from `Backup Info`'s | The backup did not finish writing. |
 | A header names no column, appears twice, or a non-null column has no header | Columns are matched by header name, never by position. |

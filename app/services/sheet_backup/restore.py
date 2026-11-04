@@ -1,8 +1,8 @@
 """Rebuild the database from the sheet's restore tabs. Replaces; never merges.
 
 Media upserts, which cannot remove a row deleted since the backup. travel is
-one person's data and the backup is the whole truth, so a restore deletes all
-eight tables and inserts every row with its original `id` - which is also why
+one person's data and the backup is the whole truth, so a restore deletes every
+table and inserts every row with its original `id` - which is also why
 plain integer ids are enough here and nothing needs a stable public key.
 
 Everything is read and checked before anything is deleted, and all of it runs

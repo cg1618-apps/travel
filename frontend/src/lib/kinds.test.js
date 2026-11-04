@@ -108,4 +108,10 @@ describe('linkChoices and linkLabel', () => {
       .toBe('L1 · 2026-09-03 · 使用中')
     expect(linkLabel(at(3, 'saved', '2026-09-02T00:00:00Z'))).toBe('L3 · 2026-09-02 · 保存')
   })
+  it('puts the list date after the name when it has one', () => {
+    expect(linkLabel({ ...at(1, 'free', '2026-09-02T00:00:00Z', 'upcoming'), departure_at: '2026-10-03' }))
+      .toBe('L1 (2026-10-03) · 2026-09-02 · 未來使用')
+    expect(linkLabel({ ...at(3, 'saved', '2026-09-02T00:00:00Z'), departure_at: null }))
+      .toBe('L3 · 2026-09-02 · 保存')
+  })
 })
