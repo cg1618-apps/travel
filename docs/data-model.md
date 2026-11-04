@@ -1,6 +1,6 @@
 # Data model
 
-Last verified: 2026-10-01
+Last verified: 2026-11-04
 
 **What this is for.** Every table this application ships, what each column
 means, and which rules the database itself enforces. The vocabularies the
@@ -18,6 +18,8 @@ the migration wins and this page is wrong.
 - [`transport_route`](#transport_route) — getting from one place to another
 - [`transport_option`](#transport_option) — one way of doing a route
 - [`transport_departure`](#transport_departure) — one scheduled time of an option
+- [`transport_note`](#transport_note) — a titled note on a route
+- [`transport_note_link`](#transport_note_link) — one link on a note
 - [`trip`](#trip) — a named group of journeys
 - [`trip_leg`](#trip_leg) — one booked journey, and the list packed for it
 
@@ -30,6 +32,8 @@ flowchart TD
     O["label_option"] -.->|suggests values for<br/>category, bag, location and ticket_type| I
     R["transport_route"] -->|route_id, ON DELETE CASCADE| T["transport_option"]
     T -->|option_id, ON DELETE CASCADE| D["transport_departure"]
+    R -->|route_id, ON DELETE CASCADE| N["transport_note"]
+    N -->|note_id, ON DELETE CASCADE| K["transport_note_link"]
     P["trip"] -->|trip_id, ON DELETE CASCADE| G["trip_leg"]
     G -->|packing_list_id, ON DELETE SET NULL, unique| L
 ```
@@ -163,8 +167,8 @@ Getting from one place to another. The places are free text.
 | `id` | integer | no | `serial` | |
 | `from_place` | text | no | | |
 | `to_place` | text | no | | |
-| `notes` | text | yes | | |
-| `position` | integer | no | `0` | Display order among routes. |
+| `notes` | text | yes | | 備註, one text value. Not the same thing as the route's notes in `transport_note`, which the API calls `note_entries`. |
+| `position` | integer | no | `0` | Display order among routes. Set as a whole by `PUT /api/transport-routes/order`. |
 | `created_at` | timestamptz | no | `now()` | |
 | `updated_at` | timestamptz | no | `now()` | |
 
@@ -190,7 +194,7 @@ One way of doing a route — a bus line, a train service.
 | `duration` | text | yes | | Text, because the values are ranges such as `2h-2h30m`. |
 | `headway` | text | yes | | Text, for the same reason. |
 | `notes` | text | yes | | |
-| `position` | integer | no | `0` | Order within its own route. |
+| `position` | integer | no | `0` | Order within its own route. Set as a whole by `PUT /api/transport-routes/{id}/order`. |
 | `created_at` | timestamptz | no | `now()` | |
 | `updated_at` | timestamptz | no | `now()` | |
 
@@ -225,6 +229,50 @@ before `weekday`), then `time`.
 | `uq_transport_departure_option_day_time` | Unique on (`option_id`, `day_type`, `time`). The API checks first for a readable `409`; this is what holds under a race. |
 | `fk_transport_departure_transport_option` | `ON DELETE CASCADE`, at the database level. |
 
+## `transport_note`
+
+A note on a route, shown below its 備註: a title, a description and links. At
+least a title or a link is required; the API enforces that (`business-rules.md`),
+the table does not. The relationship on the route is `note_entries`, because
+`notes` is already the 備註 column.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | `serial` | |
+| `route_id` | integer | no | | FK to `transport_route.id`, `ON DELETE CASCADE`. Indexed. |
+| `title` | text | yes | | Stripped; a blank one is stored as null. |
+| `description` | text | yes | | |
+| `position` | integer | no | `0` | Order within its own route; a new note goes last. |
+| `created_at` | timestamptz | no | `now()` | |
+| `updated_at` | timestamptz | no | `now()` | |
+
+**Constraints**
+
+| Name | What it enforces |
+| --- | --- |
+| `fk_transport_note_transport_route` | `ON DELETE CASCADE`, at the database level. |
+
+## `transport_note_link`
+
+One URL on a note. A row per link, not an array or a text column — see
+`notes/decisions.md`. The API reads and writes a note's links as one ordered
+list of strings, and replaces the rows wholesale on change.
+
+| Column | Type | Null | Default | Notes |
+| --- | --- | --- | --- | --- |
+| `id` | integer | no | `serial` | |
+| `note_id` | integer | no | | FK to `transport_note.id`, `ON DELETE CASCADE`. Indexed. |
+| `url` | text | no | | Stripped, never blank. Not validated as a URL. |
+| `position` | integer | no | `0` | Order within its note, 0..n-1. |
+| `created_at` | timestamptz | no | `now()` | |
+| `updated_at` | timestamptz | no | `now()` | |
+
+**Constraints**
+
+| Name | What it enforces |
+| --- | --- |
+| `fk_transport_note_link_transport_note` | `ON DELETE CASCADE`, at the database level. |
+
 ## `trip`
 
 A named group of journeys, such as a round trip. It holds no dates of its own;
@@ -240,6 +288,7 @@ columns, with the same constraints, as on `packing_list`.
 | `usage` | text | yes | `unused` for a free row | 狀態: `in_use`, `upcoming`, `unused` or `past`. Set exactly when `kind` is `free`. |
 | `auto_saved_at` | timestamptz | yes | | When the row entered 自動保存; orders that queue. Set exactly when `usage` is `past`. |
 | `archive_note` | text | yes | | 保存備註 — the remark written afterwards, separate from `notes`. Kept whatever the kind. |
+| `done` | boolean | no | `false` | 已完成 — the owner's mark that the trip is finished with. Independent of `kind` and `usage`. A copy starts `false`. |
 | `visibility` | text | no | `private` | `private`, `unlisted`, `public`. A single trip is the thing expected to be shared. **Nothing reads this yet**, as with `packing_list.visibility`. |
 | `created_at` | timestamptz | no | `now()` | Orders every index shelf but 自動保存, newest first (then highest `id`), as on `packing_list`. Reads carry it. |
 | `updated_at` | timestamptz | no | `now()` | |

@@ -44,6 +44,9 @@ export const ADVANCE_TICKET_LABELS = { true: '需要', false: '不需要' }
 export const KIND_LABELS = { template: '範本', saved: '保存', free: '一般' }
 export const AUTO_SAVED_LABEL = '自動保存'
 
+/** A trip marked done: its own flag, beside kind and 狀態 rather than one of them. */
+export const DONE_LABEL = '已完成'
+
 export const USAGES = ['in_use', 'upcoming', 'unused', 'past']
 export const USAGE_LABELS = {
   in_use: '使用中',

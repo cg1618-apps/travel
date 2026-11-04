@@ -4,20 +4,24 @@
  * Compact on purpose, the way 行程 is: 起點 → 終點 and one line per way of
  * making the journey, enough to tell routes apart. Everything else - every
  * field, the links, the departures and the next one from now - is one click
- * away on /transport/:id (`TransportRoute.jsx`).
+ * away on /transport/:id (`TransportRoute.jsx`). The ⠿ beside each card
+ * drags it into a new order, which the server keeps.
  */
 
+import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
+import { DragHandle, SortableItem, SortableList } from '../components/Sortable'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { keysFor } from '../lib/keys'
-import { optionSummary } from '../lib/transport'
+import { inIdOrder, moveTo, optionSummary } from '../lib/transport'
 import { firstLine } from '../lib/trips'
 
 const KEY = ['transport-routes']
+const INDEX = [...KEY, 'index']
 
 const inputClass = 'rounded-md border border-border bg-canvas px-2 py-1.5 text-sm text-text min-w-0'
 const smallButton = 'rounded-md border border-border-strong px-3 text-sm text-text-muted'
@@ -77,15 +81,21 @@ function CreateRoute({ pending, failed, onCreate, onCancel }) {
   )
 }
 
-/** One route: 起點 → 終點, the first line of 備註, one line per 交通方式. */
+/**
+ * One route: 起點 → 終點, the first line of 備註, one line per 交通方式. The
+ * grip sits outside the link, so picking a card up never opens it.
+ */
 function RouteCard({ route }) {
   const note = firstLine(route.notes)
+  const name = `${route.from_place} → ${route.to_place}`
   return (
-    <li className="border-b border-border">
-      <Link to={`/transport/${route.id}`} className="block px-4 py-3 text-text no-underline">
-        <span className="block font-semibold">
-          {route.from_place} → {route.to_place}
-        </span>
+    <SortableItem id={route.id} as="li" className="flex items-start border-b border-border">
+      <DragHandle label={name} className="py-3 pl-3 pr-1" />
+      <Link
+        to={`/transport/${route.id}`}
+        className="block min-w-0 flex-1 py-3 pl-1 pr-4 text-text no-underline"
+      >
+        <span className="block font-semibold">{name}</span>
         {note && <span className="block text-xs text-text-faint">{note}</span>}
         {route.options.length === 0 ? (
           <span className="block text-sm text-text-faint">沒有交通方式</span>
@@ -97,13 +107,13 @@ function RouteCard({ route }) {
           ))
         )}
       </Link>
-    </li>
+    </SortableItem>
   )
 }
 
 export default function Transport() {
   const navigate = useNavigate()
-  const routes = useApiQuery([...KEY, 'index'], endpoints.transport.routes())
+  const routes = useApiQuery(INDEX, endpoints.transport.routes())
   const [creating, setCreating] = useState(false)
 
   const create = useApiMutation({
@@ -111,9 +121,24 @@ export default function Transport() {
     mutationFn: (payload) => send(endpoints.transport.routes(), 'POST', payload),
     onSuccess: (created) => navigate(`/transport/${created.id}`),
   })
+  // Optimistic, as a packing list's rows are: a dropped card stays where it was
+  // dropped during the round trip, the response replaces the cache, and a
+  // refusal puts the server's order back.
+  const queryClient = useQueryClient()
+  const reorder = useApiMutation({
+    mutationFn: (routeIds) =>
+      send(endpoints.transport.routesOrder(), 'PUT', { route_ids: routeIds }),
+    onMutate: (routeIds) => {
+      queryClient.setQueryData(INDEX, (current) => current && inIdOrder(current, routeIds))
+    },
+    onSuccess: (updated) => queryClient.setQueryData(INDEX, updated),
+    onError: () => queryClient.invalidateQueries({ queryKey: INDEX }),
+  })
 
   if (routes.isLoading) return <LoadingState label="載入路線中…" />
   if (routes.isError) return <ErrorState error={routes.error} onRetry={routes.refetch} />
+
+  const ids = routes.data.map((route) => route.id)
 
   return (
     <main className="mx-auto max-w-4xl pb-16">
@@ -141,11 +166,20 @@ export default function Transport() {
       {routes.data.length === 0 ? (
         <EmptyState>還沒有路線。按「+ 新增路線」開始。</EmptyState>
       ) : (
-        <ul className="m-0 mt-3 list-none border-t border-border p-0">
-          {routes.data.map((route) => (
-            <RouteCard key={route.id} route={route} />
-          ))}
-        </ul>
+        <>
+          {reorder.isError && (
+            <p role="alert" className="m-0 mt-3 px-4 text-sm text-danger">
+              排序沒有儲存，已還原。
+            </p>
+          )}
+          <ul className="m-0 mt-3 list-none border-t border-border p-0">
+            <SortableList ids={ids} onMove={(from, to) => reorder.mutate(moveTo(ids, from, to))}>
+              {routes.data.map((route) => (
+                <RouteCard key={route.id} route={route} />
+              ))}
+            </SortableList>
+          </ul>
+        </>
       )}
     </main>
   )

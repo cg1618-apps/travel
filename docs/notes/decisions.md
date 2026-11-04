@@ -590,7 +590,7 @@ the attribute through the CSS tokens, not from React.
 The owner asked for one Google Sheet, **Travel**, doing two jobs: restoring
 the database, and being readable when the app is down. They asked for those
 jobs in tiers: what the dashboard shows first, then all lists and trips, then
-everything. The tiers collapsed. Eight tables copied whole cost less code than
+everything. The tiers collapsed. Every table copied whole cost less code than
 copying the dashboard's subset correctly, which would have to follow
 leg → list links to stay consistent. And a partial copy cannot be restored.
 So everything is backed up, and the dashboard's subset became the *readable*
@@ -641,3 +641,50 @@ tabs instead. How it works is in `sheet-backup.md`.
 - **The nightly job resolves its checkout from its own path.** Media's
   `lib.sh` assumes `~/media`, which is the hazard recorded under "Renaming
   media's checkout" in the platform's decisions.
+
+## 已完成 is its own flag, not a usage
+
+A trip gets `done`, a boolean, rather than being "done" whenever its usage is
+過去使用. The two answer different questions. `usage: past` is a shelf move
+with a side effect — it enters the trip into 自動保存, whose oldest slot it can
+drop — and it is set when the trip is over. `done` is the owner ticking a trip
+off, which they may do before it is over (everything booked and settled) or
+never do for a past one. Tying the two would make ticking a trip off able to
+delete another one, and would leave a template or a saved trip, which has no
+usage at all, unable to be marked. So `done` moves no shelf, touches no queue
+and is touched by no shelf move. A copy starts not done, because whether the
+source was finished is state, not definition.
+
+## A route's notes are `note_entries`, and their links are rows
+
+A route already has `notes`: its 備註, one text column, used since the
+transport tables were first built and carried by the importer and the sheet.
+The new titled notes with links are a separate list shown below it, and the
+relationship and the API field are named `note_entries` so that neither the
+code nor a caller can mistake one for the other. Renaming the old column to
+make room would have meant a migration, an importer change and a sheet-format
+change for no gain.
+
+**Links are a child table, `transport_note_link`, not an array or a text
+column.** A PostgreSQL array would read well in SQL, but the sheet backup
+writes one value per cell and restores by column type, and an array column
+would be the first value that needed its own encoding there. A text column of
+newline-separated URLs would need splitting and a rule for blank lines on
+every read. A row per link costs one more table, and in return each link is a
+plain string in a plain column, ordered by `position` like every other ordered
+thing in this app, and the backup handles it with no new code. The API still
+reads and writes a note's links as one ordered list of strings, and a change
+replaces the rows wholesale: there is no per-link editing to justify per-link
+endpoints.
+
+**A blank link is a 422, not dropped.** Dropping it silently would let a form
+that sent an empty row believe it had saved one.
+
+## One whole-order rule, shared
+
+`PUT /api/packing-lists/{id}/order` already set a list's whole order in one
+request. Routes and options needed the same, so the check — every id once,
+nothing foreign — moved to `app/services/domain/ordering.py` and the three
+endpoints share it; packing adds its group-adjacency check on top. A
+`position` PATCH per row was the alternative, and it is one write per row a
+drag passes, with the positions inconsistent between them.

@@ -103,7 +103,8 @@ reads the indexes the other screens already own — `['packing-lists']` and
   list and shows its 出發 (`departureLabel` in `lib/timing.js`, shared with
   the index) and `已處理 {settled} / {items}`. 所有清單 links to `/lists`.
 - **行程** — 一般 trips that are 使用中 or 未來使用, the same way, each with its
-  狀態 badge and its date range or 沒有行程段, linking to `/trips/{id}`.
+  狀態 badge, an 已完成 badge once the trip is marked done, and its date range
+  or 沒有行程段, linking to `/trips/{id}`.
   所有行程 links to `/trips`. There is no current trip and no 目前 badge.
 - **Nothing else, and nothing to add.** Beyond the calendar's marks, 自動保存,
   保存 and 範本, and every create form, belong to `/lists` and `/trips`; the dashboard only links there.
@@ -403,7 +404,13 @@ page invalidates the whole prefix.
 - **Cards.** Each route is a card linking to `/transport/{id}`: 起點 → 終點,
   the first line of 備註, then one line per 交通方式 — the mode, 價錢 and 時間
   when set (`optionSummary` in `lib/transport.js`). A route with no options
-  reads 沒有交通方式.
+  reads 沒有交通方式. Cards are in the route order the server keeps.
+- **Order.** A ⠿ grip to the left of each card drags it (`Sortable.jsx`, as on
+  the packing sheet; ↑ / ↓ on a focused grip moves it one place). The grip sits
+  outside the card's link, so picking a card up never opens it. A drop sends
+  every route id in the new order in one `PUT /api/transport-routes/order`;
+  the cache takes the new order first, the response replaces it, and a refusal
+  puts the server's order back with 排序沒有儲存，已還原。
 - **Empty.** 還沒有路線。按「+ 新增路線」開始。
 
 ## 交通 detail (`/transport/:routeId`)
@@ -414,6 +421,19 @@ answers 404 — or 422, for an id that is not a number — reads 找不到這條
 
 - **Header.** 起點 → 終點, each a cell, then 備註. ⋯ 刪除路線 asks first,
   saying the options and departures go with it, and returns to `/transport`.
+- **筆記.** Directly under 備註 — a one-line remark, which stays as it is — a
+  筆記 section lists the route's notes (`note_entries`) in order: the title in
+  bold when there is one, the description with its line breaks kept, then each
+  link opening in a new tab, shown as host and path without the scheme
+  (`linkText`), cut short with an ellipsis on a narrow screen and titled with
+  the full URL. With none it reads 還沒有筆記。 **+ 新增筆記** and each note's
+  ✎ open the same form: 標題, 說明 (a textarea) and one input per link, with
+  **+ 新增連結** to add another and ✕ to remove one. Empty link inputs are
+  dropped before sending (`notePayload`), and 儲存 stays disabled — with
+  需要標題或至少一個連結。 under it — until there is a title or a link, since
+  a description alone is refused (`canSaveNote`). A failed save keeps the form
+  open with 無法儲存筆記，請再試一次。 ⋯ 刪除筆記 asks first; a failed delete
+  shows 無法刪除筆記，請再試一次。
 - **Cells.** Each way of making the journey is a card. Every field on it is a
   cell with the sheet's rules: Enter or
   blur commits, Escape reverts, no Save button. 價錢 is a whole number shown as
@@ -436,6 +456,12 @@ answers 404 — or 422, for an id that is not a number — reads 找不到這條
 - **Adding and deleting options.** + 新增交通方式 under the cards takes a mode.
   ⋯ on a card opens 刪除交通方式 behind a confirmation, which says the
   departures go with it. A chip's ✕ deletes one time without asking.
+- **Order.** Each option card has a ⠿ grip before its 交通方式 and is dragged
+  into order the way routes are on `/transport`. A drop sends every option id
+  of the route in one `PUT /api/transport-routes/{id}/order`; the detail cache
+  takes the new order first and the returned route replaces it, the index is
+  refreshed for its one-line-per-option summary, and a refusal puts the
+  server's order back with 排序沒有儲存，已還原。
 
 ## 行程 (`/trips`)
 
@@ -454,8 +480,9 @@ its leg.
   (「台北車站 → 彰化火車站」在範本中連結了「台北去彰化」，請自行連結打包清單。),
   dismissed with 知道了. It travels in the navigation state, which 知道了
   clears, so Back and a reload do not bring a dismissed one back.
-- **Cards.** Each trip is a card linking to `/trips/{id}`: its name, a 狀態
-  badge on 一般 and 自動保存 trips, then one line per leg in departure order —
+- **Cards.** Each trip is a card linking to `/trips/{id}`: its name, an
+  已完成 badge on a trip marked done and a 狀態 badge on 一般 and 自動保存
+  trips, then one line per leg in departure order —
   起點 → 終點, the Taipei departure, the duration and 車種 when there is one
   (`legSummary` in `lib/trips.js`). A trip with no legs reads 沒有行程段. 保存
   and 自動保存 cards add the first line of 保存備註.
@@ -483,7 +510,9 @@ for an id that is not a number — reads 找不到這個行程。
   viewport. The name is a cell that cannot be emptied, with a 範本, 保存 or
   自動保存 badge beside it. Under it `KindControls` — the 狀態 select on a
   一般 or 自動保存 trip, the 保存 checkbox and 當作範本, none of them on a 範本
-  — then 備註. The ⋯ menu holds 保存 (or 取消保存, which asks first, as the
+  — and beside them an **已完成** checkbox, which patches `done` and nothing
+  else: it is the trip's own flag, independent of 狀態 and kind, and a 範本
+  does not show it. Then 備註. The ⋯ menu holds 保存 (or 取消保存, which asks first, as the
   checkbox does), 當作範本 and 刪除行程, which asks first and returns to
   `/trips`; a 範本's ⋯ offers only 刪除行程. **當作範本** creates
   a template of the same name with the legs on the same dates — the page sends the
@@ -506,8 +535,10 @@ for an id that is not a number — reads 找不到這個行程。
 - **Packing list.** A linked list shows as `打包清單：{name}`, a link to it; ✎
   opens a select of every list **except templates**, newest `created_at`
   first (`linkChoices` — this order is the picker's alone), each reading
-  `{name} · {created date, Taipei} · {status}` (`linkLabel`): the 狀態 for a
-  一般 or 自動保存 list, 保存 for a saved one. A template the leg is already
+  `{name} ({date}) · {created date, Taipei} · {status}` (`linkLabel`): the
+  list's own 出發 date as `YYYY-MM-DD`, the way its header writes it, left out
+  when it has none; then the 狀態 for a 一般 or 自動保存 list, 保存 for a saved
+  one. A template the leg is already
   linked to stays in the list, so the select never reads （不連結） for a
   linked leg. （不連結） unlinks. A 409 shows 這份清單已經連到別的行程段. The
   list's own header then reads 由行程設定 for its date.

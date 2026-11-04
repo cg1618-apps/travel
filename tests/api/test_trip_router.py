@@ -445,3 +445,37 @@ def test_a_leg_patch_remembers_its_ticket_type(client, trip):
     assert client.patch(f"/api/trip-legs/{leg['id']}", json={"ticket_type": "紙本"}).status_code == 200
     values = [row["value"] for row in client.get("/api/label-options?kind=ticket_type").json()]
     assert values == ["紙本"]
+
+
+# --- done ---------------------------------------------------------------------
+
+
+def test_a_new_trip_is_not_done(trip):
+    assert trip["done"] is False
+
+
+def test_done_can_be_set_and_cleared(client, trip):
+    url = f"/api/trips/{trip['id']}"
+    set_done = client.patch(url, json={"done": True})
+    assert set_done.status_code == 200 and set_done.json()["done"] is True
+    assert client.get(url).json()["done"] is True
+    cleared = client.patch(url, json={"done": False})
+    assert cleared.status_code == 200 and cleared.json()["done"] is False
+
+
+def test_a_null_done_is_a_422(client, trip):
+    url = f"/api/trips/{trip['id']}"
+    # Load-bearing: the trip is done first, so a null that slipped through
+    # and was ignored would leave True behind rather than a coincidental False.
+    client.patch(url, json={"done": True})
+    assert client.patch(url, json={"done": None}).status_code == 422
+    assert client.get(url).json()["done"] is True
+
+
+def test_done_is_independent_of_usage(client, trip):
+    url = f"/api/trips/{trip['id']}"
+    done = client.patch(url, json={"done": True}).json()
+    assert (done["kind"], done["usage"]) == ("free", "unused")
+    # And the other way: moving the usage leaves done alone.
+    moved = client.patch(url, json={"usage": "in_use"}).json()
+    assert (moved["usage"], moved["done"]) == ("in_use", True)

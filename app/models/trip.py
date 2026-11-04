@@ -41,6 +41,12 @@ class Trip(Base, TimestampMixin, KindMixin):
         String, nullable=False, default=Visibility.PRIVATE, server_default=Visibility.PRIVATE
     )
 
+    # 已完成: the owner's own mark that the trip is finished with. Independent
+    # of `kind` and `usage` on purpose - see docs/notes/decisions.md.
+    done: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
     legs = relationship(
         "TripLeg",
         back_populates="trip",

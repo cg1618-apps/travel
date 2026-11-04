@@ -64,6 +64,8 @@ it **drops what it created and everything in it**. In chain order:
 | `t2rip0000002` | Each trip's `visibility`. Nothing reads it yet, so nothing visible is lost. |
 | `t3rip0000003` | Each trip's `archived`, `archive_note` and `template` — every archive remark is lost, and archived trips and templates come back as ordinary trips. |
 | `k1ind0000001` | Each list's and trip's `kind`, `usage` and `auto_saved_at`, and each list's `notes` and `archive_note` — every 狀態 and every list remark is lost; a trip's `archive_note` survives. The booleans come back from `kind`: saved → `saved` / `archived`, template → `template`, and every 一般 row, 自動保存 included, as neither. A list or trip that was both saved (or archived) and a template before the upgrade comes back a template only. |
+| `t4rip0000004` | Each trip's `done` — every 已完成 mark is lost. |
+| `t2ransport02` | `transport_note` and `transport_note_link` — every note on a route and every link on one. A route's own 備註 (`transport_route.notes`) survives. |
 
 So for a release that carried any of them:
 

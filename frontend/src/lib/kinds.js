@@ -98,6 +98,12 @@ export function linkChoices(index, linkedId) {
     .sort(newestCreatedFirst)
 }
 
-/** `{name} · {created date, Taipei} · {status}`, for the link picker. */
-export const linkLabel = (row) =>
-  `${row.name} · ${taipeiInputValue(row.created_at).slice(0, 10)} · ${statusLabel(row)}`
+/**
+ * `{name} ({date}) · {created date, Taipei} · {status}`, for the link picker.
+ * `({date})` is the list's own 出發 date, as the list header writes it, and
+ * only when it has one.
+ */
+export function linkLabel(row) {
+  const name = row.departure_at ? `${row.name} (${row.departure_at})` : row.name
+  return `${name} · ${taipeiInputValue(row.created_at).slice(0, 10)} · ${statusLabel(row)}`
+}
