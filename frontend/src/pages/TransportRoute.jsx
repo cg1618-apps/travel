@@ -7,9 +7,10 @@
  * Departures are chips under 平日 and 假日, sorted into 早/中/下午/晚 by the
  * clock, with the next one from now picked out.
  *
- * Under 備註, 筆記: notes with a title, a description and links, each added
- * and edited in a small form of its own, since a list of links is not a cell.
- * The option cards are dragged into order by the ⠿ in their header.
+ * Under 群組 and 備註, 筆記: notes with a title, a description and links,
+ * each added and edited in a small form of its own (`NoteEditor.jsx`), since
+ * a list of links is not a cell. Notes and option cards are dragged into
+ * order by their ⠿.
  */
 
 import { useQueryClient } from '@tanstack/react-query'
@@ -18,9 +19,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { ApiError } from '../api/client'
 import { endpoints } from '../api/endpoints'
-import { TextCell } from '../components/Cell'
+import { TextAreaCell, TextCell } from '../components/Cell'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DeleteMenu } from '../components/DeleteMenu'
+import { NoteBody, NoteForm } from '../components/NoteEditor'
 import { PriceCell } from '../components/PriceCell'
 import { DragHandle, SortableItem, SortableList } from '../components/Sortable'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
@@ -35,15 +37,7 @@ import {
 } from '../lib/departures'
 import { keysFor } from '../lib/keys'
 import { ADVANCE_TICKET_LABELS, BUCKET_LABELS, DAY_TYPE_LABELS } from '../lib/labels'
-import {
-  DAY_TYPES,
-  canSaveNote,
-  groupByDayType,
-  inIdOrder,
-  linkText,
-  moveTo,
-  notePayload,
-} from '../lib/transport'
+import { DAY_TYPES, groupByDayType, inIdOrder, moveTo, noteName } from '../lib/transport'
 
 const KEY = ['transport-routes']
 const REFRESH_MS = 60_000
@@ -313,7 +307,12 @@ function OptionCard({ option, now, actions }) {
           </button>
         </Field>
         <Field label="備註">
-          <TextCell value={option.notes} placeholder="—" onCommit={(notes) => patch({ notes })} />
+          <TextAreaCell
+            value={option.notes}
+            placeholder="—"
+            ariaLabel={`${option.mode}：備註`}
+            onCommit={(notes) => patch({ notes })}
+          />
         </Field>
       </dl>
 
@@ -352,124 +351,14 @@ function OptionCard({ option, now, actions }) {
   )
 }
 
-/**
- * 標題, 說明 and a list of links, for a new note or an existing one. Empty link
- * inputs are dropped before sending; 儲存 waits for a title or a link, since
- * a description alone is not a note the API keeps.
- */
-function NoteForm({ note, onSave, onCancel }) {
-  const [title, setTitle] = useState(note?.title ?? '')
-  const [description, setDescription] = useState(note?.description ?? '')
-  // Keyed by a counter rather than by place, so removing one input does not
-  // hand its neighbour's text to the wrong field.
-  const [links, setLinks] = useState(() =>
-    (note?.links.length ? note.links : ['']).map((url, key) => ({ key, url })),
-  )
-  const [nextKey, setNextKey] = useState(links.length)
-  const [pending, setPending] = useState(false)
-  const [problem, setProblem] = useState(null)
-  const fields = { title, description, links: links.map((link) => link.url) }
-  const saveable = canSaveNote(fields)
-
-  const setLink = (key, url) =>
-    setLinks(links.map((link) => (link.key === key ? { key, url } : link)))
-  const addLink = () => {
-    setLinks([...links, { key: nextKey, url: '' }])
-    setNextKey(nextKey + 1)
-  }
-
-  const submit = async () => {
-    if (!saveable || pending) return
-    setPending(true)
-    try {
-      await onSave(notePayload(fields))
-    } catch {
-      setProblem('無法儲存筆記，請再試一次。')
-      setPending(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2 rounded-md border border-dashed border-border-strong p-3">
-      <input
-        autoFocus
-        aria-label="筆記標題"
-        placeholder="標題"
-        value={title}
-        onChange={(event) => setTitle(event.target.value)}
-        className={`${inputClass} w-full`}
-      />
-      <textarea
-        aria-label="筆記說明"
-        placeholder="說明"
-        rows={3}
-        value={description}
-        onChange={(event) => setDescription(event.target.value)}
-        className={`${inputClass} w-full`}
-      />
-      {links.map((link, index) => (
-        <div key={link.key} className="flex items-center gap-1">
-          <input
-            type="url"
-            aria-label={`連結 ${index + 1}`}
-            placeholder="https://"
-            value={link.url}
-            onChange={(event) => setLink(link.key, event.target.value)}
-            className={`${inputClass} min-w-0 flex-1`}
-          />
-          <button
-            type="button"
-            aria-label={`移除連結 ${index + 1}`}
-            onClick={() => setLinks(links.filter((other) => other.key !== link.key))}
-            className="px-2 text-text-faint hover:text-text"
-            style={{ minHeight: 0 }}
-          >
-            ✕
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={addLink}
-        className="self-start text-sm text-brand"
-        style={{ minHeight: 0 }}
-      >
-        + 新增連結
-      </button>
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={!saveable || pending}
-          onClick={submit}
-          className={`${smallButton} disabled:opacity-40`}
-        >
-          儲存
-        </button>
-        <button type="button" onClick={onCancel} className={smallButton}>
-          取消
-        </button>
-      </div>
-      {!saveable && <p className="m-0 text-xs text-text-faint">需要標題或至少一個連結。</p>}
-      {problem && (
-        <p role="alert" className="m-0 text-xs text-danger">
-          {problem}
-        </p>
-      )}
-    </div>
-  )
-}
-
-/** What a note is called in its menu and dialog: its title, else its first link. */
-const noteName = (note) => note.title ?? (note.links[0] ? linkText(note.links[0]) : '筆記')
-
-/** One note as read: title, description with its line breaks, then its links. */
+/** One note: drag handle, body, ✎ and ⋯ 刪除筆記; the form in its place while editing. */
 function NoteCard({ note, actions }) {
   const [editing, setEditing] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const name = noteName(note)
 
   return (
-    <li className="border-b border-border py-2 last:border-b-0">
+    <SortableItem id={note.id} as="li" className="border-b border-border py-2 last:border-b-0">
       {editing ? (
         <NoteForm
           note={note}
@@ -481,26 +370,11 @@ function NoteCard({ note, actions }) {
         />
       ) : (
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            {note.title && <p className="m-0 font-semibold">{note.title}</p>}
-            {note.description && (
-              <p className="m-0 whitespace-pre-wrap break-words text-sm text-text-muted">
-                {note.description}
-              </p>
-            )}
-            {note.links.map((url) => (
-              <a
-                key={url}
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                title={url}
-                className="block truncate text-sm text-brand"
-              >
-                {linkText(url)}
-              </a>
-            ))}
-          </div>
+          <DragHandle label={name} className="pt-0.5" />
+          <NoteBody
+            note={note}
+            onDescription={(description) => actions.patchNote(note.id, { description })}
+          />
           <button
             type="button"
             aria-label={`編輯「${name}」`}
@@ -529,14 +403,15 @@ function NoteCard({ note, actions }) {
           onCancel={() => setConfirming(false)}
         />
       )}
-    </li>
+    </SortableItem>
   )
 }
 
-/** 筆記: every note on the route, in order, and + 新增筆記. */
+/** 筆記: every note on the route, in order - dragged by ⠿ - and + 新增筆記. */
 function RouteNotes({ route, actions }) {
   const [adding, setAdding] = useState(false)
   const notes = route.note_entries ?? []
+  const ids = notes.map((note) => note.id)
 
   return (
     <section className="mt-4">
@@ -544,11 +419,18 @@ function RouteNotes({ route, actions }) {
       {notes.length === 0 && !adding && (
         <p className="m-0 mt-1 text-sm text-text-faint">還沒有筆記。</p>
       )}
+      {actions.reorderNotesFailed && (
+        <p role="alert" className="m-0 mt-1 text-xs text-danger">
+          排序沒有儲存，已還原。
+        </p>
+      )}
       {notes.length > 0 && (
         <ul className="m-0 list-none p-0">
-          {notes.map((note) => (
-            <NoteCard key={note.id} note={note} actions={actions} />
-          ))}
+          <SortableList ids={ids} onMove={(from, to) => actions.reorderNotes(moveTo(ids, from, to))}>
+            {notes.map((note) => (
+              <NoteCard key={note.id} note={note} actions={actions} />
+            ))}
+          </SortableList>
         </ul>
       )}
       {actions.deleteNoteFailed && (
@@ -613,8 +495,8 @@ function AddOption({ onAdd }) {
   )
 }
 
-/** The route itself: 起點 → 終點 and 備註, each a cell, and ⋯ 刪除路線. */
-function RouteHeader({ route, actions, onDeleted }) {
+/** The route itself: 起點 → 終點, 群組 and 備註, each a cell, and ⋯ 刪除路線. */
+function RouteHeader({ route, groupNames, actions, onDeleted }) {
   const [confirming, setConfirming] = useState(false)
   const patch = (changes) => actions.patchRoute(route.id, changes)
 
@@ -644,7 +526,23 @@ function RouteHeader({ route, actions, onDeleted }) {
           onSelect={() => setConfirming(true)}
         />
       </div>
-      <TextCell value={route.notes} placeholder="備註" onCommit={(notes) => patch({ notes })} />
+      <div className="flex items-center gap-2 text-sm">
+        <span className="shrink-0 text-text-muted">群組</span>
+        <div className="min-w-0 flex-1">
+          <TextCell
+            value={route.group_name}
+            placeholder="（未分組）"
+            options={groupNames}
+            onCommit={(group_name) => patch({ group_name })}
+          />
+        </div>
+      </div>
+      <TextAreaCell
+        value={route.notes}
+        placeholder="備註"
+        ariaLabel="備註"
+        onCommit={(notes) => patch({ notes })}
+      />
 
       {confirming && (
         <ConfirmDialog
@@ -717,6 +615,25 @@ export default function TransportRoute() {
     onError: () => queryClient.invalidateQueries({ queryKey: detailKey }),
   })
 
+  const reorderNotes = useApiMutation({
+    mutationFn: (noteIds) =>
+      send(endpoints.transport.noteOrder(routeId), 'PUT', { note_ids: noteIds }),
+    onMutate: (noteIds) => {
+      queryClient.setQueryData(
+        detailKey,
+        (current) =>
+          current && { ...current, note_entries: inIdOrder(current.note_entries, noteIds) },
+      )
+    },
+    // What the PUT answers is not relied on: the route is read again either way.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: detailKey }),
+  })
+  // The group names already in use, offered as suggestions in 群組.
+  const index = useApiQuery([...KEY, 'index'], endpoints.transport.routes())
+  const groupNames = [
+    ...new Set((index.data ?? []).map((row) => row.group_name).filter(Boolean)),
+  ]
+
   if (route.isLoading) return <LoadingState label="載入路線中…" />
 
   const shell = (children) => (
@@ -747,6 +664,8 @@ export default function TransportRoute() {
     patchNote: (id, changes) => patchNote.mutateAsync({ id, changes }),
     deleteNote: (id) => deleteNote.mutate(id),
     deleteNoteFailed: deleteNote.isError,
+    reorderNotes: (ids) => reorderNotes.mutate(ids),
+    reorderNotesFailed: reorderNotes.isError,
   }
   const optionIds = route.data.options.map((option) => option.id)
 
@@ -754,6 +673,7 @@ export default function TransportRoute() {
     <>
       <RouteHeader
         route={route.data}
+        groupNames={groupNames}
         actions={actions}
         onDeleted={() => navigate('/transport')}
       />

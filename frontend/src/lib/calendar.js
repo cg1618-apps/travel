@@ -57,18 +57,20 @@ function daysBetween(from, to) {
 
 /**
  * Day to the trips on it: each trip covers every Taipei day from its first
- * departure to its last arrival. A trip with no legs has no days.
+ * time to its last, a leg with one time counting it as both its ends. A trip
+ * with no times has no days.
  */
 export function tripDays(trips) {
   const byDay = new Map()
   for (const trip of trips) {
-    if (trip.legs.length === 0) continue
-    const departures = trip.legs.map((leg) => taipeiInputValue(leg.departs_at).slice(0, 10))
-    const arrivals = trip.legs.map((leg) => taipeiInputValue(leg.arrives_at).slice(0, 10))
-    const from = departures.reduce((a, b) => (b < a ? b : a))
-    const to = arrivals.reduce((a, b) => (b > a ? b : a))
-    for (const day of daysBetween(from, to)) {
-      byDay.set(day, [...(byDay.get(day) ?? []), trip])
+    const day = (iso) => taipeiInputValue(iso).slice(0, 10)
+    const starts = trip.legs.map((leg) => leg.departs_at ?? leg.arrives_at).filter(Boolean).map(day)
+    const ends = trip.legs.map((leg) => leg.arrives_at ?? leg.departs_at).filter(Boolean).map(day)
+    if (starts.length === 0) continue
+    const from = starts.reduce((a, b) => (b < a ? b : a))
+    const to = ends.reduce((a, b) => (b > a ? b : a))
+    for (const key of daysBetween(from, to)) {
+      byDay.set(key, [...(byDay.get(key) ?? []), trip])
     }
   }
   return byDay

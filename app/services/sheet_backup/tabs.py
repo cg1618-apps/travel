@@ -15,8 +15,10 @@ every row it points at, so each foreign key finds its target.
     Transport Note   -> Transport Note Link   (transport_note_link.note_id)
     Trip             -> Trip Leg              (trip_leg.trip_id)
     Packing List     -> Trip Leg              (trip_leg.packing_list_id)
+    Note             -> Note Link             (note_link.note_id)
 
-Label Option points at nothing and comes first. Deleting runs the other way.
+Label Option points at nothing and comes first; Note points at nothing either
+and comes after the trips. Deleting runs the other way.
 `tests/unit/test_sheet_backup_tabs.py` checks the order against the models'
 own foreign keys and that every table is here.
 """
@@ -27,6 +29,8 @@ from sqlalchemy import Table
 
 from app.models import (
     LabelOption,
+    Note,
+    NoteLink,
     PackingItem,
     PackingList,
     TransportDeparture,
@@ -63,4 +67,6 @@ RESTORE_TABS: tuple[RestoreTab, ...] = (
     RestoreTab("Transport Note Link", TransportNoteLink),
     RestoreTab("Trip", Trip),
     RestoreTab("Trip Leg", TripLeg),
+    RestoreTab("Note", Note),
+    RestoreTab("Note Link", NoteLink),
 )

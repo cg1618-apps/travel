@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  autofillName, badgeFor, everyRow, isAutoSaved, linkChoices, linkLabel, onDashboard,
-  statusLabel, TABS, tabCounts, tabFor, tabFromSearch,
+  autofillName, badgeFor, everyRow, hasEnded, isAutoSaved, legsByList, linkChoices, linkLabel,
+  onDashboard, rowEnd, rowStart, statusLabel, TABS, tabCounts, tabFor, tabFromSearch,
 } from './kinds'
 
 const row = (id, kind = 'free', usage = kind === 'free' ? 'unused' : null) => ({ id, kind, usage })
@@ -19,11 +19,101 @@ describe('isAutoSaved and badgeFor', () => {
   })
 })
 
+// The dashboard rule's cases, all here and nowhere else in this file. They are
+// `tests/unit/test_dashboard_rule.py`'s, row for row, which pins `on_dashboard`
+// to the same answers. A row's `start` is what `rowStart` would compute, as ms
+// (null for none), so the rule is tested apart from how a start is found.
+const at = (day) => new Date(`${day}T00:00:00+08:00`).getTime()
+const T = new Date('2026-11-04T09:00:00+08:00').getTime()
+const HOUR = 3_600_000
+const DAY = 24 * HOUR
+const startRow = (id, kind, usage, start = null) => ({ ...row(id, kind, usage), start })
+const DASHBOARD_CASES = [
+  {
+    name: 'keeps in-use and upcoming free rows, order kept without starts',
+    rows: [startRow(1, 'free', 'upcoming'), startRow(2, 'free', 'unused'), startRow(3, 'free', 'in_use'),
+      startRow(4, 'free', 'past'), startRow(5, 'saved'), startRow(6, 'free', 'upcoming'),
+      startRow(7, 'free', 'in_use')],
+    // Every row ties with no start, so the incoming order stands: 使用中 no
+    // longer goes first.
+    expected: [1, 3, 6, 7],
+  },
+  {
+    name: 'soonest start first and no start last',
+    rows: [startRow(1, 'free', 'in_use'), startRow(2, 'free', 'upcoming', T + 2 * DAY),
+      startRow(3, 'free', 'in_use', T), startRow(4, 'free', 'upcoming'),
+      startRow(5, 'free', 'upcoming', T + HOUR)],
+    expected: [3, 5, 2, 1, 4],
+  },
+  {
+    name: 'equal starts keep the incoming order',
+    rows: [startRow(1, 'free', 'upcoming', T), startRow(2, 'free', 'in_use', T)],
+    expected: [1, 2],
+  },
+  {
+    name: 'a template or saved row is never current',
+    rows: [startRow(1, 'template'), startRow(2, 'saved')],
+    expected: [],
+  },
+]
+
 describe('onDashboard', () => {
-  it('keeps in-use and upcoming free rows, in-use first, order otherwise kept', () => {
-    const rows = [row(1, 'free', 'upcoming'), row(2, 'free', 'unused'), row(3, 'free', 'in_use'),
-      row(4, 'free', 'past'), row(5, 'saved'), row(6, 'free', 'upcoming'), row(7, 'free', 'in_use')]
-    expect(onDashboard(rows).map((r) => r.id)).toEqual([3, 7, 1, 6])
+  for (const { name, rows, expected } of DASHBOARD_CASES) {
+    it(name, () => {
+      expect(onDashboard(rows, (r) => r.start ?? null).map((r) => r.id)).toEqual(expected)
+    })
+  }
+})
+
+describe('rowStart', () => {
+  it("is a trip's earliest departure, ignoring legs with none", () => {
+    const trip = { legs: [
+      { departs_at: '2026-11-06T09:00:00+08:00' }, { departs_at: null },
+      { departs_at: '2026-11-05T22:00:00+08:00' }] }
+    expect(rowStart(trip)).toBe(new Date('2026-11-05T22:00:00+08:00').getTime())
+    expect(rowStart({ legs: [{ departs_at: null, arrives_at: '2026-11-05T22:00:00+08:00' }] })).toBeNull()
+    expect(rowStart({ legs: [] })).toBeNull()
+  })
+  it("is a list's date at Taipei midnight", () => {
+    expect(rowStart({ departure_at: '2026-11-05' })).toBe(at('2026-11-05'))
+    expect(rowStart({ departure_at: null })).toBeNull()
+  })
+  it('is what the screen sorts by', () => {
+    const trips = [{ ...row(1, 'free', 'in_use'), legs: [] },
+      { ...row(2, 'free', 'upcoming'), legs: [{ departs_at: '2026-11-05T08:00:00+08:00' }] }]
+    expect(onDashboard(trips).map((r) => r.id)).toEqual([2, 1])
+  })
+})
+
+describe('rowEnd and hasEnded', () => {
+  const now = new Date('2026-11-04T12:00:00+08:00')
+  it('ends a trip at its latest arrival, else departure', () => {
+    const trip = { legs: [
+      { departs_at: '2026-11-03T08:00:00+08:00', arrives_at: '2026-11-03T10:00:00+08:00' },
+      { departs_at: '2026-11-04T09:00:00+08:00', arrives_at: null }] }
+    expect(rowEnd(trip)).toBe(new Date('2026-11-04T09:00:00+08:00').getTime())
+    expect(hasEnded(trip, now)).toBe(true)
+    expect(hasEnded({ legs: [{ departs_at: '2026-11-04T13:00:00+08:00', arrives_at: null }] }, now))
+      .toBe(false)
+  })
+  it('has no end, and no badge, for a trip with no times', () => {
+    expect(rowEnd({ legs: [{ departs_at: null, arrives_at: null }] })).toBeNull()
+    expect(hasEnded({ legs: [] }, now)).toBe(false)
+  })
+  it('ends a linked list at its leg, an unlinked one at the end of its Taipei day', () => {
+    const list = { id: 7, departure_at: '2026-11-04' }
+    const legs = legsByList([{ legs: [
+      { packing_list_id: 7, departs_at: '2026-11-04T08:00:00+08:00', arrives_at: '2026-11-04T10:00:00+08:00' },
+    ] }])
+    expect(hasEnded(list, now, legs)).toBe(true)
+    expect(hasEnded(list, now)).toBe(false)
+    expect(rowEnd(list)).toBe(at('2026-11-05'))
+    expect(hasEnded({ id: 8, departure_at: '2026-11-03' }, now)).toBe(true)
+    expect(hasEnded({ id: 9, departure_at: null }, now)).toBe(false)
+  })
+  it("falls back to the list's day when the linked leg has no time", () => {
+    const legs = legsByList([{ legs: [{ packing_list_id: 7, departs_at: null, arrives_at: null }] }])
+    expect(rowEnd({ id: 7, departure_at: '2026-11-04' }, legs)).toBe(at('2026-11-05'))
   })
 })
 

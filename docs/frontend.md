@@ -13,17 +13,17 @@ in `api.md`; the rules it renders are in `business-rules.md`.
 | `src/api/` | `client.js` — the only place that calls `fetch()`. `endpoints.js` — every URL in one map. |
 | `src/hooks/` | `useApiQuery.js` — TanStack Query over `fetchJson`, plus `useApiMutation` and `send`. `useLongPress.js` — a long-press that never also fires the click. `useTheme.js` — light or dark, and the toggle. |
 | `src/pages/` | One file per screen, PascalCase, default export. |
-| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `NewRows`, `FilterMenu`, `GroupOrderDialog`, `Sortable`, `Combobox`, `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `KindControls`, `IndexTabs`, `TripCalendar`, `States`. |
+| `src/components/` | `Grid` and `GridRow` (the sheet, and one row of it), `NewRows`, `FilterMenu`, `GroupOrderDialog`, `Sortable`, `Combobox`, `Checklist`, `Cell`, `PriceCell`, `RowMenu`, `ConfirmDialog`, `EvictDialog`, `KindControls`, `IndexTabs`, `TripCalendar`, `States`, `Segmented`, `NoteEditor`. |
 | `src/lib/` | Pure modules with no React in them. Tests sit beside them. |
 
 Routes are declared in `src/App.jsx`: `/` the dashboard, `/lists` and
 `/lists/:listId` the packing lists, `/transport` and `/transport/:routeId`
 交通, `/trips` and
-`/trips/:tripId` 行程, `/options` 選項. Two old addresses redirect, so a
+`/trips/:tripId` 行程, `/notes` 筆記, `/options` 選項. Two old addresses redirect, so a
 bookmark still lands: `/trip` to `/trips`, and `/trips/auto-saved` to
 `/trips?tab=auto_saved` (declared above `/trips/:tripId`, which would otherwise
 read it as an id). Any other path renders the dashboard.
-The nav bar names the last four, ends with the theme toggle, and the app's name `travel` links to `/`. Every screen is editable, so every one of
+The nav bar names 打包清單, 交通, 行程, 筆記 and 選項, ends with the theme toggle, and the app's name `travel` links to `/`. Every screen is editable, so every one of
 them goes through TanStack Query — media's split is query hooks for anything
 written back from the UI and plain `fetch` for read-only pages, and this app has
 no read-only pages.
@@ -51,6 +51,14 @@ limits shown as `n / 5` and `n / 10`, every row of an index once, the tabs
 (`autofillName`) and the leg picker's choices and labels (`linkChoices`,
 `linkLabel`, `statusLabel`) — are pure helpers in `lib/kinds.js`, tested
 beside it.
+
+**A trip entry's vocabularies are there as well**: `TRANSPORT_TYPE_LABELS`
+(高鐵, 火車, 捷運, 公車, 客運, 開車, 腳踏車, 走路, 飛機, 船, 其他, in
+`TRANSPORT_TYPES` order), `RIDE_TYPE_LABELS`, `TICKET_STATUS_LABELS` (未買票,
+無需買票, 已買票), `ROUND_TRIP_LABELS` (單程, 來回), `BOOKING_LABELS` (已訂票,
+已付款, 已取票), `DONE_LABEL` / `NOT_DONE_LABEL` (已準備完成, 未準備完成) and
+`ENDED_LABEL` (已結束). What each 類型 shows is not a label but a table — see
+"行程 detail".
 
 **An API `detail` is never rendered.** It is English by contract (`api.md`).
 `ErrorState` says 發生錯誤。 with the status code; `EvictDialog` writes its own
@@ -90,21 +98,37 @@ reads the indexes the other screens already own — `['packing-lists']` and
   Sunday first (日 … 六), six weeks with the neighbouring months' days faded,
   opening on the current Taipei month with today circled. ‹ and › change the
   month; 今天 comes back to this one and shows only when away from it. Every
-  Taipei day from a trip's first departure to its last arrival is shaded and
-  links to the trip, with its name under the date on a wide screen and a dot
+  Taipei day from a trip's first time to its last is shaded — an entry with
+  only one time counts it as both its ends, and a trip with no times is not
+  marked — and links to the trip, with its name under the date on a wide screen and a dot
   on a narrow one; a day two trips share names both and links to the first.
   Every trip but templates is marked, whatever its kind or 狀態 — a 範本's
   dates are only where a copy starts. The day arithmetic (`monthGrid`,
   `tripDays`, `taipeiToday`, `shiftMonth`) is in `lib/calendar.js`, tested
   beside it.
 
-- **清單** — 一般 lists that are 使用中 or 未來使用 (`onDashboard` in
-  `lib/kinds.js`), 使用中 first, each with its 狀態 badge. Each row links to the
+- **The order** of both sections is `onDashboard` in `lib/kinds.js`: 一般 rows
+  that are 使用中 or 未來使用, **soonest start first**, a row with no start
+  after every row with one, and rows that tie in the order the index gave them.
+  A trip starts at its earliest entry departure; a list at its 出發 date (the
+  API's effective `departure_at`) at Taipei 00:00 (`rowStart`). `on_dashboard`
+  in `app/services/domain/dashboard.py` is the same rule for the sheet backup,
+  and `kinds.test.js` (`DASHBOARD_CASES`) and
+  `tests/unit/test_dashboard_rule.py` pin the two to the same cases.
+- **已結束** marks a row whose end has passed (`hasEnded`, frontend only): a
+  trip's latest arrival, else departure; a list linked from an entry with a
+  time, that entry's arrival, else departure — found through the trips index
+  (`legsByList`); any other list, the end of its 出發 day in Taipei. A row
+  with no end gets no badge.
+- **清單** — those lists, each with its 狀態 badge. Each row links to the
   list and shows its 出發 (`departureLabel` in `lib/timing.js`, shared with
   the index) and `已處理 {settled} / {items}`. 所有清單 links to `/lists`.
-- **行程** — 一般 trips that are 使用中 or 未來使用, the same way, each with its
-  狀態 badge, an 已完成 badge once the trip is marked done, and its date range
-  or 沒有行程段, linking to `/trips/{id}`.
+- **行程** — those trips, each with its 狀態 badge, 已結束 when it applies,
+  **已準備完成** or **未準備完成** (the `done` flag), and **已買票** or
+  **未買票** — nothing for 無需買票 (`readinessBadges` in `lib/trips.js`) —
+  then its date range or 沒有行程段, linking to `/trips/{id}`. The date range
+  counts an entry with one time on that time, and is 沒有行程段 when no entry
+  has a time.
   所有行程 links to `/trips`. There is no current trip and no 目前 badge.
 - **Nothing else, and nothing to add.** Beyond the calendar's marks, 自動保存,
   保存 and 範本, and every create form, belong to `/lists` and `/trips`; the dashboard only links there.
@@ -265,7 +289,8 @@ pressing ↑ / ↓ moves a row one place. A drop never leaves its group.
 
 **Groups are ordered in 排序類別**, a dialog of their own
 (`GroupOrderDialog.jsx`), so a drag on the sheet only ever means a row. Nothing
-is saved until its 儲存.
+is saved until its 儲存. The same dialog is 排序群組 on 交通 and 筆記, given
+its own title, hint and group name.
 
 Both write the list's whole order in one `PUT …/order`, built by `orderIds`.
 The page applies it to the cache first, so a dropped row stays where it was
@@ -347,7 +372,8 @@ a 行程 leg (`departure_source: "trip_leg"`) says so — `由行程設定` — 
 Under the date the header carries the list's kind: a 範本 / 保存 / 自動保存
 badge, and the same `KindControls` as its row on `/lists`. 當作範本 here opens
 the new template. Then a **備註** cell, and a **保存備註** cell when the list is
-saved or auto-saved or already has a remark. 過去使用 into a full 自動保存
+saved or auto-saved or already has a remark — both multi-line
+(`TextAreaCell`, below). 過去使用 into a full 自動保存
 opens the same `EvictDialog`; the index it names from is fetched only once a
 refusal has happened, and the dialog opens only once that read has arrived
 fresh, so it never names a list from a stale `evict_next`.
@@ -362,8 +388,18 @@ has to be told it:
   people press when they realise they clicked the wrong cell.
 - **There is no Save button** on an existing row. New rows are the one
   exception — see "Adding rows".
-- **Every cell is one line.** A wrapping cell changes the row height and makes
-  the sheet ripple while you type; the sheet scrolls sideways instead.
+- **Every cell is one line, except a remark.** A wrapping cell changes the row
+  height and makes the sheet ripple while you type; the sheet scrolls sideways
+  instead.
+
+**A remark is several lines: `TextAreaCell`.** Every remark field uses it — a
+trip's 備註 (and 回程備註), 保存備註 on a trip or a list, an entry's 備註, a
+list's 備註, a packing item's 備註 on the sheet, a route's and an option's
+備註, and a note's 說明 on a route and on 筆記. It shows its text with the line
+breaks kept; clicking opens a textarea that grows with its content. **Enter is
+a new line**, so Ctrl+Enter (⌘+Enter) or leaving the cell commits, and Escape
+reverts. Trailing blank lines are dropped and nothing but whitespace saves as
+null (`remarkValue` in `lib/cells.js`).
 
 數量 is one cell holding the target and its unit — "5 雙" is one fact.
 The number must be whole: anything else (`1.5`, `兩`) reverts the cell and
@@ -394,23 +430,33 @@ a native popup unlike anything else in the app; it renders into
 ## 交通 (`/transport`)
 
 `pages/Transport.jsx` is the 交通 nav item: **+ 新增路線** at the top, then
-one card per route, the way `/trips` is one card per trip. Reads live under
+one card per route, the way `/trips` is one card per trip, under each route's
+**群組**. Reads live under
 `['transport-routes', ...]` (`index`, `detail`), and every write on either
 page invalidates the whole prefix.
 
-- **+ 新增路線** opens 起點 and 終點 fields; 建立 is disabled until both are
+- **+ 新增路線** opens 起點 and 終點 fields and an optional 群組, which
+  suggests the groups in use; 建立 is disabled until both places are
   filled and while a create is in flight, and a failure says
   無法建立路線，請再試一次。 Creating opens `/transport/{id}`.
 - **Cards.** Each route is a card linking to `/transport/{id}`: 起點 → 終點,
   the first line of 備註, then one line per 交通方式 — the mode, 價錢 and 時間
   when set (`optionSummary` in `lib/transport.js`). A route with no options
   reads 沒有交通方式. Cards are in the route order the server keeps.
-- **Order.** A ⠿ grip to the left of each card drags it (`Sortable.jsx`, as on
-  the packing sheet; ↑ / ↓ on a focused grip moves it one place). The grip sits
-  outside the card's link, so picking a card up never opens it. A drop sends
-  every route id in the new order in one `PUT /api/transport-routes/order`;
-  the cache takes the new order first, the response replaces it, and a refusal
-  puts the server's order back with 排序沒有儲存，已還原。
+- **Groups.** Routes are shown grouped by `group_name` (`groupByName` in
+  `lib/grouping.js`), the packing list's convention: a group's routes are
+  adjacent and a group sits where its first route does — except that the
+  ungrouped routes always come first, under no heading. Each named group has
+  its name as a small heading.
+- **Order.** A ⠿ grip to the left of each card drags it within its group
+  (`Sortable.jsx`, as on the packing sheet; ↑ / ↓ on a focused grip moves it
+  one place). The grip sits outside the card's link, so picking a card up
+  never opens it. **排序群組**, shown once there are two named groups, orders
+  the named groups in `GroupOrderDialog`. Either sends every route id in the
+  new order — the ungrouped ones first (`orderAfterGroupSort`) — in one
+  `PUT /api/transport-routes/order`; the cache takes the new order first
+  (`reposition`), the response replaces it, and a refusal puts the server's
+  order back with 排序沒有儲存，已還原。
 - **Empty.** 還沒有路線。按「+ 新增路線」開始。
 
 ## 交通 detail (`/transport/:routeId`)
@@ -419,21 +465,28 @@ page invalidates the whole prefix.
 full and editable. **← 交通** goes back to the index. A `/transport/{id}` that
 answers 404 — or 422, for an id that is not a number — reads 找不到這條路線。
 
-- **Header.** 起點 → 終點, each a cell, then 備註. ⋯ 刪除路線 asks first,
-  saying the options and departures go with it, and returns to `/transport`.
-- **筆記.** Directly under 備註 — a one-line remark, which stays as it is — a
-  筆記 section lists the route's notes (`note_entries`) in order: the title in
-  bold when there is one, the description with its line breaks kept, then each
-  link opening in a new tab, shown as host and path without the scheme
-  (`linkText`), cut short with an ellipsis on a narrow screen and titled with
-  the full URL. With none it reads 還沒有筆記。 **+ 新增筆記** and each note's
-  ✎ open the same form: 標題, 說明 (a textarea) and one input per link, with
-  **+ 新增連結** to add another and ✕ to remove one. Empty link inputs are
-  dropped before sending (`notePayload`), and 儲存 stays disabled — with
-  需要標題或至少一個連結。 under it — until there is a title or a link, since
-  a description alone is refused (`canSaveNote`). A failed save keeps the form
-  open with 無法儲存筆記，請再試一次。 ⋯ 刪除筆記 asks first; a failed delete
-  shows 無法刪除筆記，請再試一次。
+- **Header.** 起點 → 終點, each a cell, then **群組** (a cell suggesting the
+  groups in use, （未分組） when empty — changing it moves the route to the
+  end of the new group), then 備註. ⋯ 刪除路線 asks first, saying the options
+  and departures go with it, and returns to `/transport`.
+- **筆記.** Under 備註, a 筆記 section lists the route's notes
+  (`note_entries`) in order: the title in bold when there is one, the
+  description (a `TextAreaCell`, edited in place), then each link opening in a
+  new tab, shown as host and path without the scheme (`linkText`), cut short
+  with an ellipsis on a narrow screen and titled with the full URL. With none
+  it reads 還沒有筆記。 **+ 新增筆記** and each note's ✎ open the same form
+  (`components/NoteEditor.jsx`, shared with 筆記): 標題, 說明 (a textarea)
+  and one input per link, with ↑ / ↓ to move a link, ✕ to remove one and
+  **+ 新增連結** to add another; the links save in the order shown. Empty link
+  inputs are dropped before sending (`notePayload`), and 儲存 stays disabled —
+  with 需要標題或至少一個連結。 under it — until there is a title or a link,
+  since a description alone is refused (`canSaveNote`). A failed save keeps
+  the form open with 無法儲存筆記，請再試一次。 ⋯ 刪除筆記 asks first; a
+  failed delete shows 無法刪除筆記，請再試一次。 Each note has a ⠿ grip; a drop
+  sends every note id of the route in one
+  `PUT /api/transport-routes/{id}/note-order`, the cache takes the order first,
+  the route is read again afterwards, and a refusal shows
+  排序沒有儲存，已還原。
 - **Cells.** Each way of making the journey is a card. Every field on it is a
   cell with the sheet's rules: Enter or
   blur commits, Escape reverts, no Save button. 價錢 is a whole number shown as
@@ -472,19 +525,21 @@ its leg.
 
 - **+ 新增行程** opens a name field, a 一般 / 範本 select and, when templates
   exist, a 從範本 select of every template, which fills the name. Choosing a
-  template with legs adds a required 出發日期, the Taipei day its first leg
-  moves to. 建立 is disabled until it is ready and while a create is in flight,
+  template with a timed entry adds a required 出發日期, the Taipei day its
+  earliest departure moves to (`needsStartDate`). 建立 is disabled until it is ready and while a create is in flight,
   and a failure says 無法建立行程，請再試一次。 Creating opens `/trips/{id}`;
   after a copy, a notice there names each source leg whose packing list was
   not carried
   (「台北車站 → 彰化火車站」在範本中連結了「台北去彰化」，請自行連結打包清單。),
   dismissed with 知道了. It travels in the navigation state, which 知道了
   clears, so Back and a reload do not bring a dismissed one back.
-- **Cards.** Each trip is a card linking to `/trips/{id}`: its name, an
-  已完成 badge on a trip marked done and a 狀態 badge on 一般 and 自動保存
-  trips, then one line per leg in departure order —
-  起點 → 終點, the Taipei departure, the duration and 車種 when there is one
-  (`legSummary` in `lib/trips.js`). A trip with no legs reads 沒有行程段. 保存
+- **Cards.** Each trip is a card linking to `/trips/{id}`: its name,
+  **已準備完成** or **未準備完成** and **已買票** or **未買票** (none for
+  無需買票, and none at all on a 範本 — `readinessBadges`, as on the
+  dashboard), a 狀態 badge on 一般 trips, then one line per entry in
+  departure order — 起點 → 終點, the Taipei departure (抵達 and the arrival
+  when only that is set), the duration when both are set and differ, and 車種
+  when there is one (`legSummary` in `lib/trips.js`). A trip with no legs reads 沒有行程段. 保存
   and 自動保存 cards add the first line of 保存備註.
 - **刪除模式** lives on the 自動保存 tab, where old trips pile up. It puts a
   checkbox on every card, with **全選** and **刪除所選（n）**, which is
@@ -496,54 +551,138 @@ its leg.
 
 ## 行程 detail (`/trips/:tripId`)
 
-`pages/Trip.jsx` is the sheet's This time tab: one trip, in full, leg by leg.
-**← 行程** goes back to the index, on the tab the trip is on (`tabFor`).
-Nothing is listed below the trip. A `/trips/{id}` that answers 404 — or 422,
-for an id that is not a number — reads 找不到這個行程。
+`pages/Trip.jsx` is the sheet's This time tab: one trip, in full, entry by
+entry — an entry is a leg in the API and 一段 on screen. **← 行程** goes back to
+the index, on the tab the trip is on (`tabFor`). Nothing is listed below the
+trip. A `/trips/{id}` that answers 404 — or 422, for an id that is not a
+number — reads 找不到這個行程。
 
-- **Header.** It is sticky: ← 行程, the name and ⋯, `KindControls`, 備註
-  and 保存備註 stay at the top of the screen on a canvas background with a
-  rule under it while the legs scroll beneath. The page's `<main>` is
+- **Header.** It is sticky: ← 行程, the name and ⋯, the controls, 備註 and
+  保存備註 stay at the top of the screen on a canvas background with a rule
+  under it while the entries scroll beneath. The page's `<main>` is
   `overflow-x-clip` rather than `overflow-x-hidden` for that reason — both
   stop a wide card scrolling the page sideways, but `hidden` makes `<main>` a
   scroll container, and a sticky header inside one never sticks to the
   viewport. The name is a cell that cannot be emptied, with a 範本, 保存 or
   自動保存 badge beside it. Under it `KindControls` — the 狀態 select on a
   一般 or 自動保存 trip, the 保存 checkbox and 當作範本, none of them on a 範本
-  — and beside them an **已完成** checkbox, which patches `done` and nothing
-  else: it is the trip's own flag, independent of 狀態 and kind, and a 範本
-  does not show it. Then 備註. The ⋯ menu holds 保存 (or 取消保存, which asks first, as the
-  checkbox does), 當作範本 and 刪除行程, which asks first and returns to
-  `/trips`; a 範本's ⋯ offers only 刪除行程. **當作範本** creates
-  a template of the same name with the legs on the same dates — the page sends the
-  source's own first Taipei day as `start_date` — and opens it. On a saved or
-  auto-saved trip, or whenever it has a remark, a **保存備註** cell sits under
-  備註. A change of 狀態 or kind keeps the page where it is. 過去使用 into a
-  full 自動保存 opens `EvictDialog` once the index it names from has arrived
-  fresh.
-- **Legs** are cards in `departs_at` order. The top line is 起點 → 終點, each
-  a cell; an emptied one keeps its value (`required` in `lib/cells.js`, as on
-  交通 and the trip's name). Under it the departure, the arrival
-  (the clock alone when it is the same Taipei day, `formatArrival`) and the
-  duration. ✎ opens two `datetime-local` inputs
-  in Taipei time; a 422 shows 抵達時間要晚於出發時間.
-- **Fields.** 車種, 車號, 座位, 價錢 (the shared `PriceCell`) and 車票類型,
-  with the remembered `ticket_type` values suggested, all commit like a cell.
-- **訂票代碼** is large and monospaced. Tapping copies it and shows 已複製 for
-  two seconds; a refused clipboard shows 無法複製. ✎ edits it.
-- **已訂票 / 付款 / 取票** are three toggles, each its own field.
+  — then, except on a 範本, **已準備完成** and the ticket status, and on every
+  trip the **單程 / 來回** toggle. Then 備註 on a one-way trip. The ⋯ menu
+  holds 保存 (or 取消保存, which asks first, as the checkbox does), 當作範本
+  and 刪除行程, which asks first and returns to `/trips`; a 範本's ⋯ offers
+  only 刪除行程. **當作範本** creates a template of the same name with the
+  entries on the same dates — the page sends the Taipei day of the earliest
+  departure as `start_date`, or none when no entry has one (`firstDeparture`)
+  — and opens it. On a saved or auto-saved trip, or whenever it has a remark,
+  a **保存備註** cell sits under 備註. A change of 狀態 or kind keeps the page
+  where it is. 過去使用 into a full 自動保存 opens `EvictDialog` once the
+  index it names from has arrived fresh.
+- **已準備完成** is a checkbox for the `done` flag, independent of 狀態 and
+  kind. It can be ticked only when the trip is **ready** (`tripReadiness` in
+  `lib/trips.js`, the server's rule): its tickets are not 未買票, and every
+  entry has ticked every tick it shows — the booking code does not count.
+  Until then it is disabled with what is missing beside it, （未買票）,
+  （還有未完成的標籤） or both; unticking is always allowed. A 422 the server
+  still returns shows 還沒準備完成：… under the controls. Any write that makes
+  the trip not ready clears `done` on the server, and the refetch shows it.
+- **The ticket status** is a three-way `Segmented` control: 未買票 / 無需買票 /
+  已買票 (`ticket_status`).
+- **單程 / 來回** (`round_trip`). A one-way trip is one list of entries under
+  its 備註. A round trip has no overall remark: it shows two sections, **去程**
+  and **回程**, each with a title cell (`outbound_title`, `return_title`), a
+  remark (`notes` — the one-way remark, so nothing moves when the trip turns
+  round — and `return_notes`), its entries and its own **+ 新增一段**, which
+  sends that `section`. An entry with no section shows under 去程. Back to
+  單程 is refused while 回程 holds an entry, a title or a remark, and the
+  screen says 回程還有行程段、標題或備註。請先移到去程或刪除，再改回單程。
+- **Entries** are cards in `departs_at` order, an entry with no departure
+  after every entry with one, then by id (`sortLegs`). The top line is
+  起點 → 終點, each a cell; an emptied one keeps its value (`required` in
+  `lib/cells.js`, as on 交通 and the trip's name), then the **類型** select and
+  ⋯. Under it the times (`formatLegTimes`): the departure, the arrival (the
+  clock alone when it is the same Taipei day, `formatArrival`) and the
+  duration; the departure alone when that is all there is or the two are the
+  same instant; `– {arrival}` with only an arrival; 未定時間 with neither. ✎
+  opens two `datetime-local` inputs in Taipei time, both optional; choosing a
+  departure while the arrival is empty fills the arrival with it
+  (`fillArrival`), as the server does on save. A 422 shows
+  抵達時間不能早於出發時間.
+- **What a card shows follows its 類型**, from one table in
+  `lib/legTypes.js` (`LEG_TYPES`), the same as
+  `app/services/domain/leg_types.py`; `legTypes.test.js` and
+  `tests/unit/test_leg_types.py` each pin theirs to the spec's table. The table
+  names the type's fields, and for each tick and the booking code whether it
+  is **fixed** (always shown, no toggle), **optional** (shown when the entry
+  switches it on, starting at the type's default) or **absent**:
+
+  | 類型 | fields | 已訂票 · 已付款 · 已取票 | code |
+  | --- | --- | --- | --- |
+  | 高鐵 | 車種 車號 座位 價錢 車票類型 方向 | fixed · fixed · fixed | fixed 訂票代碼 |
+  | 火車, 客運 | 車種 車號 座位 價錢 車票類型 方向 | optional, on | optional on, 訂票代碼 |
+  | 捷運 | 車種 價錢 方向 | absent | absent |
+  | 公車 | 車種 車號 價錢 方向 | absent | absent |
+  | 開車 | 乘車類型 車種 車號 座位 價錢 | 已訂 off · 已付款 off · absent | optional off, 訂單編號 |
+  | 腳踏車 | 類型 | 已訂 off · 已付款 off · absent | optional off, 訂單編號 |
+  | 走路 | — | absent | absent |
+  | 飛機, 船, 其他 | 車種 車號 座位 價錢 車票類型 | optional, on | optional on, 訂票代碼 |
+
+  已訂票 reads **已訂** and the code **訂單編號** on 開車 and 腳踏車
+  (`flagLabel`). Changing the 類型 resets the flags to the new type's defaults
+  on the server; values of fields the new type does not show are kept, only
+  hidden.
+- **Fields.** 車種, 車號, 座位, 方向, 價錢 (the shared `PriceCell`) and
+  車票類型, with the remembered `ticket_type` values suggested, all commit like
+  a cell. 乘車類型 on 開車 (叫車, 自駕自己的車, 租車) and 類型 on 腳踏車
+  (自己的, YouBike, Moovo, 租車) are a select whose — stores null.
+- **The booking code** (訂票代碼 / 訂單編號), when shown, is large and
+  monospaced. Tapping copies it and shows 已複製 for two seconds; a refused
+  clipboard shows 無法複製. ✎ edits it.
+- **The ticks** the entry shows are toggles, each its own field.
+- **⋯** holds 移到去程 or 移到回程 on a round trip (`PATCH section`), a
+  顯示「…」 / 隱藏「…」 item for each optional tick and the code, and
+  刪除這段, which asks first.
+- **備註** is a `TextAreaCell`.
 - **Packing list.** A linked list shows as `打包清單：{name}`, a link to it; ✎
   opens a select of every list **except templates**, newest `created_at`
   first (`linkChoices` — this order is the picker's alone), each reading
   `{name} ({date}) · {created date, Taipei} · {status}` (`linkLabel`): the
   list's own 出發 date as `YYYY-MM-DD`, the way its header writes it, left out
   when it has none; then the 狀態 for a 一般 or 自動保存 list, 保存 for a saved
-  one. A template the leg is already
+  one. A template the entry is already
   linked to stays in the list, so the select never reads （不連結） for a
-  linked leg. （不連結） unlinks. A 409 shows 這份清單已經連到別的行程段. The
+  linked entry. （不連結） unlinks. A 409 shows 這份清單已經連到別的行程段. The
   list's own header then reads 由行程設定 for its date.
-- **Adding and deleting.** + 新增一段 takes the places and two Taipei times;
-  ⋯ 刪除這段 asks first.
+- **Adding.** **+ 新增一段** opens a form that asks for the **類型** first;
+  only then does it show 起點 and 終點, two optional Taipei times (an empty
+  arrival takes the departure as it is chosen), the type's fields, and a
+  **顯示** checkbox for each optional tick and the code, starting at the
+  type's default — fixed ones have none. 新增 is disabled until there is a type
+  and both places. The booking code and 備註 are filled in on the card. A
+  價錢 that is not a whole number says 價錢要是整數 and sends nothing.
+
+## 筆記 (`/notes`)
+
+`pages/Notes.jsx` is the 筆記 nav item: notes that belong to no trip or route,
+read from `['notes']` (`GET /api/notes`).
+
+- **+ 新增筆記** opens the note form from `components/NoteEditor.jsx`, the
+  one a route's note uses, with two differences: a **title is required** —
+  儲存 stays disabled with 需要標題。 until there is one — and there is a
+  **群組** field suggesting the groups in use. Each note's ✎ opens the same
+  form; changing 群組 moves the note to the end of the new group.
+- **Groups.** Notes are shown grouped by `group_name` (`groupByName`), the
+  ungrouped ones first with no heading, each named group under a small heading
+  — the same convention as 交通's routes.
+- **A note** reads as on a route: its title, its 說明 as a `TextAreaCell`
+  edited in place, and its links, each opening in a new tab. ⋯ 刪除筆記 asks
+  first; a failed delete shows 無法刪除筆記，請再試一次。
+- **Order.** The ⠿ beside a note drags it within its group; **排序群組**,
+  shown once there are two named groups, orders the named groups. Either sends
+  every note id in the new order, the ungrouped first, in one
+  `PUT /api/notes/order`; the cache takes it first, the list is read again
+  afterwards, and a refusal shows 排序沒有儲存，已還原。 Links are reordered in
+  the form with ↑ / ↓.
+- **Empty.** 還沒有筆記。按「+ 新增筆記」開始。
 
 ## 選項 (`/options`)
 

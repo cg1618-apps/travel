@@ -66,6 +66,9 @@ it **drops what it created and everything in it**. In chain order:
 | `k1ind0000001` | Each list's and trip's `kind`, `usage` and `auto_saved_at`, and each list's `notes` and `archive_note` — every 狀態 and every list remark is lost; a trip's `archive_note` survives. The booleans come back from `kind`: saved → `saved` / `archived`, template → `template`, and every 一般 row, 自動保存 included, as neither. A list or trip that was both saved (or archived) and a template before the upgrade comes back a template only. |
 | `t4rip0000004` | Each trip's `done` — every 已完成 mark is lost. |
 | `t2ransport02` | `transport_note` and `transport_note_link` — every note on a route and every link on one. A route's own 備註 (`transport_route.notes`) survives. |
+| `t5rip0000005` | Each entry's `transport_type`, `direction`, `ride_type`, `section` and four `has_*` switches, and each trip's `ticket_status`, `round_trip`, `outbound_title`, `return_title` and `return_notes` — every type, 方向, ticket status and 回程 title and remark is lost. **It refuses to run** while any entry lacks a time or arrives exactly when it departs, because the older columns cannot hold either; give those entries times, or delete them, first. |
+| `t3ransport03` | Each route's `group_name` — every route group is lost; the routes keep their order. |
+| `n1otes000001` | `note` and `note_link` — every 筆記 and every link on one. |
 
 So for a release that carried any of them:
 

@@ -57,15 +57,19 @@ The tabs, in the order the backup leaves them:
 | --- | --- | --- |
 | `總覽` | reading | When the backup ran, and a link to each readable tab. |
 | `清單 · <name>` | reading | One per list in the readable set (below). A header block with name, 狀態, 出發, 去程/回程, 備註 and 已處理 x / y, then one row per item in `position` order. |
-| `行程 · <name>` | reading | One per trip in the readable set. A header block, then one row per leg in departure order, with Taipei times, booking state shown as ✓, the 訂票代碼 and the linked list's name. |
+| `行程 · <name>` | reading | One per trip in the readable set. A header block with name, 狀態, 準備 (已準備完成 or 未準備完成) and 車票 (未買票 / 無需買票 / 已買票); then, on a one-way trip, 備註 and one row per leg; on a round trip, a 去程 block and a 回程 block, each its title, its 備註 and its legs. Legs are in departure order, untimed last, with Taipei times (blank when unset), 類型 (with the ride type, as 開車 · 叫車) and 方向, the labels as ✓ ticked, blank unticked and `-` where the entry does not show that label, the 訂票代碼 when the entry shows one, and the linked list's name. A field the entry's type does not show is blank, as on screen. |
 | `交通` | reading | Every route and option, with departures written as `06:10 *08:15`, where `*` marks an irregular departure. A route with no options, or with a 備註 or notes, also gets a row of its own whose 備註 cell holds the 備註 and then each note on its own line, as `title · description · link link`. |
 | `Backup Info` | restore | `backed_up_at`, the Alembic revision the database was at, and each table's row count. |
-| `Label Option` … `Trip Leg` | restore | One tab per table, in restore order: every column, headed by its column name, and every row by `id`. The transport tabs are `Transport Route`, `Transport Option`, `Transport Departure`, `Transport Note` and `Transport Note Link`, in that order; the order and its reasons are in `app/services/sheet_backup/tabs.py`. |
+| `Label Option` … `Note Link` | restore | One tab per table, in restore order: every column, headed by its column name, and every row by `id`. The transport tabs are `Transport Route`, `Transport Option`, `Transport Departure`, `Transport Note` and `Transport Note Link`, in that order, and `Note` and `Note Link` (筆記) come last, after `Trip Leg`; the order and its reasons are in `app/services/sheet_backup/tabs.py`. |
 
 **The readable set** is what the dashboard shows, plus one more rule:
 
-- **Lists:** 一般 lists that are 使用中 or 未來使用, 使用中 first.
-- **Trips:** 一般 trips that are 使用中 or 未來使用, 使用中 first.
+- **Lists:** 一般 lists that are 使用中 or 未來使用, soonest start first.
+- **Trips:** 一般 trips that are 使用中 or 未來使用, soonest start first.
+
+The order is the dashboard's (`business-rules.md`, "The shelves and their
+order"): a trip starts at its earliest entry departure, a list at its
+effective date, and a row with no start goes last.
 - **Plus:** every list linked from a leg of one of those trips, whatever that
   list's own 狀態. A trip in use whose return list has not yet been set to
   使用中 is exactly the case where the app dying would hurt.
@@ -144,7 +148,8 @@ printing the counts. Readable tabs are never read.
 | Condition | Why |
 | --- | --- |
 | `Backup Info` or a restore tab is missing | It is not a backup. |
-| The sheet's Alembic revision is not the database's | The columns would not line up. Migrate first, or restore into a database at the sheet's revision. This is also what refuses a backup taken before a table existed — one from before `t2ransport02` has no `Transport Note` tab. There is no cross-revision restore: restore into a database at the backup's revision, upgrade, then back up again. |
+| The sheet's Alembic revision is not the database's | The columns would not line up. Migrate first, or restore into a database at the sheet's revision. This is also what refuses a backup taken before a table existed — one from before `t2ransport02` has no `Transport Note` tab, and one from
+before `n1otes000001` no `Note` tab. There is no cross-revision restore: restore into a database at the backup's revision, upgrade, then back up again. |
 | The database holds rows and `--replace` was not passed | Every table's count is printed, so you see what would be deleted. |
 | A tab's row count differs from `Backup Info`'s | The backup did not finish writing. |
 | A header names no column, appears twice, or a non-null column has no header | Columns are matched by header name, never by position. |

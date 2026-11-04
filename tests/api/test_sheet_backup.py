@@ -15,6 +15,8 @@ from sqlalchemy import select, text
 from app.constants import Kind, Usage
 from app.models import (
     LabelOption,
+    Note,
+    NoteLink,
     PackingItem,
     PackingList,
     TransportDeparture,
@@ -94,7 +96,9 @@ def seeded(db_session):
     ])
     trip = Trip(name="彰化 ⇄ 台北", kind=Kind.FREE, usage=Usage.IN_USE, notes="中秋")
     old_trip = Trip(name="去年", kind=Kind.FREE, usage=Usage.PAST,
-                    auto_saved_at=datetime(2026, 8, 1, tzinfo=timezone.utc))
+                    auto_saved_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+                    round_trip=True, return_title="回家", return_notes="記得\n帶傘",
+                    ticket_status="not_needed")
     db.add_all([trip, old_trip])
     db.flush()
     db.add_all([
@@ -106,9 +110,22 @@ def seeded(db_session):
         TripLeg(trip_id=trip.id, from_place="彰化火車站", to_place="台北車站",  # unlinked
                 departs_at=datetime(2026, 10, 5, 18, 6, tzinfo=TPE),
                 arrives_at=datetime(2026, 10, 5, 20, 59, tzinfo=TPE)),
-        TripLeg(trip_id=old_trip.id, from_place="甲", to_place="乙",
+        TripLeg(trip_id=old_trip.id, from_place="甲", to_place="乙", section="return",
                 departs_at=datetime(2025, 10, 5, 8, 0, tzinfo=TPE),
                 arrives_at=datetime(2025, 10, 5, 9, 0, tzinfo=TPE)),
+        # No times at all, a car with a ride type and its switches mostly off.
+        TripLeg(trip_id=trip.id, from_place="宿舍", to_place="車站", transport_type="car",
+                ride_type="hail", direction="南下", has_booked=False, has_paid=False,
+                has_collected=False, has_booking_code=False),
+    ])
+    grouped = Note(group_name="住宿", title="訂房", description="第一行\n第二行", position=0)
+    loose = Note(title="雜記", position=1)
+    db.add_all([grouped, loose])
+    db.flush()
+    db.add_all([
+        NoteLink(note_id=grouped.id, url="https://example.invalid/n1", position=0),
+        NoteLink(note_id=grouped.id, url="https://example.invalid/n2", position=1),
+        NoteLink(note_id=loose.id, url="https://example.invalid/n3", position=0),
     ])
     db.commit()
     return db
@@ -170,6 +187,7 @@ def test_after_a_restore_new_rows_take_fresh_ids(seeded, sheets):
     a_list, a_route, a_trip = (before[t][0]["id"] for t in ("packing_list", "transport_route", "trip"))
     an_option = before["transport_option"][0]["id"]
     a_note = before["transport_note"][0]["id"]
+    a_plain_note = before["note"][0]["id"]
     new = {
         "label_option": LabelOption(kind="bag", value="背包"),
         "packing_list": PackingList(name="新"),
@@ -180,6 +198,8 @@ def test_after_a_restore_new_rows_take_fresh_ids(seeded, sheets):
                                                   time=time(23, 59)),
         "transport_note": TransportNote(route_id=a_route, title="新"),
         "transport_note_link": TransportNoteLink(note_id=a_note, url="https://example.invalid/new"),
+        "note": Note(title="新"),
+        "note_link": NoteLink(note_id=a_plain_note, url="https://example.invalid/new"),
         "trip": Trip(name="新"),
         "trip_leg": TripLeg(trip_id=a_trip, from_place="a", to_place="b",
                             departs_at=NOW, arrives_at=NOW + timedelta(hours=1)),
@@ -246,7 +266,7 @@ def test_a_missing_restore_tab_is_refused(seeded, fake, sheets):
     fake.tabs.remove(fake.tab("Trip Leg"))
     with pytest.raises(RestoreRefused, match="Trip Leg"):
         run_restore(seeded, sheets, replace=True)
-    assert counts(seeded)["trip_leg"] == 3
+    assert counts(seeded)["trip_leg"] == 4
 
 
 def test_a_bad_cell_is_refused_naming_tab_row_and_column(seeded, fake, sheets):
@@ -328,7 +348,7 @@ def test_one_empty_table_among_full_ones_backs_up_as_a_header_only_tab(seeded, f
     result = run_backup(seeded, sheets, now=NOW)
     assert result.rows["transport_route"] == 0
     assert fake.tab("Transport Route").values() == [list(TransportRoute.__table__.c.keys())]
-    assert len(fake.tab("Trip Leg").values()) == 4
+    assert len(fake.tab("Trip Leg").values()) == 5
 
 
 # --- the readable tabs ------------------------------------------------------------
@@ -336,8 +356,10 @@ def test_one_empty_table_among_full_ones_backs_up_as_a_header_only_tab(seeded, f
 
 def test_the_readable_set_follows_the_dashboard_and_the_trips_legs(db_session, fake, sheets):
     db = db_session
-    in_use = PackingList(name="使用中清單", usage=Usage.IN_USE)
-    upcoming = PackingList(name="未來清單", usage=Usage.UPCOMING)
+    # Load-bearing dates: the 未來使用 list starts first, so only the
+    # soonest-start rule - not 使用中-first - puts it ahead.
+    in_use = PackingList(name="使用中清單", usage=Usage.IN_USE, departure_at=date(2026, 10, 20))
+    upcoming = PackingList(name="未來清單", usage=Usage.UPCOMING, departure_at=date(2026, 10, 8))
     linked = PackingList(name="回程清單", usage=Usage.UNUSED)  # only the leg brings it in
     saved = PackingList(name="保存清單", kind=Kind.SAVED)
     unused = PackingList(name="閒置清單", usage=Usage.UNUSED)
@@ -356,7 +378,7 @@ def test_the_readable_set_follows_the_dashboard_and_the_trips_legs(db_session, f
     run_backup(db, sheets, now=NOW)
 
     titles = fake.titles()
-    assert titles[:5] == ["總覽", "清單 · 使用中清單", "清單 · 未來清單", "清單 · 回程清單", "行程 · 這次"]
+    assert titles[:5] == ["總覽", "清單 · 未來清單", "清單 · 使用中清單", "清單 · 回程清單", "行程 · 這次"]
     assert titles[5:7] == ["交通", BACKUP_INFO]
     assert "清單 · 保存清單" not in titles and "清單 · 閒置清單" not in titles
     assert "行程 · 保存行程" not in titles
@@ -384,10 +406,41 @@ def test_a_list_tab_reads_in_the_sheets_own_words(seeded, fake, sheets):
 def test_a_trip_tab_shows_taipei_times_and_the_linked_list(seeded, fake, sheets):
     run_backup(seeded, sheets, now=NOW)
     rows = fake.tab("行程 · 彰化 ⇄ 台北").values()
+    assert ["準備", "未準備完成"] in rows
+    assert ["車票", "未買票"] in rows
     first = next(r for r in rows if r and r[0] == "台北車站")
     assert first[2] == "2026-10-03 00:30"
-    assert first[12] == "0123"
-    assert first[14] == "台北去彰化"
+    assert first[4] == "其他"
+    assert first[11:15] == ["✓", "✓", "", "0123"]
+    assert first[16] == "台北去彰化"
+    # The untimed car reads last, with blank times and its hidden labels as -.
+    car = rows[-1]
+    assert car[:7] == ["宿舍", "車站", "", "", "開車 · 叫車", "", ""]
+    assert car[11:] == ["-", "-", "-"]  # the sheet drops the blank cells after
+
+
+def test_a_round_trip_tab_has_a_block_per_section(db_session, fake, sheets):
+    db = db_session
+    trip = Trip(name="來回", usage=Usage.IN_USE, round_trip=True, outbound_title="去台中",
+                notes="去程備註", return_title="回台北", return_notes="回程備註",
+                ticket_status="bought", done=True)
+    db.add(trip)
+    db.flush()
+    db.add_all([
+        TripLeg(trip_id=trip.id, from_place="台北", to_place="台中", section="outbound",
+                transport_type="hsr", departs_at=NOW, arrives_at=NOW, direction="南下"),
+        TripLeg(trip_id=trip.id, from_place="台中", to_place="台北", section="return",
+                transport_type="walk", departs_at=NOW + timedelta(days=1)),
+    ])
+    db.commit()
+    run_backup(db, sheets, now=NOW)
+    rows = fake.tab("行程 · 來回").values()
+    assert ["準備", "已準備完成"] in rows and ["車票", "已買票"] in rows
+    out, back = rows.index(["去程", "去台中"]), rows.index(["回程", "回台北"])
+    assert rows[out + 1] == ["備註", "去程備註"] and rows[back + 1] == ["備註", "回程備註"]
+    assert [r[0] for r in rows[out + 3:back] if r] == ["台北"]
+    assert rows[out + 3][5] == "南下"
+    assert [r[0] for r in rows[back + 3:]] == ["台中"]
 
 
 def test_the_transport_tab_marks_irregular_departures(seeded, fake, sheets):
@@ -426,7 +479,7 @@ def test_post_backup_answers_tabs_rows_and_time(api, seeded):
     response = api.post("/api/backup")
     assert response.status_code == 200
     body = response.json()
-    assert body["rows"]["trip_leg"] == 3
+    assert body["rows"]["trip_leg"] == 4
     assert body["tabs"] >= 12
     assert datetime.fromisoformat(body["backed_up_at"]).tzinfo is not None
 

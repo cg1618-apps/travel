@@ -52,20 +52,37 @@ export function inIdOrder(rows, ids) {
 
 /**
  * A 筆記 form's fields as the API takes them: blanks as null, and empty link
- * inputs dropped, because the API refuses a blank link.
+ * inputs dropped, because the API refuses a blank link. `group_name` is sent
+ * only by a form that has the field - the 筆記 page's, not a route's.
  */
-export function notePayload({ title, description, links }) {
-  return {
+export function notePayload({ title, description, links, group_name: group }) {
+  const payload = {
     title: title.trim() || null,
     description: description.trim() || null,
     links: links.map((link) => link.trim()).filter(Boolean),
   }
+  if (group !== undefined) payload.group_name = group.trim() || null
+  return payload
 }
 
-/** A note needs a title or a link; a description alone is not enough. */
-export function canSaveNote(fields) {
+/**
+ * A route's note needs a title or a link; a description alone is not enough.
+ * A note on the 筆記 page needs a title whatever else it has.
+ */
+export function canSaveNote(fields, { titleRequired = false } = {}) {
   const { title, links } = notePayload(fields)
+  if (titleRequired) return title !== null
   return title !== null || links.length > 0
+}
+
+/**
+ * `list` with the entry at `index` moved one place up (-1) or down (+1); the
+ * same list when that would leave the ends. A note's links are reordered so.
+ */
+export function moveBy(list, index, delta) {
+  const to = index + delta
+  if (to < 0 || to >= list.length) return list
+  return moveTo(list, index, to)
 }
 
 /**
@@ -80,3 +97,7 @@ export function linkText(url) {
     return url
   }
 }
+
+/** What a note is called in its menu and dialog: its title, else its first link. */
+export const noteName = (note) =>
+  note.title ?? (note.links[0] ? linkText(note.links[0]) : '筆記')

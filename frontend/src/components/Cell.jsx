@@ -8,6 +8,7 @@
 
 import { useRef, useState } from 'react'
 
+import { remarkValue } from '../lib/cells'
 import { keysFor } from '../lib/keys'
 import { parseWholeNumber } from '../lib/numbers'
 import { Combobox } from './Combobox'
@@ -93,6 +94,85 @@ function TextInput({ value, options, onCommit, onDone }) {
     return <input {...props} value={text} onChange={(event) => setText(event.target.value)} />
   }
   return <Combobox {...props} value={text} onChange={setText} options={options} onPick={commit} />
+}
+
+/**
+ * A remark: several lines, shown as written. Editing is a textarea that grows
+ * with its content; Enter is a new line, so Ctrl/Cmd+Enter or leaving the cell
+ * commits, and Escape reverts as every cell does.
+ */
+export function TextAreaCell({ value, placeholder, ariaLabel, onCommit }) {
+  const [editing, setEditing] = useState(false)
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        aria-label={ariaLabel}
+        className={`${base} whitespace-pre-wrap break-words`}
+      >
+        {value || <span className="text-text-faint">{placeholder}</span>}
+      </button>
+    )
+  }
+
+  return (
+    <TextAreaInput
+      value={value}
+      ariaLabel={ariaLabel ?? placeholder}
+      onCommit={onCommit}
+      onDone={() => setEditing(false)}
+    />
+  )
+}
+
+/** Fits the textarea to its text, so nothing in a remark scrolls out of sight. */
+const fit = (element) => {
+  if (!element) return
+  element.style.height = 'auto'
+  element.style.height = `${element.scrollHeight}px`
+}
+
+function TextAreaInput({ value, ariaLabel, onCommit, onDone }) {
+  const [text, setText] = useState(value ?? '')
+  // As TextInput: the commit that closes the editor blurs it too.
+  const finished = useRef(false)
+
+  const commit = () => {
+    if (finished.current) return
+    finished.current = true
+    onDone()
+    const next = remarkValue(text)
+    if (next !== (value ?? null)) onCommit(next)
+  }
+  const onKeyDown = (event) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault()
+      commit()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      finished.current = true
+      onDone()
+    }
+  }
+
+  return (
+    <textarea
+      autoFocus
+      ref={fit}
+      rows={1}
+      aria-label={ariaLabel}
+      value={text}
+      onChange={(event) => {
+        setText(event.target.value)
+        fit(event.target)
+      }}
+      onBlur={commit}
+      onKeyDown={onKeyDown}
+      className={`${base} block resize-none overflow-hidden bg-surface ring-1 ring-brand`}
+    />
+  )
 }
 
 /**

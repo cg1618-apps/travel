@@ -217,3 +217,54 @@ def test_the_packed_count_revision_turns_zero_into_no_value_and_back(scratch_dat
     engine.dispose()
     assert found == {"uncounted": 0, "counted": 3, "new": 0}
     assert nullable == "NO"
+
+
+def test_the_entry_types_revision_backfills_and_refuses_to_invent_a_time(scratch_database):
+    """Load-bearing seed: an existing leg and trip, so the backfill has rows to
+    fill; then an untimed leg, so the downgrade has something to refuse on."""
+    run_alembic(scratch_database, "upgrade", "t2ransport02")
+    engine = create_engine(scratch_database)
+    with engine.begin() as conn:
+        trip_id = conn.execute(
+            text("INSERT INTO trip (name, usage) VALUES ('t', 'unused') RETURNING id")
+        ).scalar()
+        conn.execute(
+            text(
+                "INSERT INTO trip_leg (trip_id, from_place, to_place, departs_at, arrives_at) "
+                "VALUES (:t, 'a', 'b', '2026-11-04 08:00+08', '2026-11-04 09:00+08')"
+            ),
+            {"t": trip_id},
+        )
+
+    run_alembic(scratch_database, "upgrade", "t5rip0000005")
+    with engine.begin() as conn:
+        leg = conn.execute(
+            text(
+                "SELECT transport_type, has_booked, has_paid, has_collected, has_booking_code, "
+                "section FROM trip_leg"
+            )
+        ).one()
+        assert tuple(leg) == ("other", True, True, True, True, None)
+        trip = conn.execute(text("SELECT ticket_status, round_trip FROM trip")).one()
+        assert tuple(trip) == ("not_bought", False)
+        untimed = conn.execute(
+            text("INSERT INTO trip_leg (trip_id, from_place, to_place) "
+                 "VALUES (:t, 'b', 'c') RETURNING id"),
+            {"t": trip_id},
+        ).scalar()
+
+    refused = subprocess.run(
+        [sys.executable, "-m", "alembic", "downgrade", "t2ransport02"],
+        cwd=ROOT,
+        env={**os.environ, "DATABASE_URL": scratch_database},
+        capture_output=True,
+        text=True,
+    )
+    assert refused.returncode != 0
+    assert "will not invent a time" in refused.stderr
+
+    # Mirror: without the untimed leg the same downgrade goes through.
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM trip_leg WHERE id = :id"), {"id": untimed})
+    engine.dispose()
+    run_alembic(scratch_database, "downgrade", "t2ransport02")

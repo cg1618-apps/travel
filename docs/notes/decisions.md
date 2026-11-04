@@ -538,7 +538,7 @@ browser-style tabs, and 行程 opens `/trips` like 打包清單 opens `/lists`.
   change took the trip out of being current (使用中 → 未來使用 included, since
   another 使用中 trip would then take `/trip` over). What the current trip was
   for — "what am I using now" — is the dashboard's job, and it already picks by
-  `usage`: every 使用中 and 未來使用 trip, 使用中 first. `GET /api/trips/current`
+  `usage`: every 使用中 and 未來使用 trip. `GET /api/trips/current`
   went with the page; it now falls to `/api/trips/{trip_id}` and is a `422`.
 - **Tabs, not sections.** Every row is on exactly one tab, the counts say where
   without scrolling, and the four tabs are the API's four arrays shown as they
@@ -642,18 +642,135 @@ tabs instead. How it works is in `sheet-backup.md`.
   `lib.sh` assumes `~/media`, which is the hazard recorded under "Renaming
   media's checkout" in the platform's decisions.
 
-## 已完成 is its own flag, not a usage
+## 已準備完成 is its own flag, not a usage
 
 A trip gets `done`, a boolean, rather than being "done" whenever its usage is
 過去使用. The two answer different questions. `usage: past` is a shelf move
 with a side effect — it enters the trip into 自動保存, whose oldest slot it can
-drop — and it is set when the trip is over. `done` is the owner ticking a trip
-off, which they may do before it is over (everything booked and settled) or
-never do for a past one. Tying the two would make ticking a trip off able to
-delete another one, and would leave a template or a saved trip, which has no
-usage at all, unable to be marked. So `done` moves no shelf, touches no queue
-and is touched by no shelf move. A copy starts not done, because whether the
-source was finished is state, not definition.
+drop — and it is set when the trip is over. `done` is the owner marking a trip
+ready to go (已準備完成), which happens before it is over. Tying the two would
+make marking a trip able to delete another one, and would leave a template or
+a saved trip, which has no usage at all, unable to be marked. So `done` moves
+no shelf, touches no queue and is touched by no shelf move. A copy starts not
+done, because whether the source was ready is state, not definition.
+
+## 已準備完成 is gated by readiness, and cleared by the write that breaks it
+
+`done` was first a free mark (已完成). It became 已準備完成, and a mark that
+says "ready" while a ticket is unpaid is a lie the screen would repeat on the
+dashboard. Two ways to keep it honest were possible: compute the badge from
+readiness and drop the column, or keep the owner's mark and constrain it. The
+mark stays, because ready is necessary but not sufficient — everything ticked
+is not the same as the owner having looked the trip over — so the server
+refuses `done: true` on a trip that is not ready (422, naming what is
+missing), and **any write that makes a done trip not ready clears `done` in
+the same transaction**. The alternative, refusing the write that would break
+readiness, would make unticking a label impossible on a done trip without
+first unmarking it, which is backwards: unticking is how the owner says
+something came undone. Clearing happens in `settle_done`
+(`app/services/domain/trip.py`), called after every leg create and update and
+every trip update; a delete is not, because removing an entry can only make a
+trip readier and must not set `done`.
+
+The refusal is judged on the trip as the request leaves it, so one `PATCH`
+that settles `ticket_status` and sets `done` is accepted. Reads carry `ready`,
+computed by the same function, so the screen's "disabled with a hint" and the
+server's refusal cannot disagree.
+
+## Entry types are one table, written twice
+
+What each transport type shows and which labels it carries is a table
+(`LEG_TYPES`), needed by the form to lay itself out and by the server to
+refuse a switch the type cannot have and to compute readiness. It is written
+in `app/services/domain/leg_types.py` and again in
+`frontend/src/lib/legTypes.js`, as the dashboard rule is, rather than served:
+the form needs it before it has loaded anything, and the readable sheet tab
+needs it with no browser. `tests/unit/test_leg_types.py` spells the table out
+in full, so changing a type's form is a visible edit to a test rather than a
+quiet edit to one copy.
+
+**A capability is one of four strings** — `fixed`, `optional_on`,
+`optional_off`, `absent` — rather than a pair of "has a switch" and
+"default". Four named states read the same in both languages and in the
+spec's table, and the impossible combination ("no switch, default off") has no
+spelling.
+
+**The `has_*` switches are columns, not derived.** A label's state is partly
+the type's and partly the entry's own choice (a 火車 entry with a ticket bought
+at the station has no 已取票), so it has to be stored per entry. The columns
+are constrained by the type in the router, not by a CHECK: a CHECK would need
+the table in SQL, a third copy.
+
+**Changing a type resets the switches the request does not name**, rather than
+keeping them, because a switch only means something for the type it was set
+on: a car's `has_collected` is always false, and keeping it would make a car
+turned into a 火車 lose 已取票 silently. **Values of fields the type does not
+show are kept** for the opposite reason: a seat or a ride type is data the
+owner typed, and a mistaken type change should not destroy it. That is also
+why only a `ride_type` *sent* is judged against the type — one kept from an
+earlier type is hidden, not wrong.
+
+**Every existing entry became `other` with every switch on**, which is
+exactly what it showed before types existed, so the migration changes nothing
+visible.
+
+## Entry times are optional, and a departure fills the arrival
+
+Entries now include things with no booked time (a walk to the station, a
+transfer). Both times became nullable. When only `departs_at` is known the
+server stores it as `arrives_at` too — on create and on the merged result of a
+`PATCH` — so an entry always has an end when it has a start, and every reader
+that wants "when does this end" (已結束, the calendar) has one answer. The
+CHECK became `arrives_at >= departs_at` when both are set: a filled arrival
+equals its departure, and refusing equality would refuse the server's own
+fill.
+
+**Everything that reads times copes with null**, and the choices are:
+
+- **The copy shift** anchors on the earliest non-null `departs_at`, and
+  `start_date` is required only when there is one. An `arrives_at` alone is
+  not an anchor: it is the rare case, and shifting by an arrival would make
+  the 當作範本 "first day" the arrival's.
+- **`effective_departure_at`** falls back to the list's own date when its
+  linked leg has no time, and `departure_source` then reads `list`, not
+  `trip_leg`: the field says which date applied, and the leg did not supply
+  one. A leg time set later takes over again.
+- **The dashboard and the readable tabs** sort untimed rows last.
+- **The downgrade refuses** rather than inventing a time for an untimed entry
+  or a minute for an instant one; see `deployment-selfhost.md`.
+
+## Round trips store the 去程 remark in `notes`
+
+A round trip has two sections, each with a title and a remark, and a one-way
+trip has one remark. `notes` is the one-way remark **and** the 去程 one, with
+new `outbound_title`, `return_title` and `return_notes` beside it, so toggling
+moves no text between columns and cannot lose any. `outbound_title` is kept
+but not shown on a one-way trip for the same reason.
+
+**Switching back to one-way is refused while 回程 holds anything**, rather
+than moving the 回程 entries into the one list or keeping the 回程 remark
+hidden: either would change or hide something the owner wrote without asking.
+The screen says to move or delete them first, and clearing them in the same
+request is accepted. **An entry's `section` is forced to match the trip** —
+null on a one-way trip whatever is sent, 去程 on a round trip unless 回程 is
+sent — so a section never disagrees with the trip it is on.
+
+**A copy carries `round_trip` and the titles and 回程 remark**, because it
+carries each entry's `section`, and sections on a one-way trip would be
+meaningless; the shape of the trip is definition. `ticket_status` and `done`
+are state, and reset.
+
+## The dashboard sorts by start, not by usage
+
+The dashboard showed 使用中 rows before 未來使用 ones. With dates on lists and
+entries, "what is next" is answered by the start, and a 未來使用 trip
+tomorrow is more urgent than a 使用中 list whose trip began last week. So both
+copies of the rule sort soonest start first, no start last, ties stable. A
+list's start is its effective date at Taipei 00:00 — a date has no clock time,
+and midnight puts a list before a trip leaving the same day, which is the
+order they are packed and taken in. The Python copy takes the start from a
+`start` callable defaulting to `start_of`, so the pinning test can hand it
+plain rows the way `kinds.test.js` does.
 
 ## A route's notes are `note_entries`, and their links are rows
 
@@ -684,7 +801,17 @@ that sent an empty row believe it had saved one.
 
 `PUT /api/packing-lists/{id}/order` already set a list's whole order in one
 request. Routes and options needed the same, so the check — every id once,
-nothing foreign — moved to `app/services/domain/ordering.py` and the three
-endpoints share it; packing adds its group-adjacency check on top. A
+nothing foreign — moved to `app/services/domain/ordering.py` and every order
+endpoint shares it.
+
+**Groups moved there too.** 筆記 and transport routes gained groups with the
+packing list's rules exactly, so the group machinery — `check_groups`, and
+`place_in_group` / `insert_after` / `next_position` over any model with a
+`position`, a group column and a `scope` (`{"list_id": n}` for items, `{}` for
+notes and routes) — is written once there, and `app/services/domain/packing.py`
+keeps thin wrappers with its own names. Copying the helpers per table was the
+alternative, and three copies of a rule that has already had one subtle bug
+(`IS NOT DISTINCT FROM` for the null group) is three places to get it wrong.
+Route notes and options have whole orders but no groups. A
 `position` PATCH per row was the alternative, and it is one write per row a
 drag passes, with the positions inconsistent between them.

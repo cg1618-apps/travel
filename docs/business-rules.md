@@ -98,7 +98,10 @@ source as `copy_from_id`.
 ## Groups
 
 A list's **group** is its items sharing one `category`; items with no category
-are a group of their own. **A group's items are always adjacent in
+are a group of their own. **筆記 and transport routes are grouped by the same
+rule**, over `group_name` instead of `category` (see "Notes (筆記)" and
+"Ordering routes and options"); the rule is written once, in
+`app/services/domain/ordering.py`. **A group's items are always adjacent in
 `position`**, because the sheet shows each group as one block. A group has no
 row and no order column of its own: it sits where its items sit, so moving a
 group is moving its items.
@@ -182,7 +185,7 @@ not necessarily the same one.
 
 **A list without a departure date is normal, not incomplete.** It reads 未設定日期
 and everything else works. A list's date is its own `departure_at`
-unless a trip leg links it; see "Departure source".
+unless a trip leg with a departure time links it; see "Departure source".
 
 ## The shelves and their order
 
@@ -198,8 +201,18 @@ newest `auto_saved_at` first, the reverse of the order its slots are dropped in.
 The leg picker orders by `created_at` too, on the client (`frontend.md`).
 
 **There is no current trip.** Nothing picks one trip as the one being taken:
-行程 opens the index, and the dashboard shows every 一般 trip that is 使用中 or
-未來使用, 使用中 first.
+行程 opens the index, and the dashboard shows every 一般 trip and list that is
+使用中 or 未來使用.
+
+**The dashboard's order is by start, soonest first.** A trip starts at its
+earliest entry `departs_at`; a list at its effective departure date (see
+"Departure source"), taken as 00:00 in Asia/Taipei, so a list and a trip on the
+same day compare by the trip's clock time. A row with no start goes last, and
+rows that tie — every row without a start among them — keep the order they
+came in (newest created first). 使用中 is not put before 未來使用. The rule is
+`onDashboard` in `frontend/src/lib/kinds.js` and `on_dashboard` in
+`app/services/domain/dashboard.py`, pinned to each other by
+`tests/unit/test_dashboard_rule.py`; the sheet's readable tabs follow it.
 
 ## Copying a trip
 
@@ -209,7 +222,7 @@ resets**, as with a packing list.
 
 | Carries | Resets |
 | --- | --- |
-| trip `notes` (unless the request sends its own); each leg's `from_place`, `to_place`, `service`, `service_number`, `price`, `ticket_type`, `notes`, and its times, shifted | `booked`, `paid`, `collected` → `false`; `booking_code`, `seat`, `packing_list_id` → null |
+| trip `notes` (unless the request sends its own), `round_trip`, `outbound_title`, `return_title`, `return_notes`; each leg's `from_place`, `to_place`, `transport_type`, `direction`, `ride_type`, `section`, the four `has_*` switches, `service`, `service_number`, `price`, `ticket_type`, `notes`, and its times, shifted | trip `ticket_status` → `not_bought`, `done` → `false`; each leg's `booked`, `paid`, `collected` → `false`; `booking_code`, `seat`, `packing_list_id` → null |
 
 The name and `kind` come from the request. The source's own `kind`, `usage`,
 `archive_note` and `visibility` are not copied, so a copy of a template is a
@@ -218,32 +231,130 @@ The name and `kind` come from the request. The source's own `kind`, `usage`,
 **當作範本 keeps the dates.** The page sends the Taipei day of the source's own
 first departure as `start_date`, so the shift below is zero.
 
-**The shift.** `start_date` is a Taipei calendar day. Every leg moves by the
-whole days between it and the Taipei day of the source's earliest departure,
-so clock times and the gaps between legs survive; Taiwan keeps no daylight
-saving. The shift may be negative. A source with no legs needs no date.
+**The shift.** `start_date` is a Taipei calendar day. Every timed leg moves by
+the whole days between it and the Taipei day of the source's earliest
+`departs_at`, so clock times and the gaps between legs survive; Taiwan keeps
+no daylight saving. The shift may be negative. An untimed leg copies untimed.
+**`start_date` is required only when some leg has a `departs_at`**: a source
+with no legs, or only legs without one, needs none, and its times (an
+`arrives_at` alone, say) copy unmoved.
 
 **Packing lists are not carried.** A list is linked from at most one leg, so a
 copy cannot share them. The create response's `unlinked_from` names each source
 leg that had one, and the page tells you to link a list yourself.
 
-## 已完成 (A trip is done)
+## Trip entries and their types
 
-**`done` is the owner's own mark that a trip is finished with**, and nothing
-sets it but the owner. It is independent of `kind` and `usage`: marking a trip
-done moves it to no other shelf and touches no 自動保存 slot, and moving a trip
-to 過去使用 does not mark it done. A new trip and every copy start not done —
-whether the source was done is not definition, so it does not carry.
+A trip's entries (一段; `trip_leg` in the table and the API) each have a
+**`transport_type`** — 高鐵 `hsr`, 火車 `train`, 捷運 `metro`, 公車 `bus`, 客運
+`coach`, 開車 `car`, 腳踏車 `bike`, 走路 `walk`, 飛機 `flight`, 船 `ship`, 其他
+`other` — and the type decides which fields the form shows and which booking
+labels the entry carries. The table is `LEG_TYPES` in
+`app/services/domain/leg_types.py`, mirrored in `frontend/src/lib/legTypes.js`
+and spelled out in `tests/unit/test_leg_types.py`:
+
+| type | fields shown (besides from/to, times, 備註, packing list) | 已訂票/已訂 · 已付款 · 已取票 | code |
+| --- | --- | --- | --- |
+| hsr | 車種 車號 座位 價錢 車票類型 方向 | fixed · fixed · fixed | fixed, 訂票代碼 |
+| train, coach | 車種 車號 座位 價錢 車票類型 方向 | optional, on by default | optional on, 訂票代碼 |
+| metro | 車種 價錢 方向 | absent | absent |
+| bus | 車種 車號 價錢 方向 | absent | absent |
+| car | 乘車類型 車種 車號 座位 價錢 | 已訂 optional off · 已付款 optional off · absent | optional off, 訂單編號 |
+| bike | 類型 | 已訂 optional off · 已付款 optional off · absent | optional off, 訂單編號 |
+| walk | — | absent | absent |
+| flight, ship, other | 車種 車號 座位 價錢 車票類型 | optional, on by default | optional on, 訂票代碼 |
+
+- **Each label, and the booking code, has a switch on the entry**:
+  `has_booked`, `has_paid`, `has_collected`, `has_booking_code`. A fixed one is
+  always on and has no switch on screen; an absent one is always off; an
+  optional one is the entry's own choice.
+- **A switch not sent takes the type's default** on create (fixed and
+  optional-on are on; optional-off and absent are off), and **changing an
+  entry's type resets every switch the same request does not name** to the new
+  type's default. Sending `true` for an absent switch, or `false` for a fixed
+  one, is refused.
+- **`ride_type`** is 乘車類型 for a car (`hail` 叫車, `own_car` 自駕自己的車,
+  `car_rental` 租車) and 類型 for a bike (`own_bike` 自己的, `youbike`,
+  `moovo`, `bike_rental` 租車). A value sent that is not the entry's type's is
+  refused.
+- **Values of fields a type does not show are kept**, not cleared: a seat on an
+  entry turned into a walk is still stored, and shows again if it is turned
+  back. For the same reason only a `ride_type` sent is judged against the type,
+  never one kept from an earlier type.
+- An entry created without a type is `other`, with every switch on — and so is
+  every entry that existed before types did.
+
+**Times are optional.** An entry may have neither, either or both. When
+`departs_at` is set and `arrives_at` is not, the server sets `arrives_at` to
+`departs_at` — on create, and on the entry as a `PATCH` leaves it. Arriving at
+the moment of departure is allowed; arriving before it is refused. Entries
+read by `departs_at`, untimed ones last, then by `id`.
+
+## 已準備完成 and 已買票 (Readiness)
+
+A trip has a **`ticket_status`**: 未買票 `not_bought` (every new trip), 無需買票
+`not_needed`, or 已買票 `bought`.
+
+**A trip is ready** when its `ticket_status` is not `not_bought` and, on every
+entry, every label the entry's type has and the entry has switched on is
+ticked. A label the type lacks, or one switched off, does not count; nor does
+the booking code, which is a field rather than a label. A trip with no entries
+is ready once its tickets are settled. Reads carry the answer as `ready`.
+
+**`done` is 已準備完成**, the owner's mark that the trip is ready to go, and
+nothing sets it but the owner — but **only a ready trip can be marked**:
+`done: true` on a trip that is not ready is refused, naming what is missing
+(`The trip is not ready: tickets not bought; 2 entries have unticked labels.`).
+It is judged on the trip as the request leaves it, so a body that settles the
+tickets and marks the trip done together is accepted. Unmarking is always
+allowed.
+
+**A write that makes a done trip not ready clears `done` in the same
+transaction**: unticking a label, switching one on, adding an entry with a
+switched-on unticked label, changing an entry's type, or setting
+`ticket_status` back to `not_bought`. Deleting an entry can only make a trip
+readier, and never sets `done`.
+
+`done` is independent of `kind` and `usage`: marking a trip moves it to no
+other shelf and touches no 自動保存 slot, and moving a trip to 過去使用 does
+not mark it. A new trip and every copy start not done and `not_bought` — both
+are state, not definition, so neither carries.
+
+## One-way and round trips
+
+A trip is **單程** (`round_trip: false`, every new trip) or **來回**
+(`round_trip: true`).
+
+- **One-way**: the entries are one list, and `notes` is the trip's 備註. Every
+  entry's `section` is null; a section sent for an entry of a one-way trip is
+  stored as null.
+- **Round trip**: the entries are in two sections, 去程 (`outbound`) and 回程
+  (`return`), each with its own **title** and **remark** — `outbound_title`
+  and `notes` (so nothing moves when the trip is switched), `return_title` and
+  `return_notes`. The trip keeps its overall `name`. An entry created or moved
+  without a `section` goes to 去程, and `PATCH section` moves one between the
+  two.
+- **Switching to round trip** puts every entry with no section in 去程.
+- **Switching back to one-way is refused** while any entry is in 回程 or
+  `return_title` or `return_notes` has text: they would be hidden, which reads
+  as lost. Move or delete them first; clearing them in the same request counts.
+  On success every `section` becomes null; `outbound_title` is kept but not
+  shown.
 
 ## Ordering routes and options
 
-**Routes and the options of a route are ordered as a whole**, the way a
-packing list's items are: one request names every route (or every option of
-one route) once, and they take positions 0, 1, 2… in that order. An order that
-leaves one out, names one twice, or names one that is not in the set — an
-unknown route, or another route's option — is refused and changes nothing.
-There are no groups to keep together here. A new route, option or note goes
-last within its own set.
+**Routes, the options of a route and the notes of a route are ordered as a
+whole**, the way a packing list's items are: one request names every route
+(or every option, or note, of one route) once, and they take positions 0, 1,
+2… in that order. An order that leaves one out, names one twice, or names one
+that is not in the set — an unknown route, another route's option or note — is
+refused and changes nothing. A new option or note goes last within its route.
+
+**Routes have groups**, by `group_name`, under the rule in "Groups": the
+routes sharing a group name stay adjacent, a blank name is no group, a new
+route joins the end of its group, changing a route's group moves it to the end
+of the new one (unless the same `PATCH` sends a `position`), and a route order
+that splits a group is refused. Options and route notes have no groups.
 
 ## Notes on a route
 
@@ -257,9 +368,24 @@ A route has its 備註 (`notes`, one text value) and, below it, a list of
 - **A blank title is no title**: titles are stripped, and an empty one is null.
 - **A blank link is refused**, not dropped, so a caller that sent an empty
   row finds out. Links are stripped, and not checked to be URLs.
-- **Changing a note's links replaces the list**; there is no adding or moving
-  one link on its own.
+- **Changing a note's links replaces the list**, and the order sent is the
+  links' order; that is how links are reordered.
 - Deleting a route deletes its notes, and deleting a note its links.
+
+## Notes (筆記)
+
+**筆記 are free-standing notes**, each a title, a description and links in
+order — a route note's shape without the route.
+
+- **A note needs a title**: titles are stripped, and a blank one is refused.
+  A description and links are optional.
+- **Notes are grouped by `group_name`**, under the rule in "Groups": a blank
+  group name is no group, a new note joins the end of its group, changing a
+  note's group moves it to the end of the new one, and a reorder that splits a
+  group, or does not name every note exactly once, is refused.
+- **Links** follow the route-note rules: stripped, a blank one refused, and a
+  `PATCH` of `links` replaces the list in the order sent.
+- Deleting a note deletes its links.
 
 ## The next departure
 
@@ -277,9 +403,10 @@ on a weekday reads the weekday row. The rule is `nextDeparture` in
 A list linked from a trip leg takes that leg's departure as its date: the
 calendar day in Asia/Taipei, not the server's and not UTC's, so a 00:30 Taipei
 departure is that day and not the previous one. The list's own `departure_at`
-is ignored while the link exists and is used again, unchanged, once it is gone.
-A list no leg links keeps its own date. Reads report which one applied as
-`departure_source`.
+is ignored while the link exists **and the leg has a `departs_at`**, and is
+used again, unchanged, once the link is gone or the leg's time is cleared. A
+list no leg links, or one linked to an untimed leg, keeps its own date. Reads
+report which one applied as `departure_source`.
 
 ## Common options
 

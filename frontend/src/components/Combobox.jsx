@@ -1,5 +1,5 @@
 /**
- * A text input that suggests as you type: 類別, 取得地點, 車票類型.
+ * A text input that suggests as you type: 類別, 取得地點, 車票類型, 群組.
  *
  * Replaces the browser's `<datalist>`, which only opened from its triangle
  * and drew a native popup that looked like no other part of the app. This
