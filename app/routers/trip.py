@@ -16,16 +16,17 @@ from app.constants import Kind, LabelKind, Usage
 from app.database import get_db
 from app.models import PackingList, Trip, TripLeg
 from app.schemas.trip import (
-    ARRIVAL_BEFORE_DEPARTURE,
     TripCreate,
     TripCreated,
     TripIds,
     TripIndex,
-    TripLegBase,
+    TripLegCreate,
     TripLegResponse,
     TripLegUpdate,
     TripResponse,
     TripUpdate,
+    arrival_refusal,
+    fill_arrival,
 )
 from app.services.domain.auto_save import (
     AUTO_SAVE_LIMIT,
@@ -35,7 +36,22 @@ from app.services.domain.auto_save import (
     evict_next,
 )
 from app.services.domain.labels import remember_label
-from app.services.domain.trip import copy_legs
+from app.services.domain.leg_types import (
+    FLAGS,
+    default_flags,
+    flag_refusals,
+    ride_type_refusal,
+)
+from app.services.domain.trip import (
+    RoundTripRefused,
+    apply_round_trip,
+    copy_legs,
+    is_ready,
+    needs_start_date,
+    not_ready_message,
+    section_for,
+    settle_done,
+)
 
 router = APIRouter(tags=["Trips"])
 
@@ -153,12 +169,19 @@ def create_trip(payload: TripCreate, db: Session = Depends(get_db)):
         source = db.scalars(_trips_query().where(Trip.id == payload.copy_from_id)).first()
         if source is None:
             raise HTTPException(status_code=404, detail=COPY_SOURCE_NOT_FOUND)
-        if source.legs and payload.start_date is None:
+        if needs_start_date(source) and payload.start_date is None:
             raise HTTPException(status_code=422, detail=START_DATE_REQUIRED)
 
     trip = Trip(**payload.model_dump(exclude={"copy_from_id", "start_date"}))
-    if source is not None and "notes" not in payload.model_fields_set:
-        trip.notes = source.notes
+    if source is not None:
+        if "notes" not in payload.model_fields_set:
+            trip.notes = source.notes
+        # The shape carries, so the copied legs' sections still mean something;
+        # `ticket_status` and `done` are state and start over.
+        trip.round_trip = source.round_trip
+        trip.outbound_title = source.outbound_title
+        trip.return_title = source.return_title
+        trip.return_notes = source.return_notes
     db.add(trip)
     db.flush()
 
@@ -185,8 +208,28 @@ def update_trip(trip_id: int, payload: TripUpdate, db: Session = Depends(get_db)
         raise HTTPException(status_code=422, detail=str(refused)) from None
     except AutoSaveFull as full:
         raise HTTPException(status_code=409, detail=_refusal(full.slot)) from None
+    if "round_trip" in changes:
+        try:
+            apply_round_trip(
+                trip,
+                changes.pop("round_trip"),
+                return_title=changes.get("return_title", trip.return_title),
+                return_notes=changes.get("return_notes", trip.return_notes),
+            )
+        except RoundTripRefused as refused:
+            db.rollback()
+            raise HTTPException(status_code=422, detail=str(refused)) from None
+    done = changes.pop("done", None)
     for field, value in changes.items():
         setattr(trip, field, value)
+    # Judged on the trip as this request leaves it, so a body that settles the
+    # tickets and marks the trip done in one go is allowed.
+    if done is True and not is_ready(trip):
+        db.rollback()
+        raise HTTPException(status_code=422, detail=not_ready_message(trip))
+    if done is not None:
+        trip.done = done
+    settle_done(db, trip)
     db.commit()
     db.expire_all()
     return _get_trip(db, trip_id)
@@ -203,30 +246,64 @@ def delete_trip(trip_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/api/trips/{trip_id}/legs", response_model=TripLegResponse, status_code=201)
-def create_leg(trip_id: int, payload: TripLegBase, db: Session = Depends(get_db)):
-    if db.get(Trip, trip_id) is None:
+def create_leg(trip_id: int, payload: TripLegCreate, db: Session = Depends(get_db)):
+    trip = db.get(Trip, trip_id)
+    if trip is None:
         raise HTTPException(status_code=404, detail=TRIP_NOT_FOUND)
     _check_link(db, payload.packing_list_id)
-    leg = TripLeg(trip_id=trip_id, **payload.model_dump())
+    fields = payload.model_dump()
+    fields["section"] = section_for(trip, payload.section)
+    leg = TripLeg(trip_id=trip_id, **fields)
     db.add(leg)
     remember_label(db, LabelKind.TICKET_TYPE, leg.ticket_type)
+    settle_done(db, trip)
     _commit(db)
     db.refresh(leg)
     return leg
+
+
+def _leg_refusals(leg: TripLeg, changes: dict) -> list[str]:
+    """Why the leg as this PATCH would leave it cannot be stored.
+
+    Fills `changes` as it goes: the arrival from the departure, and, when the
+    type changes, every switch the body does not name from the new type's
+    defaults.
+    """
+    departs = changes.get("departs_at", leg.departs_at)
+    arrives = changes.get("arrives_at", leg.arrives_at)
+    filled = fill_arrival(departs, arrives)
+    if filled is not arrives:
+        changes["arrives_at"] = filled
+    refusals = [r for r in [arrival_refusal(departs, filled)] if r]
+
+    transport_type = changes.get("transport_type", leg.transport_type)
+    if transport_type != leg.transport_type:
+        for flag, value in default_flags(transport_type).items():
+            changes.setdefault(flag, value)
+    refusals += flag_refusals(transport_type, {f: changes[f] for f in FLAGS if f in changes})
+    # Only a ride type sent is judged: one kept from an earlier type is not
+    # shown, and switching back brings it back.
+    if "ride_type" in changes:
+        ride = ride_type_refusal(transport_type, changes["ride_type"])
+        if ride:
+            refusals.append(ride)
+    return refusals
 
 
 @router.patch("/api/trip-legs/{leg_id}", response_model=TripLegResponse)
 def update_leg(leg_id: int, payload: TripLegUpdate, db: Session = Depends(get_db)):
     leg = _get_leg(db, leg_id)
     changes = payload.model_dump(exclude_unset=True)
-    departs = changes.get("departs_at", leg.departs_at)
-    arrives = changes.get("arrives_at", leg.arrives_at)
-    if arrives <= departs:
-        raise HTTPException(status_code=422, detail=ARRIVAL_BEFORE_DEPARTURE)
+    refusals = _leg_refusals(leg, changes)
+    if refusals:
+        raise HTTPException(status_code=422, detail=" ".join(refusals))
     _check_link(db, changes.get("packing_list_id"), excluding=leg.id)
+    if "section" in changes:
+        changes["section"] = section_for(leg.trip, changes["section"])
     for field, value in changes.items():
         setattr(leg, field, value)
     remember_label(db, LabelKind.TICKET_TYPE, leg.ticket_type)
+    settle_done(db, leg.trip)
     _commit(db)
     db.refresh(leg)
     return leg

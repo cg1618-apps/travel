@@ -18,7 +18,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
-import { TextCell } from '../components/Cell'
+import { TextAreaCell, TextCell } from '../components/Cell'
 import { Checklist } from '../components/Checklist'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DeleteMenu } from '../components/DeleteMenu'
@@ -285,14 +285,16 @@ export default function PackingList() {
             onMakeTemplate={() => makeTemplate.mutate()}
           />
         </div>
-        <TextCell
+        <TextAreaCell
           value={list.data.notes}
           placeholder="備註"
+          ariaLabel="備註"
           onCommit={(notes) => patchList.mutate({ notes })}
         />
         {(list.data.kind === 'saved' || isAutoSaved(list.data) || list.data.archive_note) && (
-          <TextCell
+          <TextAreaCell
             value={list.data.archive_note}
+            ariaLabel="保存備註"
             placeholder="保存備註"
             onCommit={(archive_note) => patchList.mutate({ archive_note })}
           />

@@ -25,6 +25,9 @@ class TransportRoute(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     from_place: Mapped[str] = mapped_column(String, nullable=False)
     to_place: Mapped[str] = mapped_column(String, nullable=False)
+    #: The routes sharing a value form a group, kept adjacent in `position`;
+    #: null is a group of its own. The packing-list group rule, over routes.
+    group_name: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 

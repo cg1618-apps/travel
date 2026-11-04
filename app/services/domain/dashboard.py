@@ -8,25 +8,56 @@ nightly timer is a shell. Two copies of a rule drift, so
 pins the other to: changing either without the other turns a test red.
 """
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
+from datetime import datetime, time
 from typing import TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.constants import Kind, Usage
+from app.constants import TAIPEI, Kind, Usage
 from app.models import PackingList, Trip, TripLeg
+from app.services.domain.trip import earliest_departure
 
 Row = TypeVar("Row")
 
-#: 使用中 before 未來使用: the order the dashboard shows them in.
+#: The usages a 一般 row must have to be on the dashboard.
 CURRENT = (Usage.IN_USE, Usage.UPCOMING)
 
 
-def on_dashboard(rows: Iterable[Row]) -> list[Row]:
-    """一般 rows that are 使用中 or 未來使用, 使用中 first, order otherwise kept."""
+def start_of(row: PackingList | Trip) -> datetime | None:
+    """When a dashboard row starts, or None when it has no start.
+
+    A trip: its earliest entry departure. A list: its effective departure
+    date (the linked leg's Taipei day, else its own), at Taipei 00:00, so a
+    list and a trip on the same day compare by the trip's clock time.
+    """
+    if isinstance(row, Trip):
+        return earliest_departure(row)
+    day = row.effective_departure_at
+    return None if day is None else datetime.combine(day, time(), tzinfo=TAIPEI)
+
+
+def on_dashboard(
+    rows: Iterable[Row], start: Callable[[Row], datetime | None] = start_of
+) -> list[Row]:
+    """一般 rows that are 使用中 or 未來使用, soonest start first.
+
+    A row with no start goes last; rows that tie, including every row with no
+    start, keep the order they came in (the sort is stable). `start` is
+    `start_of` unless a caller - the pinning test - supplies its own.
+    """
     current = [row for row in rows if row.kind == Kind.FREE and row.usage in CURRENT]
-    return [row for usage in CURRENT for row in current if row.usage == usage]
+    return sorted(current, key=lambda row: _start_key(start(row)))
+
+
+#: A stand-in so a missing start still compares; `value is None` already
+#: puts those rows last, and among themselves they tie.
+_NO_START = datetime.min.replace(tzinfo=TAIPEI)
+
+
+def _start_key(value: datetime | None) -> tuple[bool, datetime]:
+    return (value is None, _NO_START if value is None else value)
 
 
 def readable_set(db: Session) -> tuple[list[PackingList], list[Trip]]:
@@ -38,9 +69,10 @@ def readable_set(db: Session) -> tuple[list[PackingList], list[Trip]]:
     case where the app dies mid-trip and the sheet is all there is.
 
     The rows start in the index endpoints' order - newest created first, then
-    highest id - so a tab sits where the screen would put it. The linked extras
-    follow the dashboard lists, trip by trip in that same order and leg by leg
-    in departure order.
+    highest id - and the dashboard sorts them soonest start first, so a tab
+    sits where the screen would put it. The linked extras follow the
+    dashboard lists, trip by trip in that same order and leg by leg in
+    departure order.
     """
     lists = db.scalars(
         select(PackingList)

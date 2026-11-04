@@ -4,8 +4,10 @@
  * Compact on purpose, the way 行程 is: 起點 → 終點 and one line per way of
  * making the journey, enough to tell routes apart. Everything else - every
  * field, the links, the departures and the next one from now - is one click
- * away on /transport/:id (`TransportRoute.jsx`). The ⠿ beside each card
- * drags it into a new order, which the server keeps.
+ * away on /transport/:id (`TransportRoute.jsx`). Routes are shown under
+ * their 群組, the ungrouped ones first with no heading. The ⠿ beside each
+ * card drags it within its group, 排序群組 orders the groups, and the server
+ * keeps both as one order.
  */
 
 import { useQueryClient } from '@tanstack/react-query'
@@ -13,11 +15,21 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { endpoints } from '../api/endpoints'
+import { Combobox } from '../components/Combobox'
+import { GroupOrderDialog } from '../components/GroupOrderDialog'
 import { DragHandle, SortableItem, SortableList } from '../components/Sortable'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { keysFor } from '../lib/keys'
-import { inIdOrder, moveTo, optionSummary } from '../lib/transport'
+import {
+  groupByName,
+  moveInGroup,
+  namedGroups,
+  orderAfterGroupSort,
+  orderIds,
+  reposition,
+} from '../lib/grouping'
+import { optionSummary } from '../lib/transport'
 import { firstLine } from '../lib/trips'
 
 const KEY = ['transport-routes']
@@ -27,17 +39,18 @@ const inputClass = 'rounded-md border border-border bg-canvas px-2 py-1.5 text-s
 const smallButton = 'rounded-md border border-border-strong px-3 text-sm text-text-muted'
 
 /**
- * 起點, 終點 and 建立. Creating opens the new route. `pending` holds 建立
+ * 起點, 終點, an optional 群組 and 建立. Creating opens the new route. `pending` holds 建立
  * while a create is in flight, so a second click cannot make a second route.
  */
-function CreateRoute({ pending, failed, onCreate, onCancel }) {
+function CreateRoute({ groupNames, pending, failed, onCreate, onCancel }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [group, setGroup] = useState('')
   const ready = from.trim() !== '' && to.trim() !== ''
 
   const submit = () => {
     if (!ready || pending) return
-    onCreate({ from_place: from.trim(), to_place: to.trim() })
+    onCreate({ from_place: from.trim(), to_place: to.trim(), group_name: group.trim() || null })
   }
   const onKeyDown = keysFor(submit, onCancel)
 
@@ -58,6 +71,15 @@ function CreateRoute({ pending, failed, onCreate, onCancel }) {
         aria-label="終點"
         placeholder="終點"
         onChange={(event) => setTo(event.target.value)}
+        onKeyDown={onKeyDown}
+        className={`${inputClass} w-36`}
+      />
+      <Combobox
+        value={group}
+        aria-label="群組"
+        placeholder="群組（可不填）"
+        onChange={setGroup}
+        options={groupNames}
         onKeyDown={onKeyDown}
         className={`${inputClass} w-36`}
       />
@@ -115,6 +137,7 @@ export default function Transport() {
   const navigate = useNavigate()
   const routes = useApiQuery(INDEX, endpoints.transport.routes())
   const [creating, setCreating] = useState(false)
+  const [orderingGroups, setOrderingGroups] = useState(false)
 
   const create = useApiMutation({
     invalidate: [KEY],
@@ -129,7 +152,7 @@ export default function Transport() {
     mutationFn: (routeIds) =>
       send(endpoints.transport.routesOrder(), 'PUT', { route_ids: routeIds }),
     onMutate: (routeIds) => {
-      queryClient.setQueryData(INDEX, (current) => current && inIdOrder(current, routeIds))
+      queryClient.setQueryData(INDEX, (current) => current && reposition(current, routeIds))
     },
     onSuccess: (updated) => queryClient.setQueryData(INDEX, updated),
     onError: () => queryClient.invalidateQueries({ queryKey: INDEX }),
@@ -138,24 +161,34 @@ export default function Transport() {
   if (routes.isLoading) return <LoadingState label="載入路線中…" />
   if (routes.isError) return <ErrorState error={routes.error} onRetry={routes.refetch} />
 
-  const ids = routes.data.map((route) => route.id)
+  const groups = groupByName(routes.data)
+  const named = namedGroups(groups)
+  const groupNames = named.map((group) => group.name)
 
   return (
     <main className="mx-auto max-w-4xl pb-16">
-      <div className="flex items-center justify-between px-4 pt-6">
+      <div className="flex items-center justify-between gap-2 px-4 pt-6">
         <h1 className="m-0 text-xl font-semibold">交通</h1>
-        {!creating && (
-          <button
-            type="button"
-            onClick={() => setCreating(true)}
-            className="rounded-md bg-brand px-4 text-sm font-medium text-on-brand"
-          >
-            + 新增路線
-          </button>
-        )}
+        <div className="flex gap-2">
+          {named.length > 1 && (
+            <button type="button" onClick={() => setOrderingGroups(true)} className={smallButton}>
+              排序群組
+            </button>
+          )}
+          {!creating && (
+            <button
+              type="button"
+              onClick={() => setCreating(true)}
+              className="rounded-md bg-brand px-4 text-sm font-medium text-on-brand"
+            >
+              + 新增路線
+            </button>
+          )}
+        </div>
       </div>
       {creating && (
         <CreateRoute
+          groupNames={groupNames}
           pending={create.isPending}
           failed={create.isError}
           onCreate={create.mutate}
@@ -172,14 +205,45 @@ export default function Transport() {
               排序沒有儲存，已還原。
             </p>
           )}
-          <ul className="m-0 mt-3 list-none border-t border-border p-0">
-            <SortableList ids={ids} onMove={(from, to) => reorder.mutate(moveTo(ids, from, to))}>
-              {routes.data.map((route) => (
-                <RouteCard key={route.id} route={route} />
-              ))}
-            </SortableList>
-          </ul>
+          {groups.map((group) => {
+            const ids = group.items.map((route) => route.id)
+            return (
+              <section key={group.key} aria-label={group.name ?? undefined} className="mt-3">
+                {group.name && (
+                  <h2 className="m-0 mb-1 px-4 text-xs font-semibold uppercase tracking-wide text-text-faint">
+                    {group.name}
+                  </h2>
+                )}
+                <ul className="m-0 list-none border-t border-border p-0">
+                  <SortableList
+                    ids={ids}
+                    onMove={(from, to) =>
+                      reorder.mutate(orderIds(moveInGroup(groups, group.key, from, to)))
+                    }
+                  >
+                    {group.items.map((route) => (
+                      <RouteCard key={route.id} route={route} />
+                    ))}
+                  </SortableList>
+                </ul>
+              </section>
+            )
+          })}
         </>
+      )}
+
+      {orderingGroups && (
+        <GroupOrderDialog
+          groups={named}
+          title="排序群組"
+          hint="拖曳群組調整順序，群組裡的路線會一起移動。未分組的路線一直在最前面。"
+          nameOf={(group) => group.name}
+          onSave={(order) => {
+            setOrderingGroups(false)
+            reorder.mutate(orderAfterGroupSort(groups, order))
+          }}
+          onCancel={() => setOrderingGroups(false)}
+        />
       )}
     </main>
   )

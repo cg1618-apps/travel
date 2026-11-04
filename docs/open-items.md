@@ -46,6 +46,14 @@ merge, for every kind through `COLUMN_FOR_KIND`. The merge is tested for
 `tests/api/test_label_option_router.py`) and a location is tested only for a
 plain rename, so a merge that broke for `location` alone would pass.
 
+**飛機 and 船 have 其他's form.** `flight` and `ship` entries share `other`'s
+row in `LEG_TYPES` (`app/services/domain/leg_types.py` and
+`frontend/src/lib/legTypes.js`): 車種, 車號, 座位, 價錢 and 車票類型, every
+label optional and on, and 訂票代碼. Nothing about them is specialised — no
+flight number, terminal, gate or baggage field, no 船-specific field, and the
+labels are the train's. What a flight or a boat entry should show, and which
+labels it should carry, is undecided.
+
 ## Sheet importer
 
 **A second mode-less Transportation row for the same route overwrites the

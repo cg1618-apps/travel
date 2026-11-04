@@ -23,3 +23,21 @@ class NonNullableUpdate(BaseModel):
             if name in self.model_fields_set and getattr(self, name) is None:
                 raise ValueError(f"{name} cannot be null.")
         return self
+
+
+def blank_is_null(value: str | None) -> str | None:
+    """Stripped, and blank is null: a title or group name nobody typed."""
+    if value is None:
+        return None
+    return value.strip() or None
+
+
+def stripped_links(value: list[str] | None) -> list[str] | None:
+    """Each link stripped; a blank one refused rather than silently dropped,
+    so a caller that sent an empty row learns it did."""
+    if value is None:
+        return None
+    links = [link.strip() for link in value]
+    if any(link == "" for link in links):
+        raise ValueError("a link cannot be blank")
+    return links

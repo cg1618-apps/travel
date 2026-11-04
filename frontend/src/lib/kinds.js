@@ -4,7 +4,7 @@
  */
 
 import { AUTO_SAVED_LABEL, KIND_LABELS, USAGE_LABELS } from './labels'
-import { taipeiInputValue } from './trips'
+import { taipeiInputValue, tripEnd, tripStart } from './trips'
 
 export const AUTO_SAVE_LIMIT = { lists: 5, trips: 10 }
 
@@ -18,13 +18,68 @@ export function badgeFor(row) {
   return row.kind === 'free' ? null : KIND_LABELS[row.kind]
 }
 
-/** 一般 rows that are 使用中 or 未來使用, 使用中 first, order otherwise kept. */
-export function onDashboard(rows) {
+/** A list's date at Taipei 00:00, ms; null when it has none. */
+const taipeiMidnight = (day) => new Date(`${day}T00:00:00+08:00`).getTime()
+
+/**
+ * Where a row starts, ms, or null: a trip's earliest departure, a list's
+ * effective 出發 date (the API's `departure_at`) at Taipei 00:00.
+ */
+export function rowStart(row) {
+  if (Array.isArray(row.legs)) return tripStart(row)
+  return row.departure_at ? taipeiMidnight(row.departure_at) : null
+}
+
+/**
+ * 一般 rows that are 使用中 or 未來使用, soonest start first, a row with no
+ * start after every row with one, ties in the order given. `startOf` is
+ * `rowStart` on the screen; tests pass their own.
+ *
+ * `on_dashboard` in `app/services/domain/dashboard.py` is the same rule for
+ * the sheet backup, pinned to the cases in kinds.test.js.
+ */
+export function onDashboard(rows, startOf = rowStart) {
   const current = rows.filter((row) => row.kind === 'free' && CURRENT.includes(row.usage))
-  return [
-    ...current.filter((row) => row.usage === 'in_use'),
-    ...current.filter((row) => row.usage === 'upcoming'),
-  ]
+  const keyed = current.map((row, index) => ({ row, index, start: startOf(row) }))
+  keyed.sort((a, b) => {
+    if (a.start !== b.start) {
+      if (a.start === null) return 1
+      if (b.start === null) return -1
+      return a.start - b.start
+    }
+    return a.index - b.index
+  })
+  return keyed.map(({ row }) => row)
+}
+
+/** Packing list id to the leg it is linked from, over every trip given. */
+export function legsByList(trips) {
+  const map = new Map()
+  for (const trip of trips) {
+    for (const leg of trip.legs) if (leg.packing_list_id) map.set(leg.packing_list_id, leg)
+  }
+  return map
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * Where a row ends, ms, or null. A trip: its latest arrival (else departure).
+ * A list linked from a leg with a time: that leg's arrival (else departure).
+ * Any other list: the end of its 出發 day in Taipei.
+ */
+export function rowEnd(row, linkedLegs = new Map()) {
+  if (Array.isArray(row.legs)) return tripEnd(row)
+  const leg = linkedLegs.get(row.id)
+  const legTime = leg && (leg.arrives_at ?? leg.departs_at)
+  if (legTime) return new Date(legTime).getTime()
+  return row.departure_at ? taipeiMidnight(row.departure_at) + DAY_MS : null
+}
+
+/** 已結束: the row's end has passed. No end, no badge. */
+export function hasEnded(row, now, linkedLegs) {
+  const end = rowEnd(row, linkedLegs)
+  return end !== null && end < now.getTime()
 }
 
 /** Every row of an index response, each once. */

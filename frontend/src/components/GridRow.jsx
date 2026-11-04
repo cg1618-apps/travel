@@ -30,7 +30,7 @@ import {
 import { itemTitle, rowActions } from '../lib/rowMenu'
 import { tapStatus } from '../lib/status'
 import { CHECK_TONES, NEED_TONES, STATUS_TONES, TIMING_TONES, toneClass, toneForText } from '../lib/tones'
-import { PackedCountCell, QuantityCell, SelectCell, TextCell } from './Cell'
+import { PackedCountCell, QuantityCell, SelectCell, TextAreaCell, TextCell } from './Cell'
 import { RowMenu } from './RowMenu'
 import { DragHandle, SortableItem } from './Sortable'
 
@@ -166,7 +166,12 @@ export function GridRow({
         />
       </td>
       <td className={cell}>
-        <TextCell value={item.notes} placeholder="—" onCommit={(notes) => patch({ notes })} />
+        <TextAreaCell
+          value={item.notes}
+          placeholder="—"
+          ariaLabel={`${itemTitle(item)}：備註`}
+          onCommit={(notes) => patch({ notes })}
+        />
       </td>
       <td className="text-center">
         <button

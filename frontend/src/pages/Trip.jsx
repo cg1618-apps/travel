@@ -1,13 +1,21 @@
 /**
- * 行程: one trip, in full, leg by leg.
+ * 行程: one trip, in full, entry by entry (一段 on screen, a leg in the API).
  *
- * The sheet's tab, as cards — one per leg, with the booking code large enough
- * to read off a phone at a ticket gate. `/trips/:tripId` only - the index is
- * `Trips.jsx`. A trip carries 狀態, 保存, 當作範本 and 已完成 in its header; ← 行程
- * returns to the tab it is on, and the whole header sticks to the top while
- * the legs scroll under it. Every field is a cell that commits on Enter or
- * blur; the times, the packing list link and the three ticks are the
- * exceptions, because each has a refusal worth showing.
+ * The sheet's tab, as cards — one per entry, with the booking code large
+ * enough to read off a phone at a ticket gate. `/trips/:tripId` only - the
+ * index is `Trips.jsx`. A trip carries 狀態, 保存, 當作範本, 已準備完成, its
+ * ticket status and 單程 / 來回 in its header; ← 行程 returns to the tab it is
+ * on, and the whole header sticks to the top while the entries scroll under
+ * it. Every field is a cell that commits on Enter or blur; the times, the
+ * packing list link and the ticks are the exceptions, because each has a
+ * refusal worth showing.
+ *
+ * What a card shows follows its 類型 (`lib/legTypes.js`): the type's fields,
+ * and the ticks and booking code it has - fixed ones always, optional ones
+ * when switched on in the card's ⋯ menu.
+ *
+ * A round trip (來回) shows two sections, 去程 and 回程, each with its own
+ * title, remark and + 新增一段; an entry moves between them from its ⋯ menu.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -15,13 +23,14 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import { ApiError } from '../api/client'
 import { endpoints } from '../api/endpoints'
-import { TextCell } from '../components/Cell'
+import { SelectCell, TextAreaCell, TextCell } from '../components/Cell'
+import { Combobox } from '../components/Combobox'
 import { ConfirmDialog } from '../components/ConfirmDialog'
-import { DeleteMenu } from '../components/DeleteMenu'
 import { EvictDialog } from '../components/EvictDialog'
 import { KindControls } from '../components/KindControls'
 import { PriceCell } from '../components/PriceCell'
 import { RowMenu } from '../components/RowMenu'
+import { Segmented } from '../components/Segmented'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { required } from '../lib/cells'
@@ -34,21 +43,50 @@ import {
   linkLabel,
   tabFor,
 } from '../lib/kinds'
-import { BOOKING_LABELS, DONE_LABEL } from '../lib/labels'
 import {
-  formatArrival,
-  formatDuration,
-  formatTaipei,
+  DONE_LABEL,
+  LEG_LABELS,
+  RIDE_TYPE_LABELS,
+  ROUND_TRIP_LABELS,
+  TICKET_STATUSES,
+  TICKET_STATUS_LABELS,
+  TRANSPORT_TYPES,
+  TRANSPORT_TYPE_LABELS,
+} from '../lib/labels'
+import {
+  RIDE_TYPES,
+  TICKS,
+  defaultFlags,
+  fieldLabel,
+  fieldsFor,
+  flagField,
+  flagLabel,
+  shows,
+  toggleableFlags,
+} from '../lib/legTypes'
+import { parseWholeNumber } from '../lib/numbers'
+import {
+  fillArrival,
+  firstDeparture,
+  formatLegTimes,
   fromTaipeiInput,
+  readinessHint,
   sortLegs,
   taipeiInputValue,
+  tripReadiness,
   unlinkedNotice,
 } from '../lib/trips'
 
 const TRIPS = ['trips']
 const INVALIDATE = [TRIPS, ['packing-list'], ['packing-lists'], ['label-options']]
 const COPIED_MS = 2000
-const BOOKING_FIELDS = ['booked', 'paid', 'collected']
+const SECTIONS = ['outbound', 'return']
+// Where each section keeps its title and remark. The 去程 remark is the
+// trip's own `notes`, so nothing moves when a trip turns round.
+const SECTION_FIELDS = {
+  outbound: { title: 'outbound_title', remark: 'notes' },
+  return: { title: 'return_title', remark: 'return_notes' },
+}
 
 const inputClass = 'rounded-md border border-border bg-canvas px-2 py-1.5 text-sm text-text min-w-0'
 const smallButton = 'rounded-md border border-border-strong px-3 text-sm text-text-muted'
@@ -133,8 +171,11 @@ function UnlinkedNotice({ entries, onDismiss }) {
   )
 }
 
-/** 訂票代碼: tap to copy, ✎ to edit. The clipboard can refuse, so that is handled. */
-function BookingCode({ code, onCommit }) {
+/**
+ * 訂票代碼 (訂單編號 on 開車 and 腳踏車): tap to copy, ✎ to edit. The clipboard
+ * can refuse, so that is handled.
+ */
+function BookingCode({ code, label, onCommit }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState('')
   const [copied, setCopied] = useState(null)
@@ -167,7 +208,7 @@ function BookingCode({ code, onCommit }) {
     return (
       <input
         autoFocus
-        aria-label="訂票代碼"
+        aria-label={label}
         value={text}
         onFocus={(event) => event.target.select()}
         onChange={(event) => setText(event.target.value)}
@@ -197,11 +238,11 @@ function BookingCode({ code, onCommit }) {
           )}
         </button>
       ) : (
-        <span className="flex-1 text-sm text-text-faint">沒有訂票代碼</span>
+        <span className="flex-1 text-sm text-text-faint">沒有{label}</span>
       )}
       <button
         type="button"
-        aria-label="編輯訂票代碼"
+        aria-label={`編輯${label}`}
         onClick={() => {
           setText(code ?? '')
           setEditing(true)
@@ -215,38 +256,52 @@ function BookingCode({ code, onCommit }) {
   )
 }
 
-/** Two datetime-local inputs, read and written in Taipei time. */
+/**
+ * 出發 and 抵達, read and written in Taipei time. Both optional; choosing a
+ * departure while the arrival is empty fills the arrival with it, as the
+ * server would on save.
+ */
+function TimesInputs({ departs, arrives, onDeparts, onArrives }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        type="datetime-local"
+        aria-label="出發時間"
+        value={departs}
+        onChange={(event) => {
+          onDeparts(event.target.value)
+          onArrives(fillArrival(event.target.value, arrives))
+        }}
+        className={inputClass}
+      />
+      <span className="text-text-faint">→</span>
+      <input
+        type="datetime-local"
+        aria-label="抵達時間"
+        value={arrives}
+        onChange={(event) => onArrives(event.target.value)}
+        className={inputClass}
+      />
+    </div>
+  )
+}
+
+const timeValue = (iso) => (iso ? taipeiInputValue(iso) : '')
+const timePayload = (value) => (value ? fromTaipeiInput(value) : null)
+const TIMES_REFUSED = '抵達時間不能早於出發時間'
+
 function TimesEditor({ leg, onSave, onCancel, problem }) {
-  const [departs, setDeparts] = useState(taipeiInputValue(leg.departs_at))
-  const [arrives, setArrives] = useState(taipeiInputValue(leg.arrives_at))
-  const ready = departs !== '' && arrives !== ''
+  const [departs, setDeparts] = useState(timeValue(leg.departs_at))
+  const [arrives, setArrives] = useState(timeValue(leg.arrives_at))
 
   return (
     <div className="mt-1">
       <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="datetime-local"
-          aria-label="出發時間"
-          value={departs}
-          onChange={(event) => setDeparts(event.target.value)}
-          className={inputClass}
-        />
-        <span className="text-text-faint">→</span>
-        <input
-          type="datetime-local"
-          aria-label="抵達時間"
-          value={arrives}
-          onChange={(event) => setArrives(event.target.value)}
-          className={inputClass}
-        />
+        <TimesInputs departs={departs} arrives={arrives} onDeparts={setDeparts} onArrives={setArrives} />
         <button
           type="button"
-          disabled={!ready}
           onClick={() =>
-            onSave({
-              departs_at: fromTaipeiInput(departs),
-              arrives_at: fromTaipeiInput(arrives),
-            })
+            onSave({ departs_at: timePayload(departs), arrives_at: timePayload(arrives) })
           }
           className={smallButton}
         >
@@ -322,12 +377,107 @@ function PackingListLink({ leg, onLink }) {
   )
 }
 
-function LegCard({ leg, ticketTypes, actions }) {
+/** '' stands for no ride type, as SelectCell's convention has it. */
+const rideTypeOptions = (type) => ['', ...(RIDE_TYPES[type] ?? [])]
+const RIDE_TYPE_OPTION_LABELS = { '': '—', ...RIDE_TYPE_LABELS }
+
+/** One of the type's fields on a card, as the cell that field needs. */
+function LegFieldCell({ leg, field, ticketTypes, patch }) {
+  const value = leg[field] ?? null
+  const commit = (next) => patch({ [field]: next })
+  if (field === 'price') return <PriceCell price={value} onCommit={commit} />
+  if (field === 'ride_type') {
+    return (
+      <SelectCell
+        value={value}
+        options={rideTypeOptions(leg.transport_type)}
+        labels={RIDE_TYPE_OPTION_LABELS}
+        ariaLabel={fieldLabel(leg.transport_type, field)}
+        onCommit={commit}
+      />
+    )
+  }
+  return (
+    <TextCell
+      value={value}
+      placeholder="—"
+      options={field === 'ticket_type' ? ticketTypes : []}
+      onCommit={commit}
+    />
+  )
+}
+
+/**
+ * An entry's ⋯: 移到去程 / 移到回程 on a round trip, 顯示 / 隱藏 for each of
+ * the type's optional ticks and code, and 刪除這段.
+ */
+function LegMenu({ leg, roundTrip, onPatch, onDelete }) {
+  const [open, setOpen] = useState(false)
+  const type = leg.transport_type
+  const actions = []
+  if (roundTrip) {
+    const target = leg.section === 'return' ? 'outbound' : 'return'
+    actions.push({ label: `移到${LEG_LABELS[target]}`, onSelect: () => onPatch({ section: target }) })
+  }
+  for (const flag of toggleableFlags(type)) {
+    const on = Boolean(leg[flagField(flag)])
+    actions.push({
+      label: `${on ? '隱藏' : '顯示'}「${flagLabel(type, flag)}」`,
+      onSelect: () => onPatch({ [flagField(flag)]: !on }),
+    })
+  }
+  actions.push({ label: '刪除這段', danger: true, onSelect: onDelete })
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`${leg.from_place} → ${leg.to_place} 的選單`}
+        aria-haspopup="menu"
+        onClick={() => setOpen(true)}
+        className="px-2 text-text-faint hover:text-text"
+        style={{ minHeight: 0 }}
+      >
+        ⋯
+      </button>
+      <RowMenu open={open} onClose={() => setOpen(false)} actions={actions} />
+    </>
+  )
+}
+
+/** The 類型 select, used on a card and first in the add form. */
+function TypeSelect({ value, onChange, placeholder, autoFocus = false, className = '' }) {
+  return (
+    <select
+      autoFocus={autoFocus}
+      aria-label="類型"
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={`${inputClass} ${className}`}
+    >
+      {placeholder && (
+        <option value="" disabled>
+          {placeholder}
+        </option>
+      )}
+      {TRANSPORT_TYPES.map((type) => (
+        <option key={type} value={type}>
+          {TRANSPORT_TYPE_LABELS[type]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function LegCard({ leg, roundTrip, ticketTypes, actions }) {
   const [editingTimes, setEditingTimes] = useState(false)
   const [timesProblem, setTimesProblem] = useState(null)
   const [confirming, setConfirming] = useState(false)
+  const type = leg.transport_type
   const patch = (changes) => actions.patchLeg.mutate({ id: leg.id, changes })
   const patchAsync = (changes) => actions.patchLeg.mutateAsync({ id: leg.id, changes })
+  const fields = fieldsFor(type)
+  const ticks = TICKS.filter((tick) => shows(leg, tick))
+  const times = formatLegTimes(leg)
 
   const saveTimes = async (changes) => {
     try {
@@ -335,7 +485,7 @@ function LegCard({ leg, ticketTypes, actions }) {
       setTimesProblem(null)
       setEditingTimes(false)
     } catch (caught) {
-      setTimesProblem(hasStatus(caught, 422) ? '抵達時間要晚於出發時間' : '發生錯誤')
+      setTimesProblem(hasStatus(caught, 422) ? TIMES_REFUSED : '發生錯誤')
     }
   }
 
@@ -361,10 +511,7 @@ function LegCard({ leg, ticketTypes, actions }) {
             </span>
           </h3>
           <p className="m-0 flex items-center gap-1 text-sm text-text-muted">
-            <span>
-              {formatTaipei(leg.departs_at)} – {formatArrival(leg.departs_at, leg.arrives_at)} ·{' '}
-              {formatDuration(leg.departs_at, leg.arrives_at)}
-            </span>
+            {times ? <span>{times}</span> : <span className="text-text-faint">未定時間</span>}
             <button
               type="button"
               aria-label="編輯時間"
@@ -387,65 +534,62 @@ function LegCard({ leg, ticketTypes, actions }) {
             />
           )}
         </div>
-        <DeleteMenu
-          label="刪除這段"
-          menuLabel={`${leg.from_place} → ${leg.to_place} 的選單`}
-          onSelect={() => setConfirming(true)}
+        <TypeSelect
+          value={type}
+          onChange={(transport_type) => patch({ transport_type })}
+          className="shrink-0 py-1"
+        />
+        <LegMenu
+          leg={leg}
+          roundTrip={roundTrip}
+          onPatch={patch}
+          onDelete={() => setConfirming(true)}
         />
       </div>
 
-      <dl className="m-0 mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-        <Field label="車種">
-          <TextCell value={leg.service} placeholder="—" onCommit={(service) => patch({ service })} />
-        </Field>
-        <Field label="車號">
-          <TextCell
-            value={leg.service_number}
-            placeholder="—"
-            onCommit={(service_number) => patch({ service_number })}
-          />
-        </Field>
-        <Field label="座位">
-          <TextCell value={leg.seat} placeholder="—" onCommit={(seat) => patch({ seat })} />
-        </Field>
-        <Field label="價錢">
-          <PriceCell price={leg.price} onCommit={(price) => patch({ price })} />
-        </Field>
-        <Field label="車票類型">
-          <TextCell
-            value={leg.ticket_type}
-            placeholder="—"
-            options={ticketTypes}
-            onCommit={(ticket_type) => patch({ ticket_type })}
-          />
-        </Field>
-      </dl>
+      {fields.length > 0 && (
+        <dl className="m-0 mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+          {fields.map((field) => (
+            <Field key={field} label={fieldLabel(type, field)}>
+              <LegFieldCell leg={leg} field={field} ticketTypes={ticketTypes} patch={patch} />
+            </Field>
+          ))}
+        </dl>
+      )}
 
-      <div className="mt-2">
-        <BookingCode code={leg.booking_code} onCommit={(booking_code) => patch({ booking_code })} />
-      </div>
+      {shows(leg, 'booking_code') && (
+        <div className="mt-2">
+          <BookingCode
+            code={leg.booking_code}
+            label={flagLabel(type, 'booking_code')}
+            onCommit={(booking_code) => patch({ booking_code })}
+          />
+        </div>
+      )}
 
-      <div className="mt-2 flex flex-wrap gap-2">
-        {BOOKING_FIELDS.map((field) => (
-          <button
-            key={field}
-            type="button"
-            aria-pressed={leg[field]}
-            onClick={() => patch({ [field]: !leg[field] })}
-            className={`rounded-md px-3 text-sm ${
-              leg[field] ? 'bg-brand text-on-brand' : 'bg-surface-2 text-text-muted'
-            }`}
-            style={{ minHeight: 32 }}
-          >
-            {leg[field] ? '✓ ' : ''}
-            {BOOKING_LABELS[field]}
-          </button>
-        ))}
-      </div>
+      {ticks.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {ticks.map((tick) => (
+            <button
+              key={tick}
+              type="button"
+              aria-pressed={leg[tick]}
+              onClick={() => patch({ [tick]: !leg[tick] })}
+              className={`rounded-md px-3 text-sm ${
+                leg[tick] ? 'bg-brand text-on-brand' : 'bg-surface-2 text-text-muted'
+              }`}
+              style={{ minHeight: 32 }}
+            >
+              {leg[tick] ? '✓ ' : ''}
+              {flagLabel(type, tick)}
+            </button>
+          ))}
+        </div>
+      )}
 
       <dl className="m-0 mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
         <Field label="備註">
-          <TextCell value={leg.notes} placeholder="—" onCommit={(notes) => patch({ notes })} />
+          <TextAreaCell value={leg.notes} placeholder="—" ariaLabel="備註" onCommit={(notes) => patch({ notes })} />
         </Field>
       </dl>
 
@@ -469,32 +613,111 @@ function LegCard({ leg, ticketTypes, actions }) {
   )
 }
 
-function AddLeg({ onAdd }) {
+/** One field of the type in the add form: an input (車票類型 suggesting), or a ride type. */
+function AddField({ type, field, value, ticketTypes, onChange }) {
+  const label = fieldLabel(type, field)
+  if (field === 'ride_type') {
+    return (
+      <select
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className={inputClass}
+      >
+        {rideTypeOptions(type).map((option) => (
+          <option key={option} value={option}>
+            {option === '' ? label : RIDE_TYPE_LABELS[option]}
+          </option>
+        ))}
+      </select>
+    )
+  }
+  if (field === 'ticket_type') {
+    return (
+      <Combobox
+        aria-label={label}
+        placeholder={label}
+        value={value}
+        onChange={onChange}
+        options={ticketTypes}
+        className={`${inputClass} w-28`}
+      />
+    )
+  }
+  return (
+    <input
+      aria-label={label}
+      placeholder={label}
+      inputMode={field === 'price' ? 'numeric' : undefined}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={`${inputClass} w-28`}
+    />
+  )
+}
+
+/**
+ * + 新增一段: 類型 first, then only that type's fields, and a 顯示 checkbox
+ * for each optional tick and code, starting at the type's default. Times are
+ * optional. The booking code and 備註 are filled in on the card.
+ */
+function AddLeg({ ticketTypes, onAdd }) {
   const [open, setOpen] = useState(false)
+  const [type, setType] = useState('')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [departs, setDeparts] = useState('')
   const [arrives, setArrives] = useState('')
+  const [values, setValues] = useState({})
+  const [flags, setFlags] = useState({})
   const [problem, setProblem] = useState(null)
-  const ready = from.trim() && to.trim() && departs && arrives
+  const ready = type && from.trim() && to.trim()
+
+  const reset = () => {
+    setType('')
+    setFrom('')
+    setTo('')
+    setDeparts('')
+    setArrives('')
+    setValues({})
+    setFlags({})
+    setProblem(null)
+    setOpen(false)
+  }
+
+  const pickType = (next) => {
+    setType(next)
+    setFlags(defaultFlags(next))
+  }
 
   const submit = async () => {
     if (!ready) return
+    const payload = {
+      transport_type: type,
+      from_place: from.trim(),
+      to_place: to.trim(),
+      departs_at: timePayload(departs),
+      arrives_at: timePayload(arrives),
+    }
+    for (const field of fieldsFor(type)) {
+      const text = (values[field] ?? '').trim()
+      if (field === 'price') {
+        const price = parseWholeNumber(text)
+        if (price === undefined) {
+          setProblem('價錢要是整數')
+          return
+        }
+        payload.price = price
+      } else {
+        payload[field] = text || null
+      }
+    }
+    for (const flag of toggleableFlags(type)) payload[flagField(flag)] = Boolean(flags[flagField(flag)])
     try {
-      await onAdd({
-        from_place: from.trim(),
-        to_place: to.trim(),
-        departs_at: fromTaipeiInput(departs),
-        arrives_at: fromTaipeiInput(arrives),
-      })
-      setFrom('')
-      setTo('')
-      setDeparts('')
-      setArrives('')
-      setProblem(null)
-      setOpen(false)
+      await onAdd(payload)
+      reset()
     } catch (caught) {
-      setProblem(hasStatus(caught, 422) ? '抵達時間要晚於出發時間' : '發生錯誤')
+      setProblem(hasStatus(caught, 422) ? TIMES_REFUSED : '發生錯誤')
     }
   }
 
@@ -505,55 +728,69 @@ function AddLeg({ onAdd }) {
       </button>
     )
   }
+  const optional = type ? toggleableFlags(type) : []
   return (
     <div className="rounded-md border border-dashed border-border-strong p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          autoFocus
-          aria-label="起點"
-          placeholder="起點"
-          value={from}
-          onChange={(event) => setFrom(event.target.value)}
-          className={`${inputClass} w-32`}
-        />
-        <span className="text-text-faint">→</span>
-        <input
-          aria-label="終點"
-          placeholder="終點"
-          value={to}
-          onChange={(event) => setTo(event.target.value)}
-          className={`${inputClass} w-32`}
-        />
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input
-          type="datetime-local"
-          aria-label="出發時間"
-          value={departs}
-          onChange={(event) => setDeparts(event.target.value)}
-          className={inputClass}
-        />
-        <span className="text-text-faint">→</span>
-        <input
-          type="datetime-local"
-          aria-label="抵達時間"
-          value={arrives}
-          onChange={(event) => setArrives(event.target.value)}
-          className={inputClass}
-        />
-      </div>
+      <TypeSelect value={type} onChange={pickType} placeholder="選擇類型" autoFocus />
+      {type && (
+        <>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              aria-label="起點"
+              placeholder="起點"
+              value={from}
+              onChange={(event) => setFrom(event.target.value)}
+              className={`${inputClass} w-32`}
+            />
+            <span className="text-text-faint">→</span>
+            <input
+              aria-label="終點"
+              placeholder="終點"
+              value={to}
+              onChange={(event) => setTo(event.target.value)}
+              className={`${inputClass} w-32`}
+            />
+          </div>
+          <div className="mt-2">
+            <TimesInputs departs={departs} arrives={arrives} onDeparts={setDeparts} onArrives={setArrives} />
+          </div>
+          {fieldsFor(type).length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {fieldsFor(type).map((field) => (
+                <AddField
+                  key={field}
+                  type={type}
+                  field={field}
+                  value={values[field] ?? ''}
+                  ticketTypes={ticketTypes}
+                  onChange={(value) => setValues({ ...values, [field]: value })}
+                />
+              ))}
+            </div>
+          )}
+          {optional.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
+              <span>顯示</span>
+              {optional.map((flag) => (
+                <label key={flag} className="flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    className="size-4"
+                    checked={Boolean(flags[flagField(flag)])}
+                    onChange={(event) => setFlags({ ...flags, [flagField(flag)]: event.target.checked })}
+                  />
+                  {flagLabel(type, flag)}
+                </label>
+              ))}
+            </div>
+          )}
+        </>
+      )}
       <div className="mt-2 flex gap-2">
-        <button type="button" disabled={!ready} onClick={submit} className={smallButton}>
+        <button type="button" disabled={!ready} onClick={submit} className={`${smallButton} disabled:opacity-40`}>
           新增
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(false)
-            setProblem(null)
-          }}
-          className={smallButton}
-        >
+        <button type="button" onClick={reset} className={smallButton}>
           取消
         </button>
       </div>
@@ -564,13 +801,167 @@ function AddLeg({ onAdd }) {
 
 const badge = 'shrink-0 rounded-sm bg-surface-2 px-2 text-xs font-normal text-text-muted'
 
+/**
+ * 已準備完成 and the ticket status, side by side. The checkbox cannot be
+ * ticked until the trip is ready - the hint says what is missing - but can
+ * always be unticked. The server decides the same, so a 422 is still shown.
+ */
+function Readiness({ trip, onPatch }) {
+  const [problem, setProblem] = useState(null)
+  const readiness = tripReadiness(trip)
+  const hint = readinessHint(readiness)
+  const blocked = !trip.done && !readiness.ready
+
+  const setDone = async (done) => {
+    try {
+      await onPatch({ done })
+      setProblem(null)
+    } catch (caught) {
+      setProblem(hasStatus(caught, 422) ? `還沒準備完成：${hint ?? caught.message}` : '發生錯誤')
+    }
+  }
+
+  return (
+    <>
+      <label className={`flex items-center gap-1 text-sm ${blocked ? 'text-text-faint' : 'text-text-muted'}`}>
+        <input
+          type="checkbox"
+          checked={Boolean(trip.done)}
+          disabled={blocked}
+          onChange={(event) => setDone(event.target.checked)}
+          aria-label={`「${trip.name}」${DONE_LABEL}`}
+          aria-describedby={blocked ? 'readiness-hint' : undefined}
+          className="size-4"
+        />
+        {DONE_LABEL}
+        {blocked && (
+          <span id="readiness-hint" className="text-xs">
+            （{hint}）
+          </span>
+        )}
+      </label>
+      <Segmented
+        value={trip.ticket_status}
+        options={TICKET_STATUSES}
+        labels={TICKET_STATUS_LABELS}
+        ariaLabel="買票狀態"
+        onChange={(ticket_status) => onPatch({ ticket_status }).catch(() => setProblem('發生錯誤'))}
+      />
+      {problem && (
+        <p role="alert" className="m-0 w-full text-xs text-danger">
+          {problem}
+        </p>
+      )}
+    </>
+  )
+}
+
+/** 單程 / 來回. Back to 單程 is refused while 回程 still holds anything. */
+function RoundTripToggle({ trip, onPatch }) {
+  const [problem, setProblem] = useState(null)
+  const change = async (round_trip) => {
+    try {
+      await onPatch({ round_trip })
+      setProblem(null)
+    } catch (caught) {
+      setProblem(
+        hasStatus(caught, 422)
+          ? '回程還有行程段、標題或備註。請先移到去程或刪除，再改回單程。'
+          : '發生錯誤',
+      )
+    }
+  }
+  return (
+    <>
+      <Segmented
+        value={Boolean(trip.round_trip)}
+        options={[false, true]}
+        labels={ROUND_TRIP_LABELS}
+        ariaLabel="單程或來回"
+        onChange={change}
+      />
+      {problem && (
+        <p role="alert" className="m-0 w-full text-xs text-danger">
+          {problem}
+        </p>
+      )}
+    </>
+  )
+}
+
+/** The entries of one section (or of a one-way trip), then + 新增一段. */
+function LegList({ legs, trip, section, ticketTypes, actions, empty }) {
+  return (
+    <div className="mt-2 flex flex-col gap-3">
+      {legs.length === 0 && <EmptyState>{empty}</EmptyState>}
+      {legs.map((leg) => (
+        <LegCard
+          key={leg.id}
+          leg={leg}
+          roundTrip={Boolean(trip.round_trip)}
+          ticketTypes={ticketTypes}
+          actions={actions}
+        />
+      ))}
+      <AddLeg
+        ticketTypes={ticketTypes}
+        onAdd={(payload) =>
+          actions.addLeg.mutateAsync({
+            tripId: trip.id,
+            payload: section ? { ...payload, section } : payload,
+          })
+        }
+      />
+    </div>
+  )
+}
+
+/** 去程 or 回程 on a round trip: its title, its remark, its entries. */
+function Section({ section, trip, legs, ticketTypes, actions, onPatchTrip }) {
+  const label = LEG_LABELS[section]
+  const { title, remark } = SECTION_FIELDS[section]
+  return (
+    <section className="mt-6" aria-label={label}>
+      <div className="flex items-center gap-2 border-b border-border pb-1">
+        <h2 className="m-0 shrink-0 text-sm font-semibold text-text-muted">{label}</h2>
+        <div className="min-w-0 flex-1 font-semibold">
+          <TextCell
+            value={trip[title]}
+            placeholder={`${label}標題`}
+            onCommit={(value) => onPatchTrip({ [title]: value })}
+          />
+        </div>
+      </div>
+      <TextAreaCell
+        value={trip[remark]}
+        placeholder={`${label}備註`}
+        ariaLabel={`${label}備註`}
+        onCommit={(value) => onPatchTrip({ [remark]: value })}
+      />
+      <LegList
+        legs={legs}
+        trip={trip}
+        section={section}
+        ticketTypes={ticketTypes}
+        actions={actions}
+        empty={`${label}還沒有任何一段。`}
+      />
+    </section>
+  )
+}
+
 function TripView({ trip, unlinked, ticketTypes, actions, onDeleted, onDismissNotice }) {
   const [confirming, setConfirming] = useState(false)
   const [confirmingUnsave, setConfirmingUnsave] = useState(false)
   const legs = sortLegs(trip.legs)
   const patchTrip = (changes) => actions.patchTrip.mutate({ id: trip.id, changes })
+  const patchTripAsync = (changes) => actions.patchTrip.mutateAsync({ id: trip.id, changes })
   const makeTemplate = () => actions.makeTemplate(trip)
   const tab = tabFor(trip)
+  const roundTrip = Boolean(trip.round_trip)
+  // An entry with no section on a round trip is shown under 去程, which is
+  // where the server puts it.
+  const sectionOf = (leg) => (leg.section === 'return' ? 'return' : 'outbound')
 
   return (
     <>
@@ -607,41 +998,55 @@ function TripView({ trip, unlinked, ticketTypes, actions, onDeleted, onDismissNo
             onDelete={() => setConfirming(true)}
           />
         </div>
-        {/* 已完成 is its own flag, independent of 狀態 and kind; a 範本 is only
-            a starting point, so it has none to show. */}
+        {/* 已準備完成 and the tickets are this trip's own, independent of 狀態
+            and kind; a 範本 is only a starting point, so it has neither. */}
         <div className="flex flex-wrap items-center gap-2">
           <KindControls row={trip} noun="行程" onPatch={patchTrip} onMakeTemplate={makeTemplate} />
-          {trip.kind !== 'template' && (
-            <label className="flex items-center gap-1 text-sm text-text-muted">
-              <input
-                type="checkbox"
-                checked={Boolean(trip.done)}
-                onChange={(event) => patchTrip({ done: event.target.checked })}
-                aria-label={`「${trip.name}」${DONE_LABEL}`}
-                className="size-4"
-              />
-              {DONE_LABEL}
-            </label>
-          )}
+          {trip.kind !== 'template' && <Readiness trip={trip} onPatch={patchTripAsync} />}
+          <RoundTripToggle trip={trip} onPatch={patchTripAsync} />
         </div>
-        <TextCell value={trip.notes} placeholder="備註" onCommit={(notes) => patchTrip({ notes })} />
+        {!roundTrip && (
+          <TextAreaCell
+            value={trip.notes}
+            placeholder="備註"
+            ariaLabel="備註"
+            onCommit={(notes) => patchTrip({ notes })}
+          />
+        )}
         {(trip.kind === 'saved' || isAutoSaved(trip) || trip.archive_note) && (
-          <TextCell
+          <TextAreaCell
             value={trip.archive_note}
             placeholder="保存備註"
+            ariaLabel="保存備註"
             onCommit={(archive_note) => patchTrip({ archive_note })}
           />
         )}
       </div>
       <UnlinkedNotice entries={unlinked} onDismiss={onDismissNotice} />
 
-      <div className="mt-4 flex flex-col gap-3">
-        {legs.length === 0 && <EmptyState>這個行程還沒有任何一段。</EmptyState>}
-        {legs.map((leg) => (
-          <LegCard key={leg.id} leg={leg} ticketTypes={ticketTypes} actions={actions} />
-        ))}
-        <AddLeg onAdd={(payload) => actions.addLeg.mutateAsync({ tripId: trip.id, payload })} />
-      </div>
+      {roundTrip ? (
+        SECTIONS.map((section) => (
+          <Section
+            key={section}
+            section={section}
+            trip={trip}
+            legs={legs.filter((leg) => sectionOf(leg) === section)}
+            ticketTypes={ticketTypes}
+            actions={actions}
+            onPatchTrip={patchTrip}
+          />
+        ))
+      ) : (
+        <div className="mt-2">
+          <LegList
+            legs={legs}
+            trip={trip}
+            ticketTypes={ticketTypes}
+            actions={actions}
+            empty="這個行程還沒有任何一段。"
+          />
+        </div>
+      )}
 
       {confirmingUnsave && (
         <ConfirmDialog
@@ -707,22 +1112,23 @@ export default function Trip() {
   )
   const deleteLeg = useTripMutation((id) => send(endpoints.trips.leg(id), 'DELETE'))
 
-  const makeTemplate = (source) =>
+  const makeTemplate = (source) => {
+    // 當作範本 keeps the dates: the copy starts on the source's own first day.
+    // A trip with no departure anywhere has nothing to move.
+    const first = firstDeparture(source.legs)
     createTrip.mutate(
       {
         name: source.name,
         kind: 'template',
         copy_from_id: source.id,
-        // 當作範本 keeps the dates: the copy starts on the source's own first day.
-        ...(source.legs.length
-          ? { start_date: taipeiInputValue(sortLegs(source.legs)[0].departs_at).slice(0, 10) }
-          : {}),
+        ...(first ? { start_date: taipeiInputValue(first).slice(0, 10) } : {}),
       },
       {
         onSuccess: (created) =>
           navigate(`/trips/${created.id}`, { state: { unlinked: created.unlinked_from } }),
       },
     )
+  }
 
   if (trip.isLoading) return <LoadingState label="載入行程中…" />
 

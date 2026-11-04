@@ -24,10 +24,16 @@ export const endpoints = {
     optionsOrder: (routeId) => `/api/transport-routes/${routeId}/order`,
     options: (routeId) => `/api/transport-routes/${routeId}/options`,
     notes: (routeId) => `/api/transport-routes/${routeId}/notes`,
+    noteOrder: (routeId) => `/api/transport-routes/${routeId}/note-order`,
     note: (id) => `/api/transport-notes/${id}`,
     option: (id) => `/api/transport-options/${id}`,
     departures: (optionId) => `/api/transport-options/${optionId}/departures`,
     departure: (id) => `/api/transport-departures/${id}`,
+  },
+  notes: {
+    index: () => '/api/notes',
+    order: () => '/api/notes/order',
+    detail: (id) => `/api/notes/${id}`,
   },
   trips: {
     index: () => '/api/trips',

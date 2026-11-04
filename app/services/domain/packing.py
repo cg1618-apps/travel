@@ -5,18 +5,20 @@ A **group** is the items on one list sharing a `category`; null is a group of
 its own. Groups have no table and no order column: a group sits where its
 items sit in `position`, so keeping each group's items adjacent is what keeps
 the groups whole. Every placement here preserves that, and `set_order`
-refuses an order that breaks it.
+refuses an order that breaks it. The rule itself is
+`app.services.domain.ordering`'s, shared with notes and transport routes.
 
 Nothing here raises `HTTPException`. The router decides what a refusal looks
 like over HTTP; these functions only answer questions and perform changes.
 """
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.constants import Status
 from app.models import PackingItem, PackingList
-from app.services.domain.ordering import OrderRefused, apply_order, check_order
+from app.services.domain import ordering
+from app.services.domain.ordering import apply_order, check_groups, check_order
 
 
 def copy_items(db: Session, source: PackingList, target: PackingList) -> None:
@@ -59,16 +61,10 @@ def copy_items(db: Session, source: PackingList, target: PackingList) -> None:
 def insert_after(db: Session, after: PackingItem) -> int:
     """Make room directly after `after` on its own list; return that position.
 
-    Every later item on the SAME list shifts down by one, in the caller's
-    transaction, so positions stay contiguous and a variant lands under the
-    row it was added from.
+    Every later item on the SAME list shifts down by one, so a variant lands
+    under the row it was added from.
     """
-    db.execute(
-        update(PackingItem)
-        .where(PackingItem.list_id == after.list_id, PackingItem.position > after.position)
-        .values(position=PackingItem.position + 1)
-    )
-    return after.position + 1
+    return ordering.insert_after(db, PackingItem, {"list_id": after.list_id}, after)
 
 
 def next_position(db: Session, list_id: int, *, exclude_id: int | None = None) -> int:
@@ -78,36 +74,17 @@ def next_position(db: Session, list_id: int, *, exclude_id: int | None = None) -
     list's first item at position 400 and sort correctly by accident, until
     something started comparing positions between lists.
     """
-    query = select(func.max(PackingItem.position)).where(PackingItem.list_id == list_id)
-    if exclude_id is not None:
-        query = query.where(PackingItem.id != exclude_id)
-    highest = db.execute(query).scalar()
-    return 0 if highest is None else highest + 1
+    return ordering.next_position(db, PackingItem, {"list_id": list_id}, exclude_id=exclude_id)
 
 
 def place_in_group(
     db: Session, list_id: int, category: str | None, *, exclude_id: int | None = None
 ) -> int:
-    """Make room at the end of `category`'s group on this list; return that position.
-
-    Directly after the group's last item, shifting later items down as
-    `insert_after` does, so the group stays one block. A category nobody on
-    the list carries yet starts a new group one past the end. `exclude_id` is
-    the item being moved, which must not count as a member of the group it is
-    joining - nor, at the end of the list, as the item to go after.
-
-    `IS NOT DISTINCT FROM` rather than `=`, so null finds the uncategorised
-    group: `category = NULL` matches nothing.
-    """
-    query = select(PackingItem).where(
-        PackingItem.list_id == list_id, PackingItem.category.is_not_distinct_from(category)
+    """Make room at the end of `category`'s group on this list; return that
+    position. The group rule is `ordering.place_in_group`'s."""
+    return ordering.place_in_group(
+        db, PackingItem, {"list_id": list_id}, "category", category, exclude_id=exclude_id
     )
-    if exclude_id is not None:
-        query = query.where(PackingItem.id != exclude_id)
-    last = db.scalars(query.order_by(PackingItem.position.desc()).limit(1)).first()
-    if last is None:
-        return next_position(db, list_id, exclude_id=exclude_id)
-    return insert_after(db, last)
 
 
 def _group_name(category: str | None) -> str:
@@ -128,18 +105,12 @@ def set_order(db: Session, packing_list: PackingList, item_ids: list[int]) -> No
     }
 
     check_order(item_ids, items, noun="item", where="on this list")
-
-    # One entry per run of equal categories; a category with two runs is a
-    # group the order would split.
-    categories = [items[item_id].category for item_id in item_ids]
-    runs = [c for i, c in enumerate(categories) if i == 0 or c != categories[i - 1]]
-    started: set[str | None] = set()
-    for category in runs:
-        if category in started:
-            raise OrderRefused(
-                f"The order splits {_group_name(category)}: a group's items must be adjacent."
-            )
-        started.add(category)
+    check_groups(
+        item_ids,
+        {item_id: item.category for item_id, item in items.items()},
+        noun="item",
+        describe=_group_name,
+    )
 
     apply_order(items, item_ids)
     db.flush()

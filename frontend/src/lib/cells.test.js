@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { required } from './cells'
+import { remarkValue, required } from './cells'
 
 describe('required', () => {
   it('passes a value through to the commit', () => {
@@ -14,5 +14,15 @@ describe('required', () => {
     required(commit)(null)
     required(commit)('')
     expect(commit).not.toHaveBeenCalled()
+  })
+})
+
+describe('remarkValue', () => {
+  it('keeps the lines as typed, without trailing blank lines', () => {
+    expect(remarkValue('第一行\n  第二行\n\n')).toBe('第一行\n  第二行')
+  })
+  it('sends nothing but whitespace as null', () => {
+    expect(remarkValue('')).toBeNull()
+    expect(remarkValue(' \n ')).toBeNull()
   })
 })
