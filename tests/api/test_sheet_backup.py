@@ -18,6 +18,8 @@ from app.models import (
     PackingItem,
     PackingList,
     TransportDeparture,
+    TransportNote,
+    TransportNoteLink,
     TransportOption,
     TransportRoute,
     Trip,
@@ -80,6 +82,15 @@ def seeded(db_session):
         TransportDeparture(option_id=bus.id, day_type="weekday", time=time(6, 10)),
         TransportDeparture(option_id=bus.id, day_type="weekday", time=time(8, 15), irregular=True),
         TransportDeparture(option_id=bus.id, day_type="holiday", time=time(7, 5)),
+    ])
+    transfer = TransportNote(route_id=route.id, title="轉乘", description="在彰化換車", position=0)
+    link_only = TransportNote(route_id=route.id, title=None, position=1)
+    db.add_all([transfer, link_only])
+    db.flush()
+    db.add_all([
+        TransportNoteLink(note_id=transfer.id, url="https://example.invalid/a", position=0),
+        TransportNoteLink(note_id=transfer.id, url="https://example.invalid/b", position=1),
+        TransportNoteLink(note_id=link_only.id, url="https://example.invalid/c", position=0),
     ])
     trip = Trip(name="彰化 ⇄ 台北", kind=Kind.FREE, usage=Usage.IN_USE, notes="中秋")
     old_trip = Trip(name="去年", kind=Kind.FREE, usage=Usage.PAST,
@@ -158,6 +169,7 @@ def test_after_a_restore_new_rows_take_fresh_ids(seeded, sheets):
     top = {name: max(row["id"] for row in rows) for name, rows in before.items()}
     a_list, a_route, a_trip = (before[t][0]["id"] for t in ("packing_list", "transport_route", "trip"))
     an_option = before["transport_option"][0]["id"]
+    a_note = before["transport_note"][0]["id"]
     new = {
         "label_option": LabelOption(kind="bag", value="背包"),
         "packing_list": PackingList(name="新"),
@@ -166,6 +178,8 @@ def test_after_a_restore_new_rows_take_fresh_ids(seeded, sheets):
         "transport_option": TransportOption(route_id=a_route, mode="新"),
         "transport_departure": TransportDeparture(option_id=an_option, day_type="holiday",
                                                   time=time(23, 59)),
+        "transport_note": TransportNote(route_id=a_route, title="新"),
+        "transport_note_link": TransportNoteLink(note_id=a_note, url="https://example.invalid/new"),
         "trip": Trip(name="新"),
         "trip_leg": TripLeg(trip_id=a_trip, from_place="a", to_place="b",
                             departs_at=NOW, arrives_at=NOW + timedelta(hours=1)),
@@ -383,6 +397,18 @@ def test_the_transport_tab_marks_irregular_departures(seeded, fake, sheets):
     assert bus[12] == "06:10 *08:15"
     assert bus[13] == "07:05"
     assert any(r[:2] == ["台北車站", "家"] for r in rows)  # a route with no options
+
+
+def test_the_transport_tab_shows_a_routes_notes_under_its_remark(seeded, fake, sheets):
+    run_backup(seeded, sheets, now=NOW)
+    rows = fake.tab("交通").values()
+    # The route has options, so this row exists only for its 備註 and notes.
+    route_row = next(r for r in rows if r[:2] == ["宿舍", "彰化火車站"] and r[2] == "")
+    assert route_row[17].split("\n") == [
+        "走路也行",
+        "轉乘 · 在彰化換車 · https://example.invalid/a https://example.invalid/b",
+        "https://example.invalid/c",
+    ]
 
 
 # --- the endpoint -----------------------------------------------------------------

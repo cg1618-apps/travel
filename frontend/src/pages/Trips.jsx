@@ -17,7 +17,7 @@ import { ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { keysFor } from '../lib/keys'
 import { AUTO_SAVE_LIMIT, TABS, autofillName, isAutoSaved, tabCounts } from '../lib/kinds'
-import { KIND_LABELS, USAGE_LABELS } from '../lib/labels'
+import { DONE_LABEL, KIND_LABELS, USAGE_LABELS } from '../lib/labels'
 import { firstLine, legSummary, needsStartDate, sortLegs } from '../lib/trips'
 
 const INDEX = ['trips', 'index']
@@ -130,8 +130,9 @@ function CreateTrip({ templates, pending, failed, onCreate, onCancel }) {
 }
 
 /**
- * One trip: name, a 狀態 badge on 一般 and 自動保存, one line per leg. 保存
- * and 自動保存 cards add the first line of 保存備註.
+ * One trip: name, a 狀態 badge on 一般 and 自動保存, an 已完成 badge once it
+ * is done, one line per leg. 保存 and 自動保存 cards add the first line of
+ * 保存備註.
  */
 function TripCard({ trip, selecting, selected, onToggle }) {
   const legs = sortLegs(trip.legs)
@@ -150,7 +151,10 @@ function TripCard({ trip, selecting, selected, onToggle }) {
       <Link to={`/trips/${trip.id}`} className="min-w-0 flex-1 text-text no-underline">
         <span className="flex items-center justify-between gap-2">
           <span className="min-w-0 font-semibold">{trip.name}</span>
-          {trip.kind === 'free' && <span className={badge}>{USAGE_LABELS[trip.usage]}</span>}
+          <span className="flex shrink-0 gap-1">
+            {trip.done && <span className={badge}>{DONE_LABEL}</span>}
+            {trip.kind === 'free' && <span className={badge}>{USAGE_LABELS[trip.usage]}</span>}
+          </span>
         </span>
         {note && <span className="block text-xs text-text-faint">{note}</span>}
         {legs.length === 0 ? (

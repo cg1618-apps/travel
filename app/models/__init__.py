@@ -8,7 +8,13 @@ is a table missing from the next migration, with nothing to say so.
 from app.models.label_option import LabelOption
 from app.models.packing_item import PackingItem
 from app.models.packing_list import PackingList
-from app.models.transport import TransportDeparture, TransportOption, TransportRoute
+from app.models.transport import (
+    TransportDeparture,
+    TransportNote,
+    TransportNoteLink,
+    TransportOption,
+    TransportRoute,
+)
 from app.models.trip import Trip, TripLeg
 
 __all__ = [
@@ -16,6 +22,8 @@ __all__ = [
     "PackingItem",
     "PackingList",
     "TransportDeparture",
+    "TransportNote",
+    "TransportNoteLink",
     "TransportOption",
     "TransportRoute",
     "Trip",

@@ -1,8 +1,11 @@
-"""Transport: routes, the options on them, and the departures of each option.
+"""Transport: routes, the options and notes on them, and the departures of
+each option.
 
 Item-style paths, like packing items: a child is created under its parent and
 addressed on its own afterwards, so the paths are written out in full rather
-than hung off one router prefix.
+than hung off one router prefix. Two whole-order writes set every route's
+position, and every option's on one route, as `PUT /api/packing-lists/{id}/order`
+does for items.
 """
 
 from datetime import time as clock_time
@@ -13,30 +16,45 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.models import TransportDeparture, TransportOption, TransportRoute
+from app.models import (
+    TransportDeparture,
+    TransportNote,
+    TransportNoteLink,
+    TransportOption,
+    TransportRoute,
+)
 from app.schemas.transport import (
+    NOTE_NEEDS_TITLE_OR_LINK,
     TransportDepartureCreate,
     TransportDepartureResponse,
     TransportDepartureUpdate,
+    TransportNoteCreate,
+    TransportNoteResponse,
+    TransportNoteUpdate,
     TransportOptionBase,
+    TransportOptionOrder,
     TransportOptionResponse,
     TransportOptionUpdate,
     TransportRouteBase,
+    TransportRouteOrder,
     TransportRouteResponse,
     TransportRouteUpdate,
 )
+from app.services.domain.ordering import OrderRefused, apply_order, check_order
 
 router = APIRouter(tags=["Transport"])
 
 ROUTE_NOT_FOUND = "Transport route not found."
 OPTION_NOT_FOUND = "Transport option not found."
 DEPARTURE_NOT_FOUND = "Transport departure not found."
+NOTE_NOT_FOUND = "Transport note not found."
 DUPLICATE_DEPARTURE = "That departure already exists for this option."
 
 
 def _routes_query():
     return select(TransportRoute).options(
-        selectinload(TransportRoute.options).selectinload(TransportOption.departures)
+        selectinload(TransportRoute.options).selectinload(TransportOption.departures),
+        selectinload(TransportRoute.note_entries).selectinload(TransportNote.links),
     )
 
 
@@ -61,6 +79,17 @@ def _get_departure(db: Session, departure_id: int) -> TransportDeparture:
     return departure
 
 
+def _get_note(db: Session, note_id: int) -> TransportNote:
+    note = db.scalars(
+        select(TransportNote)
+        .where(TransportNote.id == note_id)
+        .options(selectinload(TransportNote.links))
+    ).first()
+    if note is None:
+        raise HTTPException(status_code=404, detail=NOTE_NOT_FOUND)
+    return note
+
+
 def _next_route_position(db: Session) -> int:
     highest = db.execute(select(func.max(TransportRoute.position))).scalar()
     return 0 if highest is None else highest + 1
@@ -72,6 +101,25 @@ def _next_option_position(db: Session, route_id: int) -> int:
         select(func.max(TransportOption.position)).where(TransportOption.route_id == route_id)
     ).scalar()
     return 0 if highest is None else highest + 1
+
+
+def _next_note_position(db: Session, route_id: int) -> int:
+    highest = db.execute(
+        select(func.max(TransportNote.position)).where(TransportNote.route_id == route_id)
+    ).scalar()
+    return 0 if highest is None else highest + 1
+
+
+def _link_rows(urls: list[str]) -> list[TransportNoteLink]:
+    return [TransportNoteLink(url=url, position=position) for position, url in enumerate(urls)]
+
+
+def _apply_order(rows: dict, ids: list[int], *, noun: str, where: str) -> None:
+    try:
+        check_order(ids, rows, noun=noun, where=where)
+    except OrderRefused as refused:
+        raise HTTPException(status_code=422, detail=str(refused)) from None
+    apply_order(rows, ids)
 
 
 def _refuse_duplicate(
@@ -115,6 +163,17 @@ def list_routes(db: Session = Depends(get_db)):
     return db.scalars(query).all()
 
 
+@router.put("/api/transport-routes/order", response_model=list[TransportRouteResponse])
+def reorder_routes(payload: TransportRouteOrder, db: Session = Depends(get_db)):
+    """Every route's position in one write. A literal path, declared before
+    the `{route_id}` routes, so "order" is never read as an id."""
+    routes = {route.id: route for route in db.scalars(select(TransportRoute))}
+    _apply_order(routes, payload.route_ids, noun="route", where="among the routes")
+    db.commit()
+    db.expire_all()
+    return list_routes(db)
+
+
 @router.post("/api/transport-routes", response_model=TransportRouteResponse, status_code=201)
 def create_route(payload: TransportRouteBase, db: Session = Depends(get_db)):
     route = TransportRoute(position=_next_route_position(db), **payload.model_dump())
@@ -143,6 +202,18 @@ def delete_route(route_id: int, db: Session = Depends(get_db)):
     db.delete(_get_route(db, route_id))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/api/transport-routes/{route_id}/order", response_model=TransportRouteResponse)
+def reorder_options(route_id: int, payload: TransportOptionOrder, db: Session = Depends(get_db)):
+    """Every option's position on this route in one write; an option of
+    another route is foreign here, as an item of another list is."""
+    route = _get_route(db, route_id)
+    options = {option.id: option for option in route.options}
+    _apply_order(options, payload.option_ids, noun="option", where="on this route")
+    db.commit()
+    db.expire_all()
+    return _get_route(db, route_id)
 
 
 # --- options ----------------------------------------------------------------
@@ -225,5 +296,56 @@ def update_departure(
 @router.delete("/api/transport-departures/{departure_id}", status_code=204)
 def delete_departure(departure_id: int, db: Session = Depends(get_db)):
     db.delete(_get_departure(db, departure_id))
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- notes ------------------------------------------------------------------
+
+
+@router.post(
+    "/api/transport-routes/{route_id}/notes",
+    response_model=TransportNoteResponse,
+    status_code=201,
+)
+def create_note(route_id: int, payload: TransportNoteCreate, db: Session = Depends(get_db)):
+    if db.get(TransportRoute, route_id) is None:
+        raise HTTPException(status_code=404, detail=ROUTE_NOT_FOUND)
+    note = TransportNote(
+        route_id=route_id,
+        title=payload.title,
+        description=payload.description,
+        position=_next_note_position(db, route_id),
+        links=_link_rows(payload.links),
+    )
+    db.add(note)
+    db.commit()
+    db.expire_all()
+    return _get_note(db, note.id)
+
+
+@router.patch("/api/transport-notes/{note_id}", response_model=TransportNoteResponse)
+def update_note(note_id: int, payload: TransportNoteUpdate, db: Session = Depends(get_db)):
+    note = _get_note(db, note_id)
+    changes = payload.model_dump(exclude_unset=True)
+    # The title-or-link rule holds for the note as it will be, not the body:
+    # a body clearing the title is fine while the note keeps a link.
+    title = changes.get("title", note.title)
+    links = changes["links"] if "links" in changes else [link.url for link in note.links]
+    if title is None and not links:
+        raise HTTPException(status_code=422, detail=NOTE_NEEDS_TITLE_OR_LINK)
+    if "links" in changes:
+        # Replaced, not merged: delete-orphan removes the old rows.
+        note.links = _link_rows(changes.pop("links"))
+    for field, value in changes.items():
+        setattr(note, field, value)
+    db.commit()
+    db.expire_all()
+    return _get_note(db, note_id)
+
+
+@router.delete("/api/transport-notes/{note_id}", status_code=204)
+def delete_note(note_id: int, db: Session = Depends(get_db)):
+    db.delete(_get_note(db, note_id))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

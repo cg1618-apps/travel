@@ -11,6 +11,8 @@ every row it points at, so each foreign key finds its target.
     Packing List     -> Packing Item          (packing_item.list_id)
     Transport Route  -> Transport Option      (transport_option.route_id)
     Transport Option -> Transport Departure   (transport_departure.option_id)
+    Transport Route  -> Transport Note        (transport_note.route_id)
+    Transport Note   -> Transport Note Link   (transport_note_link.note_id)
     Trip             -> Trip Leg              (trip_leg.trip_id)
     Packing List     -> Trip Leg              (trip_leg.packing_list_id)
 
@@ -28,6 +30,8 @@ from app.models import (
     PackingItem,
     PackingList,
     TransportDeparture,
+    TransportNote,
+    TransportNoteLink,
     TransportOption,
     TransportRoute,
     Trip,
@@ -55,6 +59,8 @@ RESTORE_TABS: tuple[RestoreTab, ...] = (
     RestoreTab("Transport Route", TransportRoute),
     RestoreTab("Transport Option", TransportOption),
     RestoreTab("Transport Departure", TransportDeparture),
+    RestoreTab("Transport Note", TransportNote),
+    RestoreTab("Transport Note Link", TransportNoteLink),
     RestoreTab("Trip", Trip),
     RestoreTab("Trip Leg", TripLeg),
 )

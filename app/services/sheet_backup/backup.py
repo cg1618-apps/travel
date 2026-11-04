@@ -26,7 +26,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import TransportOption, TransportRoute
+from app.models import TransportNote, TransportOption, TransportRoute
 from app.routers.health import read_alembic_revision
 from app.services.domain.dashboard import readable_set
 from app.services.sheet_backup import readable
@@ -158,7 +158,8 @@ def _write_backup(db: Session, client: SheetClient, backed_up_at: datetime) -> B
         matrices[trip_titles[row.id]] = readable.trip_matrix(row)
     routes = db.scalars(
         select(TransportRoute).options(
-            selectinload(TransportRoute.options).selectinload(TransportOption.departures)
+            selectinload(TransportRoute.options).selectinload(TransportOption.departures),
+            selectinload(TransportRoute.note_entries).selectinload(TransportNote.links),
         )
     ).all()
     matrices[readable.TRANSPORT] = readable.transport_matrix(list(routes))

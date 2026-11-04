@@ -6,8 +6,13 @@
  * that commits on Enter or blur and reverts on Escape, with no Save button.
  * Departures are chips under 平日 and 假日, sorted into 早/中/下午/晚 by the
  * clock, with the next one from now picked out.
+ *
+ * Under 備註, 筆記: notes with a title, a description and links, each added
+ * and edited in a small form of its own, since a list of links is not a cell.
+ * The option cards are dragged into order by the ⠿ in their header.
  */
 
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
@@ -17,6 +22,7 @@ import { TextCell } from '../components/Cell'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DeleteMenu } from '../components/DeleteMenu'
 import { PriceCell } from '../components/PriceCell'
+import { DragHandle, SortableItem, SortableList } from '../components/Sortable'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
 import { send, useApiMutation, useApiQuery } from '../hooks/useApiQuery'
 import { required } from '../lib/cells'
@@ -29,7 +35,15 @@ import {
 } from '../lib/departures'
 import { keysFor } from '../lib/keys'
 import { ADVANCE_TICKET_LABELS, BUCKET_LABELS, DAY_TYPE_LABELS } from '../lib/labels'
-import { DAY_TYPES, groupByDayType } from '../lib/transport'
+import {
+  DAY_TYPES,
+  canSaveNote,
+  groupByDayType,
+  inIdOrder,
+  linkText,
+  moveTo,
+  notePayload,
+} from '../lib/transport'
 
 const KEY = ['transport-routes']
 const REFRESH_MS = 60_000
@@ -239,6 +253,7 @@ function OptionCard({ option, now, actions }) {
   return (
     <article className="rounded-md border border-border bg-surface p-3">
       <div className="flex items-center justify-between gap-2">
+        <DragHandle label={option.mode} className="text-lg" />
         <div className="min-w-0 flex-1 text-base font-semibold">
           <TextCell
             value={option.mode}
@@ -334,6 +349,229 @@ function OptionCard({ option, now, actions }) {
         />
       )}
     </article>
+  )
+}
+
+/**
+ * 標題, 說明 and a list of links, for a new note or an existing one. Empty link
+ * inputs are dropped before sending; 儲存 waits for a title or a link, since
+ * a description alone is not a note the API keeps.
+ */
+function NoteForm({ note, onSave, onCancel }) {
+  const [title, setTitle] = useState(note?.title ?? '')
+  const [description, setDescription] = useState(note?.description ?? '')
+  // Keyed by a counter rather than by place, so removing one input does not
+  // hand its neighbour's text to the wrong field.
+  const [links, setLinks] = useState(() =>
+    (note?.links.length ? note.links : ['']).map((url, key) => ({ key, url })),
+  )
+  const [nextKey, setNextKey] = useState(links.length)
+  const [pending, setPending] = useState(false)
+  const [problem, setProblem] = useState(null)
+  const fields = { title, description, links: links.map((link) => link.url) }
+  const saveable = canSaveNote(fields)
+
+  const setLink = (key, url) =>
+    setLinks(links.map((link) => (link.key === key ? { key, url } : link)))
+  const addLink = () => {
+    setLinks([...links, { key: nextKey, url: '' }])
+    setNextKey(nextKey + 1)
+  }
+
+  const submit = async () => {
+    if (!saveable || pending) return
+    setPending(true)
+    try {
+      await onSave(notePayload(fields))
+    } catch {
+      setProblem('無法儲存筆記，請再試一次。')
+      setPending(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-dashed border-border-strong p-3">
+      <input
+        autoFocus
+        aria-label="筆記標題"
+        placeholder="標題"
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        className={`${inputClass} w-full`}
+      />
+      <textarea
+        aria-label="筆記說明"
+        placeholder="說明"
+        rows={3}
+        value={description}
+        onChange={(event) => setDescription(event.target.value)}
+        className={`${inputClass} w-full`}
+      />
+      {links.map((link, index) => (
+        <div key={link.key} className="flex items-center gap-1">
+          <input
+            type="url"
+            aria-label={`連結 ${index + 1}`}
+            placeholder="https://"
+            value={link.url}
+            onChange={(event) => setLink(link.key, event.target.value)}
+            className={`${inputClass} min-w-0 flex-1`}
+          />
+          <button
+            type="button"
+            aria-label={`移除連結 ${index + 1}`}
+            onClick={() => setLinks(links.filter((other) => other.key !== link.key))}
+            className="px-2 text-text-faint hover:text-text"
+            style={{ minHeight: 0 }}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addLink}
+        className="self-start text-sm text-brand"
+        style={{ minHeight: 0 }}
+      >
+        + 新增連結
+      </button>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={!saveable || pending}
+          onClick={submit}
+          className={`${smallButton} disabled:opacity-40`}
+        >
+          儲存
+        </button>
+        <button type="button" onClick={onCancel} className={smallButton}>
+          取消
+        </button>
+      </div>
+      {!saveable && <p className="m-0 text-xs text-text-faint">需要標題或至少一個連結。</p>}
+      {problem && (
+        <p role="alert" className="m-0 text-xs text-danger">
+          {problem}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** What a note is called in its menu and dialog: its title, else its first link. */
+const noteName = (note) => note.title ?? (note.links[0] ? linkText(note.links[0]) : '筆記')
+
+/** One note as read: title, description with its line breaks, then its links. */
+function NoteCard({ note, actions }) {
+  const [editing, setEditing] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const name = noteName(note)
+
+  return (
+    <li className="border-b border-border py-2 last:border-b-0">
+      {editing ? (
+        <NoteForm
+          note={note}
+          onSave={async (payload) => {
+            await actions.patchNote(note.id, payload)
+            setEditing(false)
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : (
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            {note.title && <p className="m-0 font-semibold">{note.title}</p>}
+            {note.description && (
+              <p className="m-0 whitespace-pre-wrap break-words text-sm text-text-muted">
+                {note.description}
+              </p>
+            )}
+            {note.links.map((url) => (
+              <a
+                key={url}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                title={url}
+                className="block truncate text-sm text-brand"
+              >
+                {linkText(url)}
+              </a>
+            ))}
+          </div>
+          <button
+            type="button"
+            aria-label={`編輯「${name}」`}
+            onClick={() => setEditing(true)}
+            className="px-1 text-xs text-text-faint hover:text-text"
+            style={{ minHeight: 0 }}
+          >
+            ✎
+          </button>
+          <DeleteMenu
+            label="刪除筆記"
+            menuLabel={`「${name}」的選單`}
+            onSelect={() => setConfirming(true)}
+          />
+        </div>
+      )}
+      {confirming && (
+        <ConfirmDialog
+          title={`刪除「${name}」？`}
+          body="這則筆記和它的連結都會一起刪除。"
+          confirmLabel="刪除"
+          onConfirm={() => {
+            setConfirming(false)
+            actions.deleteNote(note.id)
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
+    </li>
+  )
+}
+
+/** 筆記: every note on the route, in order, and + 新增筆記. */
+function RouteNotes({ route, actions }) {
+  const [adding, setAdding] = useState(false)
+  const notes = route.note_entries ?? []
+
+  return (
+    <section className="mt-4">
+      <h2 className="m-0 text-xs font-semibold uppercase tracking-wide text-text-faint">筆記</h2>
+      {notes.length === 0 && !adding && (
+        <p className="m-0 mt-1 text-sm text-text-faint">還沒有筆記。</p>
+      )}
+      {notes.length > 0 && (
+        <ul className="m-0 list-none p-0">
+          {notes.map((note) => (
+            <NoteCard key={note.id} note={note} actions={actions} />
+          ))}
+        </ul>
+      )}
+      {actions.deleteNoteFailed && (
+        <p role="alert" className="m-0 mt-1 text-xs text-danger">
+          無法刪除筆記，請再試一次。
+        </p>
+      )}
+      <div className="mt-2">
+        {adding ? (
+          <NoteForm
+            onSave={async (payload) => {
+              await actions.addNote(route.id, payload)
+              setAdding(false)
+            }}
+            onCancel={() => setAdding(false)}
+          />
+        ) : (
+          <button type="button" onClick={() => setAdding(true)} className={smallButton}>
+            + 新增筆記
+          </button>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -452,6 +690,32 @@ export default function TransportRoute() {
   const deleteDeparture = useTransportMutation((id) =>
     send(endpoints.transport.departure(id), 'DELETE'),
   )
+  const addNote = useTransportMutation(({ routeId: id, payload }) =>
+    send(endpoints.transport.notes(id), 'POST', payload),
+  )
+  const patchNote = useTransportMutation(({ id, changes }) =>
+    send(endpoints.transport.note(id), 'PATCH', changes),
+  )
+  const deleteNote = useTransportMutation((id) => send(endpoints.transport.note(id), 'DELETE'))
+  // Optimistic, as a packing list's rows are: a dropped card stays where it
+  // was dropped during the round trip, the response replaces the cache, and a
+  // refusal puts the server's order back. The index lists options too, so it
+  // is refreshed once the order is saved.
+  const detailKey = [...KEY, 'detail', routeId]
+  const queryClient = useQueryClient()
+  const reorderOptions = useApiMutation({
+    invalidate: [[...KEY, 'index']],
+    mutationFn: (optionIds) =>
+      send(endpoints.transport.optionsOrder(routeId), 'PUT', { option_ids: optionIds }),
+    onMutate: (optionIds) => {
+      queryClient.setQueryData(
+        detailKey,
+        (current) => current && { ...current, options: inIdOrder(current.options, optionIds) },
+      )
+    },
+    onSuccess: (updated) => queryClient.setQueryData(detailKey, updated),
+    onError: () => queryClient.invalidateQueries({ queryKey: detailKey }),
+  })
 
   if (route.isLoading) return <LoadingState label="載入路線中…" />
 
@@ -477,7 +741,14 @@ export default function TransportRoute() {
     // Returns the promise: the adder shows a 409 under its own input.
     addDeparture: (optionId, payload) => addDeparture.mutateAsync({ optionId, payload }),
     deleteDeparture: (id) => deleteDeparture.mutate(id),
+    // Return the promise: a note form shows a refusal under itself and closes
+    // only once the note is saved.
+    addNote: (id, payload) => addNote.mutateAsync({ routeId: id, payload }),
+    patchNote: (id, changes) => patchNote.mutateAsync({ id, changes }),
+    deleteNote: (id) => deleteNote.mutate(id),
+    deleteNoteFailed: deleteNote.isError,
   }
+  const optionIds = route.data.options.map((option) => option.id)
 
   return shell(
     <>
@@ -486,10 +757,23 @@ export default function TransportRoute() {
         actions={actions}
         onDeleted={() => navigate('/transport')}
       />
+      <RouteNotes route={route.data} actions={actions} />
+      {reorderOptions.isError && (
+        <p role="alert" className="m-0 mt-4 text-sm text-danger">
+          排序沒有儲存，已還原。
+        </p>
+      )}
       <div className="mt-4 flex flex-col gap-3">
-        {route.data.options.map((option) => (
-          <OptionCard key={option.id} option={option} now={now} actions={actions} />
-        ))}
+        <SortableList
+          ids={optionIds}
+          onMove={(from, to) => reorderOptions.mutate(moveTo(optionIds, from, to))}
+        >
+          {route.data.options.map((option) => (
+            <SortableItem key={option.id} id={option.id} className="rounded-md">
+              <OptionCard option={option} now={now} actions={actions} />
+            </SortableItem>
+          ))}
+        </SortableList>
         <AddOption onAdd={(mode) => addOption.mutate({ routeId: route.data.id, mode })} />
       </div>
     </>,

@@ -164,3 +164,10 @@ def test_copying_as_a_template_keeps_the_dates_when_given_the_first_day(client):
     assert (new["kind"], new["usage"]) == ("template", None)
     assert at(new["legs"][0]["departs_at"]) == at(f"2026-09-24T18:06:00{TPE}")
     assert client.get(f"/api/trips/{source['id']}").json()["kind"] == "free"  # the source stays
+
+
+def test_a_copy_of_a_done_trip_starts_not_done(client):
+    source = client.post("/api/trips", json={"name": "去年"}).json()
+    # Load-bearing: the source IS done, so a copy that carried it would show.
+    assert client.patch(f"/api/trips/{source['id']}", json={"done": True}).json()["done"] is True
+    assert copy(client, source).json()["done"] is False

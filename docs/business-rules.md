@@ -1,6 +1,6 @@
 # Business rules
 
-Last verified: 2026-10-01
+Last verified: 2026-11-04
 
 **What this is for.** The rules that are not visible in the schema — what kind
 a list or trip is and how it moves between kinds, what fills 自動保存 and what
@@ -10,6 +10,7 @@ this way lives in `notes/decisions.md`.
 
 These live in `app/services/domain/`, not in the routers: kinds, usage and the
 自動保存 queue in `auto_save.py`, the copy and reset rules in `packing.py`, the
+whole-order rule in `ordering.py`, the
 common-options rules in `labels.py` and the trip-copy rule in `trip.py`. The sheet importer is `app/services/sheet_import/`. A router owns
 wiring and status codes; a rule reimplemented in a second endpoint is a rule
 with two answers.
@@ -225,6 +226,40 @@ saving. The shift may be negative. A source with no legs needs no date.
 **Packing lists are not carried.** A list is linked from at most one leg, so a
 copy cannot share them. The create response's `unlinked_from` names each source
 leg that had one, and the page tells you to link a list yourself.
+
+## 已完成 (A trip is done)
+
+**`done` is the owner's own mark that a trip is finished with**, and nothing
+sets it but the owner. It is independent of `kind` and `usage`: marking a trip
+done moves it to no other shelf and touches no 自動保存 slot, and moving a trip
+to 過去使用 does not mark it done. A new trip and every copy start not done —
+whether the source was done is not definition, so it does not carry.
+
+## Ordering routes and options
+
+**Routes and the options of a route are ordered as a whole**, the way a
+packing list's items are: one request names every route (or every option of
+one route) once, and they take positions 0, 1, 2… in that order. An order that
+leaves one out, names one twice, or names one that is not in the set — an
+unknown route, or another route's option — is refused and changes nothing.
+There are no groups to keep together here. A new route, option or note goes
+last within its own set.
+
+## Notes on a route
+
+A route has its 備註 (`notes`, one text value) and, below it, a list of
+**notes**, each a title, a description and links in order.
+
+- **A note needs a title or at least one link.** A description alone is not a
+  note. This holds on create and for the note as a `PATCH` would leave it, so
+  clearing the title of a note that keeps a link is fine, and clearing the
+  last link of a note without a title is refused.
+- **A blank title is no title**: titles are stripped, and an empty one is null.
+- **A blank link is refused**, not dropped, so a caller that sent an empty
+  row finds out. Links are stripped, and not checked to be URLs.
+- **Changing a note's links replaces the list**; there is no adding or moving
+  one link on its own.
+- Deleting a route deletes its notes, and deleting a note its links.
 
 ## The next departure
 

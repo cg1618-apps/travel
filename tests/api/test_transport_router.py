@@ -157,3 +157,323 @@ def test_deleting_an_option_takes_its_departures_and_keeps_the_route(
     assert client.delete(f"/api/transport-options/{option['id']}").status_code == 204
     assert db_session.query(TransportDeparture).count() == 0
     assert client.get(f"/api/transport-routes/{route['id']}").json()["options"] == []
+
+
+# --- ordering routes ------------------------------------------------------------
+
+
+def add_route(client, from_place, to_place="宿舍"):
+    return client.post(
+        "/api/transport-routes", json={"from_place": from_place, "to_place": to_place}
+    ).json()
+
+
+@pytest.fixture
+def three_routes(client):
+    """Three routes at positions 0..2. Load-bearing for every refusal below:
+    an order over an empty set would have nothing to refuse."""
+    routes = [add_route(client, name) for name in ("台中", "彰化", "鹿港")]
+    assert [r["position"] for r in routes] == [0, 1, 2]
+    return [r["id"] for r in routes]
+
+
+def route_order(client):
+    return [r["id"] for r in client.get("/api/transport-routes").json()]
+
+
+def put_route_order(client, route_ids):
+    return client.put("/api/transport-routes/order", json={"route_ids": route_ids})
+
+
+def test_route_order_sets_positions_and_returns_every_route(client, three_routes):
+    a, b, c = three_routes
+    response = put_route_order(client, [c, a, b])
+    assert response.status_code == 200
+    body = response.json()
+    assert [r["id"] for r in body] == [c, a, b]
+    assert [r["position"] for r in body] == [0, 1, 2]
+    assert route_order(client) == [c, a, b]
+
+
+def test_route_order_missing_a_route_is_refused(client, three_routes):
+    a, b, c = three_routes
+    response = put_route_order(client, [c, a])
+    assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
+    assert route_order(client) == [a, b, c]
+
+
+def test_route_order_naming_a_route_twice_is_refused(client, three_routes):
+    a, b, c = three_routes
+    # Same length as the set, so only the duplicate check can refuse it.
+    response = put_route_order(client, [c, c, a])
+    assert response.status_code == 422
+    assert route_order(client) == [a, b, c]
+
+
+def test_route_order_naming_an_unknown_route_is_refused(client, three_routes):
+    a, b, c = three_routes
+    response = put_route_order(client, [c, a, b, 999999])
+    assert response.status_code == 422
+    assert route_order(client) == [a, b, c]
+
+
+def test_route_order_of_no_routes_is_accepted(client):
+    response = put_route_order(client, [])
+    assert response.status_code == 200 and response.json() == []
+
+
+def test_the_order_path_is_not_read_as_a_route_id(client, three_routes):
+    # Registered as /{route_id}, "order" would be a 422 for a non-integer id
+    # whatever the body; registered on its own, a body naming every route is a 200.
+    assert put_route_order(client, three_routes).status_code == 200
+    assert client.get(f"/api/transport-routes/{three_routes[0]}").status_code == 200
+
+
+# --- ordering the options of a route --------------------------------------------
+
+
+def add_option(client, route, mode):
+    return client.post(f"/api/transport-routes/{route['id']}/options", json={"mode": mode}).json()
+
+
+@pytest.fixture
+def three_options(client, route):
+    """Three options on one route. Load-bearing, as with `three_routes`."""
+    return [add_option(client, route, mode)["id"] for mode in ("公車", "火車", "高鐵")]
+
+
+def option_order(client, route):
+    return [o["id"] for o in client.get(f"/api/transport-routes/{route['id']}").json()["options"]]
+
+
+def put_option_order(client, route, option_ids):
+    return client.put(
+        f"/api/transport-routes/{route['id']}/order", json={"option_ids": option_ids}
+    )
+
+
+def test_option_order_sets_positions_and_returns_the_route(client, route, three_options):
+    a, b, c = three_options
+    response = put_option_order(client, route, [b, c, a])
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == route["id"]
+    assert [o["id"] for o in body["options"]] == [b, c, a]
+    assert [o["position"] for o in body["options"]] == [0, 1, 2]
+    assert option_order(client, route) == [b, c, a]
+
+
+def test_option_order_missing_an_option_is_refused(client, route, three_options):
+    a, b, c = three_options
+    assert put_option_order(client, route, [c, a]).status_code == 422
+    assert option_order(client, route) == [a, b, c]
+
+
+def test_option_order_naming_an_option_twice_is_refused(client, route, three_options):
+    a, b, c = three_options
+    assert put_option_order(client, route, [c, c, a]).status_code == 422
+    assert option_order(client, route) == [a, b, c]
+
+
+def test_option_order_naming_another_routes_option_is_refused(client, route, three_options):
+    a, b, c = three_options
+    other = add_route(client, "台北")
+    foreign = add_option(client, other, "客運")["id"]
+    response = put_option_order(client, route, [c, b, a, foreign])
+    assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)
+    assert option_order(client, route) == [a, b, c]
+    assert option_order(client, other) == [foreign]
+
+
+def test_option_order_on_an_unknown_route_is_a_404(client):
+    response = client.put("/api/transport-routes/999999/order", json={"option_ids": []})
+    assert response.status_code == 404
+
+
+def test_option_order_of_a_route_without_options_is_accepted(client, route):
+    assert put_option_order(client, route, []).status_code == 200
+
+
+# --- notes on a route ---------------------------------------------------------------
+
+
+def add_note(client, route, **fields):
+    return client.post(f"/api/transport-routes/{route['id']}/notes", json=fields)
+
+
+def test_a_note_reads_back_with_its_links_in_order(client, route):
+    response = add_note(
+        client, route, title="轉乘", description="在彰化換車",
+        links=["https://example.invalid/b", "https://example.invalid/a"],
+    )
+    assert response.status_code == 201
+    note = response.json()
+    assert (note["route_id"], note["title"], note["description"]) == (route["id"], "轉乘", "在彰化換車")
+    assert note["links"] == ["https://example.invalid/b", "https://example.invalid/a"]
+    entries = client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"]
+    assert entries == [note]
+
+
+def test_the_route_notes_text_is_untouched_by_note_entries(client, route):
+    client.patch(f"/api/transport-routes/{route['id']}", json={"notes": "走路也行"})
+    add_note(client, route, title="轉乘")
+    body = client.get(f"/api/transport-routes/{route['id']}").json()
+    assert body["notes"] == "走路也行"
+    assert [n["title"] for n in body["note_entries"]] == ["轉乘"]
+
+
+def test_notes_append_in_order_within_their_own_route(client, route):
+    first = add_note(client, route, title="一").json()
+    second = add_note(client, route, title="二").json()
+    assert (first["position"], second["position"]) == (0, 1)
+    other = add_route(client, "台北")
+    assert add_note(client, other, title="三").json()["position"] == 0
+    entries = client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"]
+    assert [n["title"] for n in entries] == ["一", "二"]
+
+
+def test_every_route_read_carries_note_entries(client, route):
+    add_note(client, route, title="轉乘")
+    listed = client.get("/api/transport-routes").json()[0]
+    assert [n["title"] for n in listed["note_entries"]] == ["轉乘"]
+    patched = client.patch(f"/api/transport-routes/{route['id']}", json={"notes": "x"}).json()
+    assert [n["title"] for n in patched["note_entries"]] == ["轉乘"]
+    ordered = put_route_order(client, [route["id"]]).json()
+    assert [n["title"] for n in ordered[0]["note_entries"]] == ["轉乘"]
+
+
+def test_a_note_with_only_a_link_is_accepted(client, route):
+    response = add_note(client, route, links=["https://example.invalid"])
+    assert response.status_code == 201
+    assert response.json()["title"] is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"description": "只有說明"},
+        {"title": "   ", "links": []},
+        {"title": None, "description": "x", "links": []},
+    ],
+)
+def test_a_note_needs_a_title_or_a_link(client, route, body):
+    response = add_note(client, route, **body)
+    assert response.status_code == 422
+    assert client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"] == []
+
+
+def test_a_title_is_stripped_and_a_blank_one_is_null(client, route):
+    note = add_note(client, route, title="  轉乘  ", links=["https://example.invalid"]).json()
+    assert note["title"] == "轉乘"
+    blank = add_note(client, route, title="  ", links=["https://example.invalid"]).json()
+    assert blank["title"] is None
+
+
+def test_a_blank_link_is_a_422_not_dropped(client, route):
+    response = add_note(client, route, title="轉乘", links=["https://example.invalid", "  "])
+    assert response.status_code == 422
+    # Mirror: the same note without the blank entry is accepted, links stripped.
+    ok = add_note(client, route, title="轉乘", links=[" https://example.invalid "])
+    assert ok.status_code == 201 and ok.json()["links"] == ["https://example.invalid"]
+
+
+def test_a_note_on_an_unknown_route_is_a_404(client):
+    response = client.post("/api/transport-routes/999999/notes", json={"title": "x"})
+    assert response.status_code == 404
+
+
+def test_patching_links_replaces_the_whole_list(client, route):
+    note = add_note(client, route, title="轉乘", links=["https://a.invalid", "https://b.invalid"]).json()
+    url = f"/api/transport-notes/{note['id']}"
+    response = client.patch(url, json={"links": ["https://c.invalid", "https://a.invalid"]})
+    assert response.status_code == 200
+    assert response.json()["links"] == ["https://c.invalid", "https://a.invalid"]
+    entries = client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"]
+    assert entries[0]["links"] == ["https://c.invalid", "https://a.invalid"]
+
+
+def test_patching_without_links_keeps_them(client, route):
+    note = add_note(client, route, title="轉乘", links=["https://a.invalid"]).json()
+    response = client.patch(f"/api/transport-notes/{note['id']}", json={"description": "新"})
+    assert response.status_code == 200
+    assert (response.json()["description"], response.json()["links"]) == ("新", ["https://a.invalid"])
+
+
+def test_link_rows_are_positioned_in_order(client, db_session, route):
+    from app.models import TransportNoteLink
+
+    note = add_note(client, route, title="t", links=["https://a.invalid", "https://b.invalid"]).json()
+    client.patch(f"/api/transport-notes/{note['id']}",
+                 json={"links": ["https://c.invalid", "https://d.invalid", "https://e.invalid"]})
+    db_session.expire_all()
+    rows = db_session.query(TransportNoteLink).order_by(TransportNoteLink.position).all()
+    # The old rows are gone, not left behind with stale positions.
+    assert [(r.url, r.position) for r in rows] == [
+        ("https://c.invalid", 0), ("https://d.invalid", 1), ("https://e.invalid", 2),
+    ]
+
+
+def test_a_patch_that_leaves_neither_title_nor_link_is_refused(client, route):
+    note = add_note(client, route, title="轉乘", links=["https://a.invalid"]).json()
+    url = f"/api/transport-notes/{note['id']}"
+    # Load-bearing: the note has BOTH, so removing one alone is fine...
+    assert client.patch(url, json={"title": None}).status_code == 200
+    # ...and removing the other as well is what the rule refuses.
+    response = client.patch(url, json={"links": []})
+    assert response.status_code == 422
+    entry = client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"][0]
+    assert entry["links"] == ["https://a.invalid"]
+
+
+def test_a_patch_removing_the_title_of_a_linkless_note_is_refused(client, route):
+    note = add_note(client, route, title="轉乘", description="說明").json()
+    url = f"/api/transport-notes/{note['id']}"
+    assert client.patch(url, json={"title": "  "}).status_code == 422
+    assert client.patch(url, json={"title": None}).status_code == 422
+    # Mirror: a title and a link swapped in one patch is accepted.
+    swapped = client.patch(url, json={"title": None, "links": ["https://a.invalid"]})
+    assert swapped.status_code == 200 and swapped.json()["title"] is None
+
+
+def test_a_blank_link_on_patch_is_a_422(client, route):
+    note = add_note(client, route, title="轉乘").json()
+    url = f"/api/transport-notes/{note['id']}"
+    assert client.patch(url, json={"links": [""]}).status_code == 422
+    # Mirror.
+    assert client.patch(url, json={"links": ["https://a.invalid"]}).status_code == 200
+
+
+def test_null_links_on_patch_is_a_422(client, route):
+    note = add_note(client, route, title="轉乘").json()
+    url = f"/api/transport-notes/{note['id']}"
+    assert client.patch(url, json={"links": None}).status_code == 422
+
+
+def test_deleting_a_note_takes_its_links(client, db_session, route):
+    from app.models import TransportNote, TransportNoteLink
+
+    note = add_note(client, route, title="t", links=["https://a.invalid"]).json()
+    assert client.delete(f"/api/transport-notes/{note['id']}").status_code == 204
+    assert db_session.query(TransportNote).count() == 0
+    assert db_session.query(TransportNoteLink).count() == 0
+    assert client.get(f"/api/transport-routes/{route['id']}").status_code == 200
+
+
+def test_deleting_a_route_takes_its_notes_and_links(client, db_session, route):
+    from app.models import TransportNote, TransportNoteLink
+
+    add_note(client, route, title="t", links=["https://a.invalid"])
+    assert client.delete(f"/api/transport-routes/{route['id']}").status_code == 204
+    assert db_session.query(TransportNote).count() == 0
+    assert db_session.query(TransportNoteLink).count() == 0
+
+
+def test_a_missing_note_is_a_404(client, route):
+    assert client.patch("/api/transport-notes/999999", json={"title": "x"}).status_code == 404
+    assert client.delete("/api/transport-notes/999999").status_code == 404
+    # Mirror.
+    note = add_note(client, route, title="t").json()
+    assert client.patch(f"/api/transport-notes/{note['id']}", json={"title": "x"}).status_code == 200
