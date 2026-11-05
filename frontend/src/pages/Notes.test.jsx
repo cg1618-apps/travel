@@ -57,12 +57,20 @@ async function render(notes, { orderResponds } = {}) {
       </QueryClientProvider>,
     )
   })
-  await settle()
+  await until(() => expect(container.querySelector('h1')).not.toBeNull())
   return fetchStub
 }
 
-/** A macrotask, so a stubbed response's whole promise chain has run. */
-const settle = () => act(() => new Promise((resolve) => setTimeout(resolve)))
+/**
+ * Retries `assertion` until it holds, letting the page run between tries: a
+ * save and the read after it take as many turns as the machine makes them
+ * take, so no fixed wait is right on both a laptop and CI.
+ */
+const until = (assertion) =>
+  vi.waitFor(async () => {
+    await act(() => new Promise((resolve) => setTimeout(resolve)))
+    assertion()
+  })
 
 function reordered(notes, ids) {
   return ids.map((id, position) => ({ ...notes.find((row) => row.id === id), position }))
@@ -70,10 +78,8 @@ function reordered(notes, ids) {
 
 const button = (label) => container.querySelector(`button[aria-label="${label}"]`)
 const headings = () => [...container.querySelectorAll('h2')].map((h) => h.textContent)
-const press = async (label) => {
-  act(() => button(label).click())
-  await settle()
-}
+const press = (label) => act(() => button(label).click())
+const idle = (label) => until(() => expect(button(label).disabled).toBe(false))
 const orderSent = (fetchStub) => {
   const put = fetchStub.mock.calls.find(([, options]) => options?.method === 'PUT')
   return put && JSON.parse(put[1].body).note_ids
@@ -88,7 +94,8 @@ afterEach(() => {
 describe('Notes group arrows', () => {
   it('moves a group down with its notes, the ungrouped note staying first', async () => {
     const fetchStub = await render(THREE_GROUPS)
-    await press('下移群組「日本」')
+    press('下移群組「日本」')
+    await idle('下移群組「日本」')
     expect(orderSent(fetchStub)).toEqual([1, 4, 2, 3, 5])
     expect(fetchStub.mock.calls.find(([, o]) => o?.method === 'PUT')[0]).toBe('/api/notes/order')
     expect(headings()).toEqual(['台灣', '日本', '韓國'])
@@ -96,7 +103,8 @@ describe('Notes group arrows', () => {
 
   it('moves a group up', async () => {
     const fetchStub = await render(THREE_GROUPS)
-    await press('上移群組「韓國」')
+    press('上移群組「韓國」')
+    await idle('上移群組「韓國」')
     expect(orderSent(fetchStub)).toEqual([1, 2, 3, 5, 4])
     expect(headings()).toEqual(['日本', '韓國', '台灣'])
   })
@@ -123,21 +131,23 @@ describe('Notes group arrows', () => {
     await render(THREE_GROUPS, {
       orderResponds: () => new Promise((resolve) => { finish = resolve }),
     })
-    await press('下移群組「日本」')
+    press('下移群組「日本」')
+    await until(() => expect(finish).toBeTypeOf('function'))
     expect(button('下移群組「台灣」').disabled).toBe(true)
     expect(button('上移群組「韓國」').disabled).toBe(true)
     finish(new Response('[]'))
-    await settle()
-    expect(button('上移群組「韓國」').disabled).toBe(false)
+    await idle('上移群組「韓國」')
   })
 
   it('puts the order back and says so when a move is refused', async () => {
     await render(THREE_GROUPS, {
       orderResponds: () => json({ detail: 'refused' }, 422),
     })
-    await press('下移群組「日本」')
-    expect(container.querySelector('[role="alert"]').textContent).toContain('排序沒有儲存')
-    expect(headings()).toEqual(['日本', '台灣', '韓國'])
+    press('下移群組「日本」')
+    await until(() => {
+      expect(container.querySelector('[role="alert"]')?.textContent).toContain('排序沒有儲存')
+      expect(headings()).toEqual(['日本', '台灣', '韓國'])
+    })
   })
 
   it('no longer has a dialog for it', async () => {
