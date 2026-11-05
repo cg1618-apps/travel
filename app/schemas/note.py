@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.schemas.base import NonNullableUpdate, blank_is_null, stripped_links
+from app.schemas.base import NonNullableUpdate, NoteLinkFields, NoteLinkResponse, blank_is_null
 
 
 def _required_title(value: str | None) -> str | None:
@@ -20,11 +20,10 @@ class NoteCreate(BaseModel):
     group_name: str | None = None
     title: str = Field(min_length=1)
     description: str | None = None
-    links: list[str] = []
+    links: list[NoteLinkFields] = []
 
     _group = field_validator("group_name")(blank_is_null)
     _title = field_validator("title")(_required_title)
-    _links = field_validator("links")(stripped_links)
 
 
 class NoteUpdate(NonNullableUpdate):
@@ -36,11 +35,10 @@ class NoteUpdate(NonNullableUpdate):
     group_name: str | None = None
     title: str | None = None
     description: str | None = None
-    links: list[str] | None = None
+    links: list[NoteLinkFields] | None = None
 
     _group = field_validator("group_name")(blank_is_null)
     _title = field_validator("title")(_required_title)
-    _links = field_validator("links")(stripped_links)
 
 
 class NoteResponse(BaseModel):
@@ -49,14 +47,8 @@ class NoteResponse(BaseModel):
     group_name: str | None
     title: str
     description: str | None
-    #: The URLs in order: the link rows, flattened to their `url`.
-    links: list[str] = []
+    links: list[NoteLinkResponse] = []
     position: int
-
-    @field_validator("links", mode="before")
-    @classmethod
-    def _link_urls(cls, value):
-        return [getattr(link, "url", link) for link in value]
 
 
 class NoteOrder(BaseModel):

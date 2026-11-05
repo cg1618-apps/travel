@@ -41,5 +41,6 @@ export const endpoints = {
     detail: (id) => `/api/trips/${id}`,
     legs: (tripId) => `/api/trips/${tripId}/legs`,
     leg: (id) => `/api/trip-legs/${id}`,
+    legBackups: (id) => `/api/trip-legs/${id}/backups`,
   },
 }

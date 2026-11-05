@@ -368,7 +368,7 @@ def test_an_entry_moves_between_sections(client, trip):
 
 @pytest.fixture
 def round_trip(client, trip):
-    patch_trip(client, trip, round_trip=True, outbound_title="去台中", notes="帶傘")
+    patch_trip(client, trip, round_trip=True, outbound_title="去台中", outbound_notes="靠窗", notes="帶傘")
     return trip
 
 
@@ -397,7 +397,22 @@ def test_going_one_way_clears_sections_and_keeps_the_rest(client, round_trip):
     add(client, round_trip)
     body = patch_trip(client, round_trip, round_trip=False).json()
     assert [leg["section"] for leg in body["legs"]] == [None]
-    assert (body["notes"], body["outbound_title"]) == ("帶傘", "去台中")
+    assert (body["notes"], body["outbound_title"], body["outbound_notes"]) == ("帶傘", "去台中", "靠窗")
+
+
+def test_the_overall_remark_is_apart_from_the_section_remarks(client, trip):
+    patch_trip(client, trip, notes="整趟")
+    body = patch_trip(client, trip, round_trip=True, outbound_notes="去", return_notes="回").json()
+    assert (body["notes"], body["outbound_notes"], body["return_notes"]) == ("整趟", "去", "回")
+    assert patch_trip(client, trip, outbound_notes="改").json()["notes"] == "整趟"
+    assert patch_trip(client, trip, notes="也改").json()["outbound_notes"] == "改"
+
+
+def test_the_outbound_remark_does_not_block_one_way_and_comes_back(client, round_trip):
+    """Only 回程 refuses: 去程's title and remark are kept, not shown, and come
+    back with the round trip."""
+    assert patch_trip(client, round_trip, round_trip=False).status_code == 200
+    assert patch_trip(client, round_trip, round_trip=True).json()["outbound_notes"] == "靠窗"
 
 
 def test_a_null_round_trip_is_a_422(client, trip):

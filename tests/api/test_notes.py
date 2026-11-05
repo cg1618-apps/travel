@@ -39,10 +39,10 @@ def three_groups(client):
 
 def test_a_note_reads_back_with_its_links_in_order(client):
     created = add(client, "訂房", description="第一行\n第二行",
-                  links=["https://example.invalid/b", "https://example.invalid/a"])
+                  links=[{"url": "https://example.invalid/b"}, {"url": "https://example.invalid/a"}])
     assert created.status_code == 201
     body = client.get("/api/notes").json()[0]
-    assert body["links"] == ["https://example.invalid/b", "https://example.invalid/a"]
+    assert body["links"] == [{"url": "https://example.invalid/b", "title": None}, {"url": "https://example.invalid/a", "title": None}]
     assert body["description"] == "第一行\n第二行"
     assert body["group_name"] is None
 
@@ -59,7 +59,7 @@ def test_a_title_is_stripped_and_a_blank_group_is_no_group(client):
 
 
 def test_a_blank_link_is_a_422(client):
-    assert add(client, links=["https://example.invalid", " "]).status_code == 422
+    assert add(client, links=[{"url": "https://example.invalid"}, {"url": " "}]).status_code == 422
 
 
 def test_a_new_note_joins_the_end_of_its_group(client, three_groups):
@@ -89,17 +89,40 @@ def test_a_patch_keeping_the_group_does_not_move_the_note(client, three_groups):
 
 
 def test_links_are_replaced_and_their_order_is_the_new_order(client, db_session):
-    note = add(client, links=["https://example.invalid/1", "https://example.invalid/2"]).json()
+    note = add(client, links=[{"url": "https://example.invalid/1"}, {"url": "https://example.invalid/2"}]).json()
     body = client.patch(f"/api/notes/{note['id']}",
-                        json={"links": ["https://example.invalid/2", "https://example.invalid/1"]})
-    assert body.json()["links"] == ["https://example.invalid/2", "https://example.invalid/1"]
+                        json={"links": [{"url": "https://example.invalid/2"}, {"url": "https://example.invalid/1"}]})
+    assert body.json()["links"] == [{"url": "https://example.invalid/2", "title": None}, {"url": "https://example.invalid/1", "title": None}]
     assert db_session.query(NoteLink).count() == 2
 
 
+def test_a_link_has_an_optional_title(client):
+    note = add(client, links=[{"url": "https://example.invalid/1", "title": "  時刻表 "},
+                              {"url": "https://example.invalid/2", "title": "  "},
+                              {"url": "https://example.invalid/3"}]).json()
+    assert note["links"] == [
+        {"url": "https://example.invalid/1", "title": "時刻表"},
+        {"url": "https://example.invalid/2", "title": None},
+        {"url": "https://example.invalid/3", "title": None},
+    ]
+    # Replaced with the rest of the list, and read back as sent.
+    body = client.patch(f"/api/notes/{note['id']}",
+                        json={"links": [{"url": "https://example.invalid/3", "title": "新"}]})
+    assert body.json()["links"] == [{"url": "https://example.invalid/3", "title": "新"}]
+
+
+def test_a_title_is_no_substitute_for_a_url(client):
+    assert add(client, links=[{"title": "時刻表"}]).status_code == 422
+    assert add(client, links=[{"url": " ", "title": "時刻表"}]).status_code == 422
+    # Mirror: with a URL, the same title is accepted.
+    good = [{"url": "https://example.invalid", "title": "時刻表"}]
+    assert add(client, links=good).status_code == 201
+
+
 def test_a_patch_without_links_keeps_them(client):
-    note = add(client, links=["https://example.invalid/1"]).json()
+    note = add(client, links=[{"url": "https://example.invalid/1"}]).json()
     body = client.patch(f"/api/notes/{note['id']}", json={"description": "x"}).json()
-    assert body["links"] == ["https://example.invalid/1"]
+    assert body["links"] == [{"url": "https://example.invalid/1", "title": None}]
 
 
 @pytest.mark.parametrize("body", [{"title": None}, {"title": " "}, {"links": None}])
@@ -110,7 +133,7 @@ def test_a_patch_cannot_blank_the_title_or_null_the_links(client, body):
 
 
 def test_deleting_a_note_takes_its_links(client, db_session):
-    note = add(client, links=["https://example.invalid/1"]).json()
+    note = add(client, links=[{"url": "https://example.invalid/1"}]).json()
     assert client.delete(f"/api/notes/{note['id']}").status_code == 204
     assert db_session.query(NoteLink).count() == 0
     assert client.delete(f"/api/notes/{note['id']}").status_code == 404

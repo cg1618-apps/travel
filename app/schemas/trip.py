@@ -118,15 +118,24 @@ class TripLegUpdate(NonNullableUpdate):
     packing_list_id: int | None = None
 
 
-class TripLegResponse(TripLegFields):
+class TripBackupResponse(TripLegFields):
+    """A 備案, which is an entry with no backups of its own."""
+
     model_config = ConfigDict(from_attributes=True)
     id: int
     trip_id: int
+    #: The entry this one is a 備案 of; null on an ordinary entry.
+    backup_of_id: int | None = None
     has_booked: bool
     has_paid: bool
     has_collected: bool
     has_booking_code: bool
+
+
+class TripLegResponse(TripBackupResponse):
     packing_list_name: str | None = None
+    #: In departure order, undated last. Never counted in `Trip.ready`.
+    backups: list[TripBackupResponse] = []
 
 
 class TripBase(BaseModel):
@@ -139,7 +148,7 @@ class TripUpdate(NonNullableUpdate):
     non_nullable = ("name", "kind", "usage", "done", "ticket_status", "round_trip")
 
     name: str | None = Field(default=None, min_length=1)
-    #: 備註 on a one-way trip; the 去程 remark on a round trip.
+    #: The trip's overall 備註, one-way or round trip.
     notes: str | None = None
     archive_note: str | None = None
     #: 已準備完成. `true` is refused unless the trip is ready. Independent of
@@ -149,6 +158,7 @@ class TripUpdate(NonNullableUpdate):
     #: 單程 (false) or 來回 (true). One-way is refused while anything is in 回程.
     round_trip: bool | None = None
     outbound_title: str | None = None
+    outbound_notes: str | None = None
     return_title: str | None = None
     return_notes: str | None = None
     #: 保存 or 取消保存. A template is made by creating one.
@@ -171,6 +181,7 @@ class TripResponse(TripBase):
     ticket_status: TicketStatus = TicketStatus.NOT_BOUGHT
     round_trip: bool = False
     outbound_title: str | None = None
+    outbound_notes: str | None = None
     return_title: str | None = None
     return_notes: str | None = None
     created_at: datetime

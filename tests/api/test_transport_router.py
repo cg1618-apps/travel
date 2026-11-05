@@ -306,12 +306,12 @@ def add_note(client, route, **fields):
 def test_a_note_reads_back_with_its_links_in_order(client, route):
     response = add_note(
         client, route, title="轉乘", description="在彰化換車",
-        links=["https://example.invalid/b", "https://example.invalid/a"],
+        links=[{"url": "https://example.invalid/b"}, {"url": "https://example.invalid/a"}],
     )
     assert response.status_code == 201
     note = response.json()
     assert (note["route_id"], note["title"], note["description"]) == (route["id"], "轉乘", "在彰化換車")
-    assert note["links"] == ["https://example.invalid/b", "https://example.invalid/a"]
+    assert note["links"] == [{"url": "https://example.invalid/b", "title": None}, {"url": "https://example.invalid/a", "title": None}]
     entries = client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"]
     assert entries == [note]
 
@@ -345,7 +345,7 @@ def test_every_route_read_carries_note_entries(client, route):
 
 
 def test_a_note_with_only_a_link_is_accepted(client, route):
-    response = add_note(client, route, links=["https://example.invalid"])
+    response = add_note(client, route, links=[{"url": "https://example.invalid"}])
     assert response.status_code == 201
     assert response.json()["title"] is None
 
@@ -366,18 +366,18 @@ def test_a_note_needs_a_title_or_a_link(client, route, body):
 
 
 def test_a_title_is_stripped_and_a_blank_one_is_null(client, route):
-    note = add_note(client, route, title="  轉乘  ", links=["https://example.invalid"]).json()
+    note = add_note(client, route, title="  轉乘  ", links=[{"url": "https://example.invalid"}]).json()
     assert note["title"] == "轉乘"
-    blank = add_note(client, route, title="  ", links=["https://example.invalid"]).json()
+    blank = add_note(client, route, title="  ", links=[{"url": "https://example.invalid"}]).json()
     assert blank["title"] is None
 
 
 def test_a_blank_link_is_a_422_not_dropped(client, route):
-    response = add_note(client, route, title="轉乘", links=["https://example.invalid", "  "])
+    response = add_note(client, route, title="轉乘", links=[{"url": "https://example.invalid"}, {"url": "  "}])
     assert response.status_code == 422
     # Mirror: the same note without the blank entry is accepted, links stripped.
-    ok = add_note(client, route, title="轉乘", links=[" https://example.invalid "])
-    assert ok.status_code == 201 and ok.json()["links"] == ["https://example.invalid"]
+    ok = add_note(client, route, title="轉乘", links=[{"url": " https://example.invalid "}])
+    assert ok.status_code == 201 and ok.json()["links"] == [{"url": "https://example.invalid", "title": None}]
 
 
 def test_a_note_on_an_unknown_route_is_a_404(client):
@@ -386,28 +386,37 @@ def test_a_note_on_an_unknown_route_is_a_404(client):
 
 
 def test_patching_links_replaces_the_whole_list(client, route):
-    note = add_note(client, route, title="轉乘", links=["https://a.invalid", "https://b.invalid"]).json()
+    note = add_note(client, route, title="轉乘", links=[{"url": "https://a.invalid"}, {"url": "https://b.invalid"}]).json()
     url = f"/api/transport-notes/{note['id']}"
-    response = client.patch(url, json={"links": ["https://c.invalid", "https://a.invalid"]})
+    response = client.patch(url, json={"links": [{"url": "https://c.invalid"}, {"url": "https://a.invalid"}]})
     assert response.status_code == 200
-    assert response.json()["links"] == ["https://c.invalid", "https://a.invalid"]
+    assert response.json()["links"] == [{"url": "https://c.invalid", "title": None}, {"url": "https://a.invalid", "title": None}]
     entries = client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"]
-    assert entries[0]["links"] == ["https://c.invalid", "https://a.invalid"]
+    assert entries[0]["links"] == [{"url": "https://c.invalid", "title": None}, {"url": "https://a.invalid", "title": None}]
+
+
+def test_a_link_has_an_optional_title(client, route):
+    note = add_note(client, route, links=[{"url": "https://a.invalid", "title": " 時刻表 "},
+                                          {"url": "https://b.invalid"}]).json()
+    assert note["links"] == [{"url": "https://a.invalid", "title": "時刻表"},
+                             {"url": "https://b.invalid", "title": None}]
+    entries = client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"]
+    assert entries[0]["links"][0]["title"] == "時刻表"
 
 
 def test_patching_without_links_keeps_them(client, route):
-    note = add_note(client, route, title="轉乘", links=["https://a.invalid"]).json()
+    note = add_note(client, route, title="轉乘", links=[{"url": "https://a.invalid"}]).json()
     response = client.patch(f"/api/transport-notes/{note['id']}", json={"description": "新"})
     assert response.status_code == 200
-    assert (response.json()["description"], response.json()["links"]) == ("新", ["https://a.invalid"])
+    assert (response.json()["description"], response.json()["links"]) == ("新", [{"url": "https://a.invalid", "title": None}])
 
 
 def test_link_rows_are_positioned_in_order(client, db_session, route):
     from app.models import TransportNoteLink
 
-    note = add_note(client, route, title="t", links=["https://a.invalid", "https://b.invalid"]).json()
+    note = add_note(client, route, title="t", links=[{"url": "https://a.invalid"}, {"url": "https://b.invalid"}]).json()
     client.patch(f"/api/transport-notes/{note['id']}",
-                 json={"links": ["https://c.invalid", "https://d.invalid", "https://e.invalid"]})
+                 json={"links": [{"url": "https://c.invalid"}, {"url": "https://d.invalid"}, {"url": "https://e.invalid"}]})
     db_session.expire_all()
     rows = db_session.query(TransportNoteLink).order_by(TransportNoteLink.position).all()
     # The old rows are gone, not left behind with stale positions.
@@ -417,7 +426,7 @@ def test_link_rows_are_positioned_in_order(client, db_session, route):
 
 
 def test_a_patch_that_leaves_neither_title_nor_link_is_refused(client, route):
-    note = add_note(client, route, title="轉乘", links=["https://a.invalid"]).json()
+    note = add_note(client, route, title="轉乘", links=[{"url": "https://a.invalid"}]).json()
     url = f"/api/transport-notes/{note['id']}"
     # Load-bearing: the note has BOTH, so removing one alone is fine...
     assert client.patch(url, json={"title": None}).status_code == 200
@@ -425,7 +434,7 @@ def test_a_patch_that_leaves_neither_title_nor_link_is_refused(client, route):
     response = client.patch(url, json={"links": []})
     assert response.status_code == 422
     entry = client.get(f"/api/transport-routes/{route['id']}").json()["note_entries"][0]
-    assert entry["links"] == ["https://a.invalid"]
+    assert entry["links"] == [{"url": "https://a.invalid", "title": None}]
 
 
 def test_a_patch_removing_the_title_of_a_linkless_note_is_refused(client, route):
@@ -434,16 +443,16 @@ def test_a_patch_removing_the_title_of_a_linkless_note_is_refused(client, route)
     assert client.patch(url, json={"title": "  "}).status_code == 422
     assert client.patch(url, json={"title": None}).status_code == 422
     # Mirror: a title and a link swapped in one patch is accepted.
-    swapped = client.patch(url, json={"title": None, "links": ["https://a.invalid"]})
+    swapped = client.patch(url, json={"title": None, "links": [{"url": "https://a.invalid"}]})
     assert swapped.status_code == 200 and swapped.json()["title"] is None
 
 
 def test_a_blank_link_on_patch_is_a_422(client, route):
     note = add_note(client, route, title="轉乘").json()
     url = f"/api/transport-notes/{note['id']}"
-    assert client.patch(url, json={"links": [""]}).status_code == 422
+    assert client.patch(url, json={"links": [{"url": ""}]}).status_code == 422
     # Mirror.
-    assert client.patch(url, json={"links": ["https://a.invalid"]}).status_code == 200
+    assert client.patch(url, json={"links": [{"url": "https://a.invalid"}]}).status_code == 200
 
 
 def test_null_links_on_patch_is_a_422(client, route):
@@ -455,7 +464,7 @@ def test_null_links_on_patch_is_a_422(client, route):
 def test_deleting_a_note_takes_its_links(client, db_session, route):
     from app.models import TransportNote, TransportNoteLink
 
-    note = add_note(client, route, title="t", links=["https://a.invalid"]).json()
+    note = add_note(client, route, title="t", links=[{"url": "https://a.invalid"}]).json()
     assert client.delete(f"/api/transport-notes/{note['id']}").status_code == 204
     assert db_session.query(TransportNote).count() == 0
     assert db_session.query(TransportNoteLink).count() == 0
@@ -465,7 +474,7 @@ def test_deleting_a_note_takes_its_links(client, db_session, route):
 def test_deleting_a_route_takes_its_notes_and_links(client, db_session, route):
     from app.models import TransportNote, TransportNoteLink
 
-    add_note(client, route, title="t", links=["https://a.invalid"])
+    add_note(client, route, title="t", links=[{"url": "https://a.invalid"}])
     assert client.delete(f"/api/transport-routes/{route['id']}").status_code == 204
     assert db_session.query(TransportNote).count() == 0
     assert db_session.query(TransportNoteLink).count() == 0

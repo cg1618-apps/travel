@@ -222,7 +222,7 @@ resets**, as with a packing list.
 
 | Carries | Resets |
 | --- | --- |
-| trip `notes` (unless the request sends its own), `round_trip`, `outbound_title`, `return_title`, `return_notes`; each leg's `from_place`, `to_place`, `transport_type`, `direction`, `ride_type`, `section`, the four `has_*` switches, `service`, `service_number`, `price`, `ticket_type`, `notes`, and its times, shifted | trip `ticket_status` → `not_bought`, `done` → `false`; each leg's `booked`, `paid`, `collected` → `false`; `booking_code`, `seat`, `packing_list_id` → null |
+| trip `notes` (unless the request sends its own), `round_trip`, `outbound_title`, `outbound_notes`, `return_title`, `return_notes`; each leg's `from_place`, `to_place`, `transport_type`, `direction`, `ride_type`, `section`, the four `has_*` switches, `service`, `service_number`, `price`, `ticket_type`, `notes`, its times, shifted, and its backups, copied the same way | trip `ticket_status` → `not_bought`, `done` → `false`; each leg's and backup's `booked`, `paid`, `collected` → `false`; `booking_code`, `seat`, `packing_list_id` → null |
 
 The name and `kind` come from the request. The source's own `kind`, `usage`,
 `archive_note` and `visibility` are not copied, so a copy of a template is a
@@ -231,10 +231,11 @@ The name and `kind` come from the request. The source's own `kind`, `usage`,
 **當作範本 keeps the dates.** The page sends the Taipei day of the source's own
 first departure as `start_date`, so the shift below is zero.
 
-**The shift.** `start_date` is a Taipei calendar day. Every timed leg moves by
-the whole days between it and the Taipei day of the source's earliest
-`departs_at`, so clock times and the gaps between legs survive; Taiwan keeps
-no daylight saving. The shift may be negative. An untimed leg copies untimed.
+**The shift.** `start_date` is a Taipei calendar day. Every timed leg and
+backup moves by the whole days between it and the Taipei day of the earliest
+`departs_at` among the source's entries, so clock times and the gaps between
+legs survive; Taiwan keeps no daylight saving. A backup never decides the
+anchor, even when it leaves first. The shift may be negative. An untimed leg copies untimed.
 **`start_date` is required only when some leg has a `departs_at`**: a source
 with no legs, or only legs without one, needs none, and its times (an
 `arrives_at` alone, say) copy unmoved.
@@ -325,21 +326,41 @@ are state, not definition, so neither carries.
 A trip is **單程** (`round_trip: false`, every new trip) or **來回**
 (`round_trip: true`).
 
-- **One-way**: the entries are one list, and `notes` is the trip's 備註. Every
-  entry's `section` is null; a section sent for an entry of a one-way trip is
-  stored as null.
+- **Either way `notes` is the trip's overall 備註**, so nothing moves when the
+  trip is switched.
+- **One-way**: the entries are one list. Every entry's `section` is null; a
+  section sent for an entry of a one-way trip is stored as null.
 - **Round trip**: the entries are in two sections, 去程 (`outbound`) and 回程
   (`return`), each with its own **title** and **remark** — `outbound_title`
-  and `notes` (so nothing moves when the trip is switched), `return_title` and
-  `return_notes`. The trip keeps its overall `name`. An entry created or moved
+  and `outbound_notes`, `return_title` and `return_notes`. The trip keeps its
+  overall `name` and `notes`. An entry created or moved
   without a `section` goes to 去程, and `PATCH section` moves one between the
   two.
 - **Switching to round trip** puts every entry with no section in 去程.
 - **Switching back to one-way is refused** while any entry is in 回程 or
   `return_title` or `return_notes` has text: they would be hidden, which reads
   as lost. Move or delete them first; clearing them in the same request counts.
-  On success every `section` becomes null; `outbound_title` is kept but not
-  shown.
+  On success every `section` becomes null; `outbound_title` and
+  `outbound_notes` are kept but not shown, and come back with the round trip.
+
+## Backups (備案)
+
+**An entry can have any number of backups**, each a full entry of its own — a
+type, places, times, fields, ticks, a booking code and a remark, under the same
+per-type rules (`trip_leg.backup_of_id` names the entry it stands in for).
+
+- **A backup counts for nothing the trip reads.** It is not in `Trip.legs`, so
+  it does not keep a trip from ready, does not clear `done`, does not set the
+  trip's dates and is not on the dashboard. A backup is a plan B, and a plan B
+  nobody booked must not hold up a trip whose plan A is settled.
+- **One level only.** A backup of a backup is refused.
+- **It has no section and no packing list.** It sits under its entry, wherever
+  that entry is; a section sent for it is stored as null, as on a one-way trip.
+  Linking a list is refused: a list's date comes from the leg that links it, and
+  that must be the journey actually planned. The database holds both rules
+  (`ck_trip_leg_backup_has_no_section_or_list`).
+- **It goes with its entry.** Deleting an entry or a trip deletes its backups;
+  deleting a backup leaves its entry. A copy carries them, as in "Copying a trip".
 
 ## Ordering routes and options
 
@@ -359,7 +380,8 @@ that splits a group is refused. Options and route notes have no groups.
 ## Notes on a route
 
 A route has its 備註 (`notes`, one text value) and, below it, a list of
-**notes**, each a title, a description and links in order.
+**notes**, each a title, a description and links in order. A link is a URL and
+an optional title, which is what it is shown as.
 
 - **A note needs a title or at least one link.** A description alone is not a
   note. This holds on create and for the note as a `PATCH` would leave it, so
@@ -367,7 +389,8 @@ A route has its 備註 (`notes`, one text value) and, below it, a list of
   last link of a note without a title is refused.
 - **A blank title is no title**: titles are stripped, and an empty one is null.
 - **A blank link is refused**, not dropped, so a caller that sent an empty
-  row finds out. Links are stripped, and not checked to be URLs.
+  row finds out, even when it has a title. Links are stripped, and not checked
+  to be URLs. A link's title is stripped, and a blank one is null.
 - **Changing a note's links replaces the list**, and the order sent is the
   links' order; that is how links are reordered.
 - Deleting a route deletes its notes, and deleting a note its links.
@@ -383,8 +406,9 @@ order — a route note's shape without the route.
   group name is no group, a new note joins the end of its group, changing a
   note's group moves it to the end of the new one, and a reorder that splits a
   group, or does not name every note exactly once, is refused.
-- **Links** follow the route-note rules: stripped, a blank one refused, and a
-  `PATCH` of `links` replaces the list in the order sent.
+- **Links** follow the route-note rules: an optional title, the URL stripped, a
+  blank one refused, and a `PATCH` of `links` replaces the list in the order
+  sent.
 - Deleting a note deletes its links.
 
 ## The next departure

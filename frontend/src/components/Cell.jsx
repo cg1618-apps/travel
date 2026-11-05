@@ -11,6 +11,7 @@ import { useRef, useState } from 'react'
 import { remarkValue } from '../lib/cells'
 import { keysFor } from '../lib/keys'
 import { parseWholeNumber } from '../lib/numbers'
+import { AutoGrowTextarea } from './AutoGrowTextarea'
 import { Combobox } from './Combobox'
 
 const base =
@@ -127,13 +128,6 @@ export function TextAreaCell({ value, placeholder, ariaLabel, onCommit }) {
   )
 }
 
-/** Fits the textarea to its text, so nothing in a remark scrolls out of sight. */
-const fit = (element) => {
-  if (!element) return
-  element.style.height = 'auto'
-  element.style.height = `${element.scrollHeight}px`
-}
-
 function TextAreaInput({ value, ariaLabel, onCommit, onDone }) {
   const [text, setText] = useState(value ?? '')
   // As TextInput: the commit that closes the editor blurs it too.
@@ -158,19 +152,14 @@ function TextAreaInput({ value, ariaLabel, onCommit, onDone }) {
   }
 
   return (
-    <textarea
+    <AutoGrowTextarea
       autoFocus
-      ref={fit}
-      rows={1}
       aria-label={ariaLabel}
       value={text}
-      onChange={(event) => {
-        setText(event.target.value)
-        fit(event.target)
-      }}
+      onChange={(event) => setText(event.target.value)}
       onBlur={commit}
       onKeyDown={onKeyDown}
-      className={`${base} block resize-none overflow-hidden bg-surface ring-1 ring-brand`}
+      className={`${base} bg-surface ring-1 ring-brand`}
     />
   )
 }

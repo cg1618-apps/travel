@@ -5,7 +5,7 @@ from datetime import time as clock_time
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.constants import DayType
-from app.schemas.base import NonNullableUpdate, blank_is_null, stripped_links
+from app.schemas.base import NonNullableUpdate, NoteLinkFields, NoteLinkResponse, blank_is_null
 
 
 class TransportDepartureCreate(BaseModel):
@@ -104,10 +104,9 @@ class TransportNoteCreate(BaseModel):
 
     title: str | None = None
     description: str | None = None
-    links: list[str] = []
+    links: list[NoteLinkFields] = []
 
     _title = field_validator("title")(blank_is_null)
-    _links = field_validator("links")(stripped_links)
 
     @model_validator(mode="after")
     def _title_or_link(self):
@@ -125,10 +124,9 @@ class TransportNoteUpdate(NonNullableUpdate):
 
     title: str | None = None
     description: str | None = None
-    links: list[str] | None = None
+    links: list[NoteLinkFields] | None = None
 
     _title = field_validator("title")(blank_is_null)
-    _links = field_validator("links")(stripped_links)
 
 
 class TransportNoteResponse(BaseModel):
@@ -137,14 +135,8 @@ class TransportNoteResponse(BaseModel):
     route_id: int
     title: str | None
     description: str | None
-    #: The URLs in order: the link rows, flattened to their `url`.
-    links: list[str] = []
+    links: list[NoteLinkResponse] = []
     position: int
-
-    @field_validator("links", mode="before")
-    @classmethod
-    def _link_urls(cls, value):
-        return [getattr(link, "url", link) for link in value]
 
 
 class TransportRouteResponse(TransportRouteBase):

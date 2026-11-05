@@ -16,6 +16,7 @@ from app.constants import Kind, LabelKind, Usage
 from app.database import get_db
 from app.models import PackingList, Trip, TripLeg
 from app.schemas.trip import (
+    TripBackupResponse,
     TripCreate,
     TripCreated,
     TripIds,
@@ -61,10 +62,15 @@ LIST_NOT_FOUND = "Packing list not found."
 LIST_ALREADY_LINKED = "That packing list is already linked to another leg."
 COPY_SOURCE_NOT_FOUND = "Trip to copy from not found."
 START_DATE_REQUIRED = "start_date is required to copy a trip with legs."
+BACKUP_OF_A_BACKUP = "A backup cannot have backups of its own."
+BACKUP_WITH_A_LIST = "A backup cannot link a packing list."
 
 
 def _trips_query():
-    return select(Trip).options(selectinload(Trip.legs).selectinload(TripLeg.packing_list))
+    legs = selectinload(Trip.legs)
+    return select(Trip).options(
+        legs.selectinload(TripLeg.packing_list), legs.selectinload(TripLeg.backups)
+    )
 
 
 def _get_trip(db: Session, trip_id: int) -> Trip:
@@ -180,6 +186,7 @@ def create_trip(payload: TripCreate, db: Session = Depends(get_db)):
         # `ticket_status` and `done` are state and start over.
         trip.round_trip = source.round_trip
         trip.outbound_title = source.outbound_title
+        trip.outbound_notes = source.outbound_notes
         trip.return_title = source.return_title
         trip.return_notes = source.return_notes
     db.add(trip)
@@ -262,6 +269,26 @@ def create_leg(trip_id: int, payload: TripLegCreate, db: Session = Depends(get_d
     return leg
 
 
+@router.post("/api/trip-legs/{leg_id}/backups", response_model=TripBackupResponse, status_code=201)
+def create_backup(leg_id: int, payload: TripLegCreate, db: Session = Depends(get_db)):
+    """A 備案 of an entry: the same fields, added under it. Nothing about the
+    trip's readiness can change, so `done` is left alone."""
+    leg = _get_leg(db, leg_id)
+    if leg.backup_of_id is not None:
+        raise HTTPException(status_code=422, detail=BACKUP_OF_A_BACKUP)
+    if payload.packing_list_id is not None:
+        raise HTTPException(status_code=422, detail=BACKUP_WITH_A_LIST)
+    # A backup has no section of its own, whatever was sent, as a one-way
+    # trip's entry has none.
+    fields = payload.model_dump(exclude={"section"})
+    backup = TripLeg(trip_id=leg.trip_id, backup_of_id=leg.id, **fields)
+    db.add(backup)
+    remember_label(db, LabelKind.TICKET_TYPE, backup.ticket_type)
+    db.commit()
+    db.refresh(backup)
+    return backup
+
+
 def _leg_refusals(leg: TripLeg, changes: dict) -> list[str]:
     """Why the leg as this PATCH would leave it cannot be stored.
 
@@ -287,6 +314,8 @@ def _leg_refusals(leg: TripLeg, changes: dict) -> list[str]:
         ride = ride_type_refusal(transport_type, changes["ride_type"])
         if ride:
             refusals.append(ride)
+    if leg.backup_of_id is not None and changes.get("packing_list_id") is not None:
+        refusals.append(BACKUP_WITH_A_LIST)
     return refusals
 
 
@@ -299,7 +328,9 @@ def update_leg(leg_id: int, payload: TripLegUpdate, db: Session = Depends(get_db
         raise HTTPException(status_code=422, detail=" ".join(refusals))
     _check_link(db, changes.get("packing_list_id"), excluding=leg.id)
     if "section" in changes:
-        changes["section"] = section_for(leg.trip, changes["section"])
+        changes["section"] = (
+            None if leg.backup_of_id is not None else section_for(leg.trip, changes["section"])
+        )
     for field, value in changes.items():
         setattr(leg, field, value)
     remember_label(db, LabelKind.TICKET_TYPE, leg.ticket_type)

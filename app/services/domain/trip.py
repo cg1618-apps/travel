@@ -133,11 +133,12 @@ def copy_legs(db: Session, source: Trip, target: Trip, start_date: date | None) 
     whole-day shift never moves a clock time. With no departure anywhere
     there is nothing to anchor a shift, and the times are copied unmoved.
 
-    Carried: the journey, its type, direction, ride type, label switches and
-    section. Reset: booking state, the booking code and the seat, which
-    belong to one booking. The packing-list link cannot carry - a list is
-    linked from at most one leg - so it resets too, and the legs that had one
-    are returned for the caller to report.
+    Carried: the journey, its type, direction, ride type, label switches,
+    section and backups, which copy the same way and move by the same days.
+    Reset: booking state, the booking code and the seat, which belong to one
+    booking. The packing-list link cannot carry - a list is linked from at most
+    one leg - so it resets too, and the legs that had one are returned for the
+    caller to report.
     """
     if not source.legs:
         return []
@@ -149,38 +150,40 @@ def copy_legs(db: Session, source: Trip, target: Trip, start_date: date | None) 
     def moved(value: datetime | None) -> datetime | None:
         return None if value is None else value + shift
 
+    def copied(leg: TripLeg) -> TripLeg:
+        return TripLeg(
+            trip_id=target.id,
+            # Carried: the journey and how it is shown.
+            from_place=leg.from_place,
+            to_place=leg.to_place,
+            departs_at=moved(leg.departs_at),
+            arrives_at=moved(leg.arrives_at),
+            transport_type=leg.transport_type,
+            direction=leg.direction,
+            ride_type=leg.ride_type,
+            section=leg.section,
+            has_booked=leg.has_booked,
+            has_paid=leg.has_paid,
+            has_collected=leg.has_collected,
+            has_booking_code=leg.has_booking_code,
+            service=leg.service,
+            service_number=leg.service_number,
+            price=leg.price,
+            ticket_type=leg.ticket_type,
+            notes=leg.notes,
+            # Reset: what was true of the old booking.
+            booked=False,
+            paid=False,
+            collected=False,
+            booking_code=None,
+            seat=None,
+            packing_list_id=None,
+            backups=[copied(backup) for backup in leg.backups],
+        )
+
     unlinked = []
     for leg in source.legs:
-        db.add(
-            TripLeg(
-                trip_id=target.id,
-                # Carried: the journey and how it is shown.
-                from_place=leg.from_place,
-                to_place=leg.to_place,
-                departs_at=moved(leg.departs_at),
-                arrives_at=moved(leg.arrives_at),
-                transport_type=leg.transport_type,
-                direction=leg.direction,
-                ride_type=leg.ride_type,
-                section=leg.section,
-                has_booked=leg.has_booked,
-                has_paid=leg.has_paid,
-                has_collected=leg.has_collected,
-                has_booking_code=leg.has_booking_code,
-                service=leg.service,
-                service_number=leg.service_number,
-                price=leg.price,
-                ticket_type=leg.ticket_type,
-                notes=leg.notes,
-                # Reset: what was true of the old booking.
-                booked=False,
-                paid=False,
-                collected=False,
-                booking_code=None,
-                seat=None,
-                packing_list_id=None,
-            )
-        )
+        db.add(copied(leg))
         if leg.packing_list is not None:
             unlinked.append(
                 {

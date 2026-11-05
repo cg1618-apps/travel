@@ -258,15 +258,16 @@ the table does not. The relationship on the route is `note_entries`, because
 
 ## `transport_note_link`
 
-One URL on a note. A row per link, not an array or a text column — see
-`notes/decisions.md`. The API reads and writes a note's links as one ordered
-list of strings, and replaces the rows wholesale on change.
+One URL on a note, with an optional title. A row per link, not an array or a
+text column — see `notes/decisions.md`. The API reads and writes a note's links
+as one ordered list, and replaces the rows wholesale on change.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | `serial` | |
 | `note_id` | integer | no | | FK to `transport_note.id`, `ON DELETE CASCADE`. Indexed. |
 | `url` | text | no | | Stripped, never blank. Not validated as a URL. |
+| `title` | text | yes | | What the link is shown as. Stripped; blank is stored as null. |
 | `position` | integer | no | `0` | Order within its note, 0..n-1. |
 | `created_at` | timestamptz | no | `now()` | |
 | `updated_at` | timestamptz | no | `now()` | |
@@ -287,7 +288,7 @@ columns, with the same constraints, as on `packing_list`.
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | `serial` | |
 | `name` | text | no | | |
-| `notes` | text | yes | | 備註 on a one-way trip; 去程's remark on a round trip. |
+| `notes` | text | yes | | The trip's overall 備註, one-way or round trip. |
 | `kind` | text | no | `free` | `template` (範本), `saved` (保存) or `free` (一般). |
 | `usage` | text | yes | `unused` for a free row | 狀態: `in_use`, `upcoming`, `unused` or `past`. Set exactly when `kind` is `free`. |
 | `auto_saved_at` | timestamptz | yes | | When the row entered 自動保存; orders that queue. Set exactly when `usage` is `past`. |
@@ -296,8 +297,9 @@ columns, with the same constraints, as on `packing_list`.
 | `ticket_status` | text | no | `not_bought` | 未買票 `not_bought`, 無需買票 `not_needed` or 已買票 `bought`. Only `not_bought` keeps the trip from ready. A copy starts `not_bought`. |
 | `round_trip` | boolean | no | `false` | 單程 (`false`) or 來回. On a round trip the legs are in two sections; see `trip_leg.section`. |
 | `outbound_title` | text | yes | | 去程's title on a round trip. Kept, not shown, on a one-way trip. |
+| `outbound_notes` | text | yes | | 去程's remark on a round trip. Kept, not shown, on a one-way trip. |
 | `return_title` | text | yes | | 回程's title. |
-| `return_notes` | text | yes | | 回程's remark. 去程's is `notes`, so nothing moves when `round_trip` is toggled. |
+| `return_notes` | text | yes | | 回程's remark. |
 | `visibility` | text | no | `private` | `private`, `unlisted`, `public`. A single trip is the thing expected to be shared. **Nothing reads this yet**, as with `packing_list.visibility`. |
 | `created_at` | timestamptz | no | `now()` | Orders every index shelf but 自動保存, newest first (then highest `id`), as on `packing_list`. Reads carry it. |
 | `updated_at` | timestamptz | no | `now()` | |
@@ -320,10 +322,16 @@ keep the name leg. Times are timestamps with a zone, entered and shown in
 Asia/Taipei, and both are optional. The relationship orders legs by
 `departs_at`, untimed ones last, then by `id`.
 
+**A row with `backup_of_id` set is a 備案**, a backup of another entry. It is
+the same shape in the same table, so it is edited through the same endpoints,
+and `Trip.legs` leaves it out: everything that reads a trip's entries gets the
+entries alone. A backup is reached through `TripLeg.backups`.
+
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | `serial` | |
 | `trip_id` | integer | no | | FK to `trip.id`, `ON DELETE CASCADE`. Indexed. |
+| `backup_of_id` | integer | yes | | FK to `trip_leg.id`, `ON DELETE CASCADE`. Indexed. Set on a 備案; one level only, which the API enforces. |
 | `from_place` | text | no | | |
 | `to_place` | text | no | | |
 | `departs_at` | timestamptz | yes | | |
@@ -362,8 +370,10 @@ pair's two lists belongs to which journey.
 | `ck_trip_leg_transport_type` | One of the eleven types. |
 | `ck_trip_leg_ride_type` | Null, or one of the seven ride types. |
 | `ck_trip_leg_section` | Null, `outbound` or `return`. |
+| `ck_trip_leg_backup_has_no_section_or_list` | `backup_of_id IS NULL OR (section IS NULL AND packing_list_id IS NULL)`. |
 | `uq_trip_leg_packing_list_id` | A list is linked from at most one leg. The API checks first for a readable `409`; this holds under a race. |
 | `fk_trip_leg_trip` | `ON DELETE CASCADE`, at the database level. |
+| `fk_trip_leg_backup_of` | `ON DELETE CASCADE`: a backup means nothing without its entry. |
 | `fk_trip_leg_packing_list` | `ON DELETE SET NULL`: deleting a list must not delete a booking. |
 
 ## `note`
@@ -383,15 +393,16 @@ without the route, and with a required title.
 
 ## `note_link`
 
-One URL on a 筆記, as `transport_note_link` is on a route note. The API reads
-and writes a note's links as one ordered list of strings, and replaces the rows
-wholesale on change.
+One URL on a 筆記, with an optional title, as `transport_note_link` is on a route
+note. The API reads and writes a note's links as one ordered list, and replaces
+the rows wholesale on change.
 
 | Column | Type | Null | Default | Notes |
 | --- | --- | --- | --- | --- |
 | `id` | integer | no | `serial` | |
 | `note_id` | integer | no | | FK to `note.id`, `ON DELETE CASCADE`. Indexed. |
 | `url` | text | no | | Stripped; never blank. |
+| `title` | text | yes | | What the link is shown as. Stripped; blank is stored as null. |
 | `position` | integer | no | `0` | Order within its note. |
 | `created_at` | timestamptz | no | `now()` | |
 | `updated_at` | timestamptz | no | `now()` | |

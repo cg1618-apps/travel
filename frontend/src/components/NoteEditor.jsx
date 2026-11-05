@@ -3,15 +3,24 @@
  * edited in, and how a note reads.
  *
  * A list of links is not a cell, so a note is edited in a small form of its
- * own with 儲存 and 取消. Its links are reordered there with ↑ / ↓; the order
- * saved is the order the form shows. A route's note needs a title or a link;
- * the 筆記 page's needs a title (`titleRequired`) and has a 群組 field
- * (`groups`, the names already in use, offered as suggestions).
+ * own with 儲存 and 取消. Each link has an optional title, shown instead of its
+ * address. Links are reordered there with ↑ / ↓; the order saved is the order
+ * the form shows. A route's note needs a title or a link; the 筆記 page's needs
+ * a title (`titleRequired`) and has a 群組 field (`groups`, the names already
+ * in use, offered as suggestions).
  */
 
 import { useState } from 'react'
 
-import { canSaveNote, linkText, moveBy, noteName, notePayload } from '../lib/transport'
+import {
+  canSaveNote,
+  hasTitleWithoutUrl,
+  moveBy,
+  noteLinkText,
+  noteName,
+  notePayload,
+} from '../lib/transport'
+import { AutoGrowTextarea } from './AutoGrowTextarea'
 import { TextAreaCell } from './Cell'
 import { Combobox } from './Combobox'
 
@@ -26,19 +35,23 @@ export function NoteForm({ note, onSave, onCancel, titleRequired = false, groups
   // Keyed by a counter rather than by place, so removing or moving one input
   // does not hand its neighbour's text to the wrong field.
   const [links, setLinks] = useState(() =>
-    (note?.links.length ? note.links : ['']).map((url, key) => ({ key, url })),
+    (note?.links.length ? note.links : [{ url: '' }]).map((link, key) => ({
+      key,
+      url: link.url,
+      title: link.title ?? '',
+    })),
   )
   const [nextKey, setNextKey] = useState(links.length)
   const [pending, setPending] = useState(false)
   const [problem, setProblem] = useState(null)
-  const fields = { title, description, links: links.map((link) => link.url) }
+  const fields = { title, description, links }
   if (groups) fields.group_name = group
   const saveable = canSaveNote(fields, { titleRequired })
 
-  const setLink = (key, url) =>
-    setLinks(links.map((link) => (link.key === key ? { key, url } : link)))
+  const setLink = (key, changes) =>
+    setLinks(links.map((link) => (link.key === key ? { ...link, ...changes } : link)))
   const addLink = () => {
-    setLinks([...links, { key: nextKey, url: '' }])
+    setLinks([...links, { key: nextKey, url: '', title: '' }])
     setNextKey(nextKey + 1)
   }
 
@@ -73,7 +86,7 @@ export function NoteForm({ note, onSave, onCancel, titleRequired = false, groups
           className={`${inputClass} w-full sm:w-60`}
         />
       )}
-      <textarea
+      <AutoGrowTextarea
         aria-label="筆記說明"
         placeholder="說明"
         rows={3}
@@ -82,13 +95,20 @@ export function NoteForm({ note, onSave, onCancel, titleRequired = false, groups
         className={`${inputClass} w-full`}
       />
       {links.map((link, index) => (
-        <div key={link.key} className="flex items-center gap-1">
+        <div key={link.key} className="flex flex-wrap items-center gap-1">
+          <input
+            aria-label={`連結 ${index + 1} 標題`}
+            placeholder="連結標題（可不填）"
+            value={link.title}
+            onChange={(event) => setLink(link.key, { title: event.target.value })}
+            className={`${inputClass} w-full sm:w-44`}
+          />
           <input
             type="url"
             aria-label={`連結 ${index + 1}`}
             placeholder="https://"
             value={link.url}
-            onChange={(event) => setLink(link.key, event.target.value)}
+            onChange={(event) => setLink(link.key, { url: event.target.value })}
             className={`${inputClass} min-w-0 flex-1`}
           />
           <button
@@ -145,7 +165,11 @@ export function NoteForm({ note, onSave, onCancel, titleRequired = false, groups
       </div>
       {!saveable && (
         <p className="m-0 text-xs text-text-faint">
-          {titleRequired ? '需要標題。' : '需要標題或至少一個連結。'}
+          {hasTitleWithoutUrl(links)
+            ? '有標題的連結需要網址。'
+            : titleRequired
+              ? '需要標題。'
+              : '需要標題或至少一個連結。'}
         </p>
       )}
       {problem && (
@@ -181,17 +205,17 @@ export function NoteBody({ note, onDescription }) {
           </p>
         )
       )}
-      {note.links.map((url, index) => (
+      {note.links.map((link, index) => (
         <a
           // A link may appear twice in one note; its place keeps the key unique.
-          key={`${index}-${url}`}
-          href={url}
+          key={`${index}-${link.url}`}
+          href={link.url}
           target="_blank"
           rel="noreferrer"
-          title={url}
+          title={link.url}
           className="block truncate text-sm text-brand"
         >
-          {linkText(url)}
+          {noteLinkText(link)}
         </a>
       ))}
     </div>

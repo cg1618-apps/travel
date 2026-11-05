@@ -15,6 +15,7 @@ import { draftProblems, emptyDraft, isBlank, toPayload } from '../lib/drafts'
 import { CHECK_LABELS, CHECK_STATES, NEED_LABELS, NEEDS, STATUS_LABELS, TIMING_LABELS } from '../lib/labels'
 import { TIMINGS } from '../lib/timing'
 import { CHECK_TONES, NEED_TONES, STATUS_TONES, TIMING_TONES, toneClass, toneForText } from '../lib/tones'
+import { AutoGrowTextarea } from './AutoGrowTextarea'
 import { Combobox } from './Combobox'
 import { NUMBER_CELL } from './GridRow'
 
@@ -174,7 +175,7 @@ function DraftRow({ draft, index, number, showProblems, categories, locations, o
         />
       </td>
       <td className="px-1 py-1">
-        <input {...text('notes')} aria-label={`新的第 ${n} 列：備註`} placeholder="備註" className={field} />
+        <AutoGrowTextarea {...text('notes')} aria-label={`新的第 ${n} 列：備註`} placeholder="備註" className={field} />
       </td>
       <td className="text-center">
         <button

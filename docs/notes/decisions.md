@@ -739,13 +739,22 @@ fill.
 - **The downgrade refuses** rather than inventing a time for an untimed entry
   or a minute for an instant one; see `deployment-selfhost.md`.
 
-## Round trips store the 去程 remark in `notes`
+## `notes` is the overall remark; each section has its own
 
-A round trip has two sections, each with a title and a remark, and a one-way
-trip has one remark. `notes` is the one-way remark **and** the 去程 one, with
-new `outbound_title`, `return_title` and `return_notes` beside it, so toggling
-moves no text between columns and cannot lose any. `outbound_title` is kept
-but not shown on a one-way trip for the same reason.
+A round trip has two sections, each with a title and a remark, and every trip
+has one overall remark. That is `notes`, one-way or round trip, with
+`outbound_title`, `outbound_notes`, `return_title` and `return_notes` beside it,
+so toggling moves no text between columns and cannot lose any. 去程's title and
+remark are kept but not shown on a one-way trip for the same reason.
+
+**`notes` used to be the one-way remark and the 去程 one**, which left a round
+trip with no remark for the whole journey. The owner asked for it back, and
+said no data migration was needed, so `outbound_notes` started empty and text
+already in `notes` on a round trip now reads as the overall remark. The other
+way round, a new `overall_notes` with `notes` still 去程's, would have kept that
+text where it was, but a one-way trip's remark would then have become 去程's the
+moment the trip turned round, which is the wrong answer on every trip from then
+on to spare one that was days old.
 
 **Switching back to one-way is refused while 回程 holds anything**, rather
 than moving the 回程 entries into the one list or keeping the 回程 remark
@@ -755,10 +764,45 @@ request is accepted. **An entry's `section` is forced to match the trip** —
 null on a one-way trip whatever is sent, 去程 on a round trip unless 回程 is
 sent — so a section never disagrees with the trip it is on.
 
-**A copy carries `round_trip` and the titles and 回程 remark**, because it
-carries each entry's `section`, and sections on a one-way trip would be
+**A copy carries `round_trip` and the sections' titles and remarks**, because
+it carries each entry's `section`, and sections on a one-way trip would be
 meaningless; the shape of the trip is definition. `ticket_status` and `done`
 are state, and reset.
+
+## A backup is an entry with a parent, and `Trip.legs` leaves it out
+
+A 備案 holds everything an entry holds: a backup flight has a type, times, a
+seat and a booking code as much as the first choice does. So the owner chose a
+full entry over a remark on the entry or a cut-down shape. It is a `trip_leg`
+row with `backup_of_id` set, not a table of its own, because a second table would
+be a second copy of twenty columns, of the per-type rules and of the `PATCH`
+that judges them. In this table it needs one new endpoint, to create it.
+
+**`Trip.legs` is filtered in its `primaryjoin`.** Readiness, the dates, the
+dashboard, the round-trip rules, the sheet's rows and the frontend all read a
+trip's legs, and a backup must count for none of them. Filtering in each of
+those is the failure that gets written once per reader and missed on the next
+one; filtering in the relationship makes "an entry" the default answer and a
+backup something you must ask for. The API follows it: `legs` holds entries and
+each entry nests its `backups`, so the frontend's `trip.legs` readers needed no
+change either.
+
+**Unticked backups do not hold a trip back.** A plan B usually is not booked,
+and a trip whose plan A is settled is ready.
+
+**One level, no section, no packing list.** A backup of a backup has no meaning
+anyone asked for. A backup has no section because it sits under its entry, and
+moving the entry moves it without a second write. It has no packing list because
+`uq_trip_leg_packing_list_id` and "a list's date comes from its leg" both mean a
+link is a claim about the journey actually planned.
+
+**The downgrade deletes the backups.** Only dropping the column would turn each
+one into an ordinary entry of its trip, silently changing what the trip reads
+as, which is worse than losing it.
+
+**A self-reference needs no restore-tab change.** `RESTORE_TABS` orders tables,
+and a table cannot come before itself, but the sheet holds rows by `id` and a
+backup is always created after its entry, so the parent is always restored first.
 
 ## The dashboard sorts by start, not by usage
 
@@ -788,14 +832,16 @@ writes one value per cell and restores by column type, and an array column
 would be the first value that needed its own encoding there. A text column of
 newline-separated URLs would need splitting and a rule for blank lines on
 every read. A row per link costs one more table, and in return each link is a
-plain string in a plain column, ordered by `position` like every other ordered
-thing in this app, and the backup handles it with no new code. The API still
-reads and writes a note's links as one ordered list of strings, and a change
+plain row with plain columns, ordered by `position` like every other ordered
+thing in this app, and the backup handles it with no new code. That is also what
+made a link's optional `title` one nullable column. The API still reads and
+writes a note's links as one ordered list, each `{"url", "title"}`, and a change
 replaces the rows wholesale: there is no per-link editing to justify per-link
 endpoints.
 
 **A blank link is a 422, not dropped.** Dropping it silently would let a form
-that sent an empty row believe it had saved one.
+that sent an empty row believe it had saved one. The form drops an empty row
+itself, but refuses to save one that has a title and no URL, for the same reason.
 
 ## One whole-order rule, shared
 
