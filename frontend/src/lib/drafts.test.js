@@ -13,6 +13,13 @@ describe('drafts', () => {
     expect(isBlank({ ...emptyDraft(), timing: 'day_of' })).toBe(false)
   })
 
+  it('starts 需求 at 需帶, and clearing it is a change', () => {
+    expect(emptyDraft().need).toBe('bring')
+    expect(toPayload({ ...emptyDraft(), name: '襪子' }).need).toBe('bring')
+    expect(isBlank({ ...emptyDraft(), need: '' })).toBe(false)
+    expect(toPayload({ ...emptyDraft(), name: '襪子', need: '' }).need).toBe(null)
+  })
+
   it('refuses a row without a name or with a count that is not whole', () => {
     expect(draftProblems(emptyDraft())).toEqual(['name'])
     expect(draftProblems({ ...emptyDraft(), name: '襪子', quantity: '1.5' })).toEqual(['quantity'])

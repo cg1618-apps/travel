@@ -37,6 +37,7 @@ import { TIMING_LABELS } from '../lib/labels'
 import { TIMINGS } from '../lib/timing'
 import { CHECK_TONES, NEED_TONES, STATUS_TONES, TIMING_TONES, toneClass, toneForText } from '../lib/tones'
 import { FilterMenu } from './FilterMenu'
+import { ConfirmDialog } from './ConfirmDialog'
 import { GroupOrderDialog, UNCATEGORISED } from './GroupOrderDialog'
 import { GridRow } from './GridRow'
 import { NewRows } from './NewRows'
@@ -140,7 +141,7 @@ function TimingChips({ selected, onToggle }) {
   )
 }
 
-function Group({ group, numbers, sortable, onMove, rowProps }) {
+function Group({ group, numbers, sortable, selected, onMove, rowProps }) {
   const ids = group.items.map((item) => item.id)
   const move = useCallback((from, to) => onMove(group.key, from, to), [group.key, onMove])
 
@@ -159,6 +160,7 @@ function Group({ group, numbers, sortable, onMove, rowProps }) {
             showName={showName}
             continuesRun={!showName}
             sortLabel={itemTitle(item)}
+            selected={selected.has(item.id)}
             {...rowProps}
           />
         ))}
@@ -177,12 +179,33 @@ export function Grid({
   onAddMany,
   onAddVariant,
   onReorder,
+  deleting = false,
+  deleteFailed = false,
+  onBulkDelete,
 }) {
   const [filters, setFilters] = useState({})
   const [orderingGroups, setOrderingGroups] = useState(false)
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState(new Set())
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const filtering = isFiltering(filters)
   const shown = applyFilters(items, filters)
+  // Read through what is on screen, so a row selected and then filtered out
+  // cannot be deleted unseen.
+  const chosen = shown.filter((item) => selected.has(item.id))
+  const toggleSelected = useCallback((id) => {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+  const leaveSelecting = () => {
+    setSelecting(false)
+    setSelected(new Set())
+  }
   const groups = groupByCategory(shown)
   const allGroups = groupByCategory(items)
   const numbers = rowNumbers(items)
@@ -193,7 +216,15 @@ export function Grid({
     [items, onReorder],
   )
 
-  const rowProps = { categories, locations, onPatch, onDelete, onAddVariant }
+  const rowProps = {
+    categories,
+    locations,
+    onPatch,
+    onDelete,
+    onAddVariant,
+    selecting,
+    onToggleSelected: toggleSelected,
+  }
 
   return (
     <>
@@ -225,6 +256,45 @@ export function Grid({
             >
               清除所有篩選
             </button>
+          </>
+        )}
+        <button
+          type="button"
+          onClick={() => (selecting ? leaveSelecting() : setSelecting(true))}
+          disabled={!selecting && items.length === 0}
+          className={`${smallButton} disabled:opacity-40`}
+          style={{ minHeight: 36 }}
+        >
+          {selecting ? '完成' : '刪除模式'}
+        </button>
+        {selecting && (
+          <>
+            <label className="flex items-center gap-1 text-sm text-text-muted">
+              <input
+                type="checkbox"
+                className="size-4"
+                aria-label="全選"
+                checked={shown.length > 0 && chosen.length === shown.length}
+                onChange={(event) =>
+                  setSelected(new Set(event.target.checked ? shown.map((item) => item.id) : []))
+                }
+              />
+              全選
+            </label>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={chosen.length === 0 || deleting}
+              className="rounded-md border border-danger px-3 text-sm text-danger disabled:opacity-40"
+              style={{ minHeight: 36 }}
+            >
+              刪除所選（{chosen.length}）
+            </button>
+            {deleteFailed && (
+              <p role="alert" className="m-0 w-full text-sm text-danger">
+                無法刪除，請再試一次。
+              </p>
+            )}
           </>
         )}
       </div>
@@ -272,7 +342,8 @@ export function Grid({
               key={group.key}
               group={group}
               numbers={numbers}
-              sortable={!filtering}
+              sortable={!filtering && !selecting}
+              selected={selected}
               onMove={onMove}
               rowProps={rowProps}
             />
@@ -307,6 +378,19 @@ export function Grid({
             onReorder(orderIds(order))
           }}
           onCancel={() => setOrderingGroups(false)}
+        />
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`刪除 ${chosen.length} 個項目？`}
+          body={chosen.map((item) => `「${itemTitle(item)}」`).join('、')}
+          confirmLabel="刪除"
+          onConfirm={() => {
+            setConfirmingDelete(false)
+            onBulkDelete(chosen.map((item) => item.id), leaveSelecting)
+          }}
+          onCancel={() => setConfirmingDelete(false)}
         />
       )}
     </>

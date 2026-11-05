@@ -70,6 +70,7 @@ serve.
 | `GET` | `/api/packing-lists/{id}` | none | One list with its items, in `position` order. |
 | `PATCH` | `/api/packing-lists/{id}` | none | Change any of `name`, `departure_at`, `kind`, `usage`, `leg`, `pair_id`, `notes`, `archive_note`. `409` if `usage: past` would drop a 自動保存 slot. |
 | `POST` | `/api/packing-lists/{id}/reset` | none | Reset the list's packing progress. Unpacks `packed` items, clears `quantity_packed` to `null` and `double_checked` to `false`, but leaves `no_need` and `needs_double_check` definition alone. |
+| `POST` | `/api/packing-lists/{id}/items/bulk-delete` | none | `204`. Body `{"ids": [..]}`. All or nothing: an id naming no item on this list is a `404` and nothing is deleted. `404` for an unknown list. |
 | `PUT` | `/api/packing-lists/{id}/order` | none | Set the order of the list's items. Body `{"item_ids": [..]}`; returns the list as its `GET` does. See "Ordering" below. |
 | `DELETE` | `/api/packing-lists/{id}` | none | `204`. Items go with it. |
 
@@ -192,7 +193,7 @@ An item is created under the list that owns it and addressed on its own
 afterwards, which is why the two path shapes differ.
 
 Beyond the name, an item's text fields are `detail`, `category`, `bag` and
-`location`; `need` is one of `need`, `bring`, `buy` or `null`, and any other
+`location`; `need` is one of `need`, `bring`, `buy` or `null`, `bring` when a create leaves it out, and any other
 value is a `422`.
 
 `quantity_packed` is `null` unless sent: no value means nobody has counted,
@@ -351,6 +352,7 @@ addressed on its own afterwards.
 | `POST` | `/api/trips/{trip_id}/legs` | none | `201`. `from_place` and `to_place` are required; everything else is optional. |
 | `PATCH` / `DELETE` | `/api/trip-legs/{id}` | none | `404` when missing. The same for an entry and a backup. Deleting an entry takes its backups with it. |
 | `POST` | `/api/trip-legs/{id}/backups` | none | `201` with the new 備案 of that entry. The same body and refusals as creating a leg, except that a `packing_list_id` is a `422` (`A backup cannot link a packing list.`), a `section` is stored as null, and a backup cannot have backups (`422`, `A backup cannot have backups of its own.`). `404` for an unknown entry. Never touches `done`. |
+| `POST` | `/api/trip-legs/{id}/promote` | none | `200` with the entry, as a leg in `legs` reads. No body. The backup `{id}` and its entry swap everything but `id`, `trip_id`, `backup_of_id`, `section`, `packing_list_id` and the timestamps, so the entry's id does not change. `422` on a leg that is not a backup (`Only a backup can become the main entry.`), `404` when missing. Clears `done` if the trip is no longer ready. |
 
 ### A trip
 

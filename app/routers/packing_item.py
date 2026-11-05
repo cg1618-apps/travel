@@ -6,6 +6,7 @@ cannot express both, so the paths are written out in full.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -13,6 +14,7 @@ from app.models import PackingItem, PackingList
 from app.schemas.packing_item import (
     PackingItemBulkCreate,
     PackingItemCreate,
+    PackingItemIds,
     PackingItemResponse,
     PackingItemUpdate,
 )
@@ -91,6 +93,27 @@ def bulk_create(list_id: int, payload: PackingItemBulkCreate, db: Session = Depe
     for item in items:
         db.refresh(item)
     return items
+
+
+@router.post("/api/packing-lists/{list_id}/items/bulk-delete", status_code=204)
+def bulk_delete(list_id: int, payload: PackingItemIds, db: Session = Depends(get_db)):
+    """All or nothing: an id naming no item on THIS list refuses the whole
+    request, so a stale selection cannot reach into another list."""
+    _get_list(db, list_id)
+    ids = set(payload.ids)
+    items = (
+        db.scalars(
+            select(PackingItem).where(PackingItem.list_id == list_id, PackingItem.id.in_(ids))
+        ).all()
+        if ids
+        else []
+    )
+    if len(items) != len(ids):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    for item in items:
+        db.delete(item)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/api/packing-items/{item_id}", response_model=PackingItemResponse)

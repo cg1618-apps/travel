@@ -289,6 +289,26 @@ def test_reorder_of_an_empty_list_with_no_ids_is_accepted(client, packing_list):
     assert reorder(client, packing_list, []).status_code == 200
 
 
+def test_reordering_one_lists_groups_leaves_another_lists_alone(
+    client, db_session, packing_list, three_groups
+):
+    # The same category names on both lists, so a group order held by category
+    # rather than by list would show here.
+    other = PackingList(name="other")
+    db_session.add(other)
+    db_session.commit()
+    add_item(client, other, name="far shirt", category="衣服")
+    add_item(client, other, name="far passport", category="證件")
+
+    ids = three_groups
+    # 證件 before 衣服 here, against the order the other list keeps.
+    order = [ids["misc"], ids["passport"], ids["shirt"], ids["socks"]]
+    assert reorder(client, packing_list, order).status_code == 200
+
+    assert names(client, packing_list) == ["misc", "passport", "shirt", "socks"]
+    assert names(client, other) == ["far shirt", "far passport"]
+
+
 def test_positions_after_reorder_are_what_the_database_holds(client, db_session, packing_list, three_groups):
     ids = three_groups
     reorder(client, packing_list, [ids["passport"], ids["shirt"], ids["socks"], ids["misc"]])

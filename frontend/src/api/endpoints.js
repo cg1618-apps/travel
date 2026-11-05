@@ -7,6 +7,7 @@ export const endpoints = {
     detail: (id) => `/api/packing-lists/${id}`,
     items: (id) => `/api/packing-lists/${id}/items`,
     bulkCreate: (id) => `/api/packing-lists/${id}/items/bulk-create`,
+    bulkDelete: (id) => `/api/packing-lists/${id}/items/bulk-delete`,
     order: (id) => `/api/packing-lists/${id}/order`,
     reset: (id) => `/api/packing-lists/${id}/reset`,
   },
@@ -42,5 +43,6 @@ export const endpoints = {
     legs: (tripId) => `/api/trips/${tripId}/legs`,
     leg: (id) => `/api/trip-legs/${id}`,
     legBackups: (id) => `/api/trip-legs/${id}/backups`,
+    promoteLeg: (id) => `/api/trip-legs/${id}/promote`,
   },
 }

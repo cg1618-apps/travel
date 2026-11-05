@@ -361,6 +361,14 @@ per-type rules (`trip_leg.backup_of_id` names the entry it stands in for).
   (`ck_trip_leg_backup_has_no_section_or_list`).
 - **It goes with its entry.** Deleting an entry or a trip deletes its backups;
   deleting a backup leaves its entry. A copy carries them, as in "Copying a trip".
+- **Any backup can become the main option** (設為主要), and the entry's option
+  then becomes that backup. Everything about the option goes with it: places,
+  times, type, fields, ticks, switches, booking code and remark. What stays is
+  what describes the journey rather than one way of making it, the section and
+  the linked packing list, so a list's date follows the newly chosen option. The
+  trip's other backups stay as they are. Doing it again swaps back. What was
+  uncounted now counts, so a done trip the new option leaves not ready has `done`
+  cleared; `ticket_status` is the trip's and does not move.
 
 ## Ordering routes and options
 
@@ -456,6 +464,10 @@ and a bag. They are different facts.
 ## Need and location
 
 `need` says why an item is on the list, and is null where the question does
-not apply. `bring` is already owned and taken from the item's `location`; `buy`
+not apply. **A new item starts at `bring`** unless it says otherwise, from any
+of the sheet, the checklist or the API; null is still a choice (— on the
+sheet). The default is the API's and the sheet's, not the database's, so an item
+that already had null keeps it, and the import and the restore store what they
+read. `bring` is already owned and taken from the item's `location`; `buy`
 has to be bought, at that location; `need` is needed with bring-or-buy not yet
 decided. `location` is free text, suggested like `category` and `bag`.
