@@ -1,6 +1,6 @@
 /**
- * 排序類別 (a list's 類別) or 排序群組 (notes, transport routes): the order of
- * the groups, in a dialog of its own. `title`, `hint` and `nameOf` say which;
+ * 排序類別 (a list's 類別) or 排序群組 (transport routes): the order of the
+ * groups, in a dialog of its own. `title`, `hint` and `nameOf` say which;
  * the defaults are a packing list's.
  *
  * Rows are dragged on the sheet; groups are dragged here. Doing both on one
