@@ -289,8 +289,8 @@ pressing ↑ / ↓ moves a row one place. A drop never leaves its group.
 
 **Groups are ordered in 排序類別**, a dialog of their own
 (`GroupOrderDialog.jsx`), so a drag on the sheet only ever means a row. Nothing
-is saved until its 儲存. The same dialog is 排序群組 on 交通 and 筆記, given
-its own title, hint and group name.
+is saved until its 儲存. The same dialog is 排序群組 on 交通, given its own
+title, hint and group name. 筆記 orders its groups with arrows instead.
 
 Both write the list's whole order in one `PUT …/order`, built by `orderIds`.
 The page applies it to the cache first, so a dropped row stays where it was
@@ -704,12 +704,14 @@ read from `['notes']` (`GET /api/notes`).
   edited in place, and its links, each opening in a new tab and shown by its
   title when it has one. ⋯ 刪除筆記 asks
   first; a failed delete shows 無法刪除筆記，請再試一次。
-- **Order.** The ⠿ beside a note drags it within its group; **排序群組**,
-  shown once there are two named groups, orders the named groups. Either sends
-  every note id in the new order, the ungrouped first, in one
-  `PUT /api/notes/order`; the cache takes it first, the list is read again
-  afterwards, and a refusal shows 排序沒有儲存，已還原。 Links are reordered in
-  the form with ↑ / ↓.
+- **Order.** The ⠿ beside a note drags it within its group. Once there are two
+  named groups, each heading has **↑ / ↓**, which move that group and its notes
+  one place and save at once, with no dialog; the arrows that would pass either
+  end are disabled, and all of them while a move is saving. The ungrouped notes
+  have no heading and stay first. Either way every note id goes in the new
+  order, the ungrouped first, in one `PUT /api/notes/order`; the cache takes it
+  first, the list is read again afterwards, and a refusal shows
+  排序沒有儲存，已還原。 Links are reordered in the form with ↑ / ↓.
 - **Empty.** 還沒有筆記。按「+ 新增筆記」開始。
 
 ## 選項 (`/options`)

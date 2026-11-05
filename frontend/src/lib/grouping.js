@@ -91,12 +91,12 @@ export function groupByName(rows) {
   return [...all.filter((group) => group.name === null), ...all.filter((group) => group.name !== null)]
 }
 
-/** The named groups only: what 排序群組 offers, since the ungrouped rows stay first. */
+/** The named groups only: the ones that can be ordered, since the ungrouped rows stay first. */
 export const namedGroups = (groups) => groups.filter((group) => group.name !== null)
 
 /**
- * The full order after 排序群組: the ungrouped rows first, as they are shown,
- * then the named groups in the order the dialog left them.
+ * The full order after the named groups are rearranged: the ungrouped rows
+ * first, as they are shown, then the named groups in the order given.
  */
 export const orderAfterGroupSort = (groups, named) =>
   orderIds([...groups.filter((group) => group.name === null), ...named])
