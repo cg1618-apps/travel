@@ -34,7 +34,8 @@ class Note(Base, TimestampMixin):
 
 
 class NoteLink(Base, TimestampMixin):
-    """One URL on a note, in the order the note lists them."""
+    """One URL on a note, with an optional title, in the order the note lists
+    them."""
 
     __tablename__ = "note_link"
 
@@ -45,6 +46,7 @@ class NoteLink(Base, TimestampMixin):
         index=True,
     )
     url: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str | None] = mapped_column(String, nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     note = relationship("Note", back_populates="links")

@@ -2,7 +2,7 @@
 
 from typing import ClassVar
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 
 class NonNullableUpdate(BaseModel):
@@ -32,12 +32,24 @@ def blank_is_null(value: str | None) -> str | None:
     return value.strip() or None
 
 
-def stripped_links(value: list[str] | None) -> list[str] | None:
-    """Each link stripped; a blank one refused rather than silently dropped,
-    so a caller that sent an empty row learns it did."""
-    if value is None:
-        return None
-    links = [link.strip() for link in value]
-    if any(link == "" for link in links):
-        raise ValueError("a link cannot be blank")
-    return links
+class NoteLinkFields(BaseModel):
+    """One link on a note, in either direction: a URL and an optional title."""
+
+    url: str
+    title: str | None = None
+
+    _title = field_validator("title")(blank_is_null)
+
+    @field_validator("url")
+    @classmethod
+    def _stripped_url(cls, value: str) -> str:
+        """Stripped; a blank one refused rather than silently dropped, so a
+        caller that sent an empty row learns it did."""
+        url = value.strip()
+        if not url:
+            raise ValueError("a link cannot be blank")
+        return url
+
+
+class NoteLinkResponse(NoteLinkFields):
+    model_config = ConfigDict(from_attributes=True)

@@ -286,7 +286,7 @@ items, a child is created under its parent and addressed on its own afterwards.
 | `PATCH` / `DELETE` | `/api/transport-options/{id}` | none | Deleting takes the option's departures with it. |
 | `POST` | `/api/transport-options/{option_id}/departures` | none | `201`. `day_type` is `weekday` or `holiday`; `time` is `HH:MM`. `irregular` defaults to `false`. |
 | `PATCH` / `DELETE` | `/api/transport-departures/{id}` | none | |
-| `POST` | `/api/transport-routes/{route_id}/notes` | none | `201` with the note. Body `{"title", "description", "links": [..]}`. Appended after the route's last note. `404` for an unknown route. |
+| `POST` | `/api/transport-routes/{route_id}/notes` | none | `201` with the note. Body `{"title", "description", "links": [{"url", "title"?}, ..]}`. Appended after the route's last note. `404` for an unknown route. |
 | `PATCH` / `DELETE` | `/api/transport-notes/{id}` | none | `404` when missing. `PATCH` takes the same fields, all optional; `links`, when sent, replaces the whole list. `DELETE` is `204` and takes the links with it. |
 
 Every route carries `group_name`, a string or `null`: stripped on the way in,
@@ -294,13 +294,14 @@ and a blank one is `null`.
 
 **Every route read carries `note_entries`** — list, get, create, patch and the
 three order writes — each `{"id", "route_id", "title", "description", "links",
-"position"}`, by `position`. `links` is a plain list of URL strings in order.
-`note_entries` is not `notes`: `notes` is the route's 備註, one text value, and
+"position"}`, by `position`. `links` is a list of `{"url", "title"}` in order,
+`title` a string or `null`. `note_entries` is not `notes`: `notes` is the route's 備註, one text value, and
 stays as it was; the entries are the titled notes shown below it.
 
 **A note needs a title or at least one link**; a description alone is not
-enough. A `title` is stripped and a blank one is `null`. Each link is stripped,
-and a blank link is a `422` rather than dropped. On create the schema checks
+enough. A `title`, the note's or a link's, is stripped and a blank one is
+`null`. Each link's `url` is stripped, and a missing or blank one is a `422`
+rather than dropped. On create the schema checks
 the rule, so the `422` is FastAPI's list (`Value error, A note needs a title or
 at least one link.`). A `PATCH` is checked by the router against the note as it
 would be after the change, so clearing the title of a note that keeps a link is
@@ -346,22 +347,23 @@ addressed on its own afterwards.
 | `GET` | `/api/trips` | none | The same four shelves as packing lists — `free`, `auto_saved`, `saved`, `templates` — plus `evict_next`, the trip the next `usage: past` would drop (or `[]`). Every trip has its legs nested. `free`, `saved` and `templates` are newest `created_at` first, then highest `id`, as for lists; `auto_saved` is newest `auto_saved_at` first. Every trip carries the fields under "A trip" below. |
 | `POST` | `/api/trips` | none | `201`. `name` is required and non-empty; `kind` is `free` (the default, 未使用) or `template`, and `saved` is a `422`. Optional `copy_from_id` copies another trip of any kind (see `business-rules.md`, "Copying a trip"): `404` `Trip to copy from not found.` for an unknown one, and `422` `start_date is required to copy a trip with legs.` when it has legs and no `start_date` (a date) was sent. `start_date` is needed only when some leg of the source has a `departs_at`. Nothing is written on either refusal; a `start_date` without `copy_from_id` is ignored. The response adds `unlinked_from`, `[{from_place, to_place, packing_list_name}]`, empty unless a copied leg had a list. Never refused by 自動保存. |
 | `POST` | `/api/trips/bulk-delete` | none | `204`. Body `{"ids": [..]}`. All or nothing: an id naming no trip is a `404` and nothing is deleted. Legs go with each trip; a linked packing list is kept and unlinked. |
-| `GET` / `PATCH` / `DELETE` | `/api/trips/{id}` | none | `404` when missing; an `id` that is not an integer is a `422`, and that is what the retired `GET /api/trips/current` now answers. `PATCH` takes `name`, `notes`, `archive_note`, `done`, `ticket_status`, `round_trip`, `outbound_title`, `return_title`, `return_notes`, `kind`, `usage` and `evict_confirmed`, with the same kind moves and refusals as a packing list; `usage: past` into a full 自動保存 is a `409` naming the trip that would go (`Auto-save already holds 10 trips. …`). `done: true` on a trip that is not ready, and `round_trip: false` while 回程 holds anything, are `422`s (below). Deleting takes the legs with it. |
+| `GET` / `PATCH` / `DELETE` | `/api/trips/{id}` | none | `404` when missing; an `id` that is not an integer is a `422`, and that is what the retired `GET /api/trips/current` now answers. `PATCH` takes `name`, `notes`, `archive_note`, `done`, `ticket_status`, `round_trip`, `outbound_title`, `outbound_notes`, `return_title`, `return_notes`, `kind`, `usage` and `evict_confirmed`, with the same kind moves and refusals as a packing list; `usage: past` into a full 自動保存 is a `409` naming the trip that would go (`Auto-save already holds 10 trips. …`). `done: true` on a trip that is not ready, and `round_trip: false` while 回程 holds anything, are `422`s (below). Deleting takes the legs with it. |
 | `POST` | `/api/trips/{trip_id}/legs` | none | `201`. `from_place` and `to_place` are required; everything else is optional. |
-| `PATCH` / `DELETE` | `/api/trip-legs/{id}` | none | `404` when missing. |
+| `PATCH` / `DELETE` | `/api/trip-legs/{id}` | none | `404` when missing. The same for an entry and a backup. Deleting an entry takes its backups with it. |
+| `POST` | `/api/trip-legs/{id}/backups` | none | `201` with the new 備案 of that entry. The same body and refusals as creating a leg, except that a `packing_list_id` is a `422` (`A backup cannot link a packing list.`), a `section` is stored as null, and a backup cannot have backups (`422`, `A backup cannot have backups of its own.`). `404` for an unknown entry. Never touches `done`. |
 
 ### A trip
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `id`, `name`, `notes`, `archive_note`, `created_at` | | As before; `notes` is 備註 on a one-way trip and 去程's remark on a round trip. |
+| `id`, `name`, `notes`, `archive_note`, `created_at` | | As before; `notes` is the trip's overall 備註, one-way or round trip. |
 | `kind`, `usage`, `auto_saved_at` | | The shelf, as for a packing list. |
 | `done` | boolean | 已準備完成. |
 | `ready` | boolean | Read-only: whether `done` may be set now. |
 | `ticket_status` | `"not_bought"` \| `"not_needed"` \| `"bought"` | 未買票 / 無需買票 / 已買票. `not_bought` on every new trip and every copy. |
 | `round_trip` | boolean | 單程 (`false`) or 來回. |
-| `outbound_title`, `return_title`, `return_notes` | string or `null` | 去程's title, 回程's title and remark. |
-| `legs` | array | The legs, below, by `departs_at` with untimed ones last, then `id`. |
+| `outbound_title`, `outbound_notes`, `return_title`, `return_notes` | string or `null` | 去程's and 回程's title and remark. |
+| `legs` | array | The legs, below, by `departs_at` with untimed ones last, then `id`. Backups are not among them; each is under its entry's `backups`. |
 
 `ticket_status` and `round_trip` refuse `null` on a `PATCH`.
 
@@ -382,6 +384,8 @@ addressed on its own afterwards.
 | `has_booked`, `has_paid`, `has_collected`, `has_booking_code` | boolean | Whether the entry shows each label and the code. Optional on create (the type's default when left out); always present in a response. |
 | `packing_list_id` | integer or `null` | |
 | `packing_list_name` | string or `null` | Read-only: the linked list's name. |
+| `backup_of_id` | integer or `null` | Read-only: the entry this one is a 備案 of. |
+| `backups` | array | Read-only: this entry's 備案, in the same order as `legs`. Each has the fields above but `packing_list_name` and `backups`. `POST .../backups` answers in that shape too. |
 
 **Times carry a zone.** `departs_at` and `arrives_at` are ISO 8601 with an
 offset, for example `2026-09-24T18:06:00+08:00`; a time without one is a `422`.
@@ -418,7 +422,7 @@ names what is missing — `The trip is not ready: tickets not bought.`,
 `; ` — judged on the trip as the same `PATCH` leaves it. `done: false` is never
 refused. **A write that leaves a done trip not ready clears `done`** in the
 same transaction: a leg created or patched, or `ticket_status` set back to
-`not_bought`. It is independent of `kind` and `usage`: setting it moves the
+`not_bought`. A backup counts for neither `ready` nor this. It is independent of `kind` and `usage`: setting it moves the
 trip to no other shelf, and changing `usage` leaves it alone.
 
 **`round_trip: false` is a `422`** while any leg is in `return` or
@@ -436,21 +440,22 @@ answer `422` when sent as `null`; nullable fields such as `notes`,
 ## Notes — `/api/notes`
 
 筆記. A note is `{"id", "group_name", "title", "description", "links",
-"position"}`: `links` is a plain list of URL strings in order, `group_name` a
-string or `null`.
+"position"}`: `links` is a list of `{"url", "title"}` in order, `title` and
+`group_name` strings or `null`.
 
 | Method | Path | Auth | Description |
 | --- | --- | --- | --- |
 | `GET` | `/api/notes` | none | Every note by `position`, then `id`, with its links. |
 | `PUT` | `/api/notes/order` | none | `200` with every note, as `GET`, in the new order. Body `{"note_ids": [..]}`; see "Ordering" below. |
-| `POST` | `/api/notes` | none | `201` with the note. Body `{"group_name"?, "title", "description"?, "links"?: [..]}`. The note joins the end of its group. |
+| `POST` | `/api/notes` | none | `201` with the note. Body `{"group_name"?, "title", "description"?, "links"?: [{"url", "title"?}, ..]}`. The note joins the end of its group. |
 | `PATCH` | `/api/notes/{id}` | none | `200` with the note. Every field optional; `links`, when sent, replaces the list, and its order is the links' order. A changed `group_name` moves the note to the end of its new group. |
 | `DELETE` | `/api/notes/{id}` | none | `204`; takes the links with it. |
 
 **A note needs a title.** `title` is stripped, and a missing or blank one is a
 `422` (FastAPI's list), on create and on a `PATCH`; `title: null` is a `422`
 too. `group_name` is stripped and a blank one is `null`, which is the ungrouped
-group. Links are stripped, and a blank link, or `links: null`, is a `422`. An
+group. A link's `url` is stripped and its `title` stripped with a blank one
+`null`; a missing or blank `url`, or `links: null`, is a `422`. An
 unknown id is a `404` with `Note not found.`
 
 ### Ordering

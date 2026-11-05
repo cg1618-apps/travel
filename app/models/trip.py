@@ -29,8 +29,8 @@ class Trip(Base, TimestampMixin, KindMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    #: The trip's 備註 when one-way; the 去程 remark on a round trip, so nothing
-    #: moves when `round_trip` is toggled.
+    #: The trip's overall 備註, one-way or round trip, so nothing moves when
+    #: `round_trip` is toggled. Each section's own remark is its own column.
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # `archive_note` is 保存備註, the remark written afterwards, kept apart
@@ -61,17 +61,22 @@ class Trip(Base, TimestampMixin, KindMixin):
     )
 
     #: 單程 or 來回. A round trip shows its entries in two sections, 去程 and
-    #: 回程, each with a title and a remark (`notes` is the 去程 one).
+    #: 回程, each with a title and a remark, under the trip's overall `notes`.
     round_trip: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    #: Kept, but not shown, when the trip goes back to one-way.
+    #: The 去程 pair is kept, but not shown, when the trip goes back to one-way.
     outbound_title: Mapped[str | None] = mapped_column(String, nullable=True)
+    outbound_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     return_title: Mapped[str | None] = mapped_column(String, nullable=True)
     return_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    #: The trip's entries, without their backups: readiness, dates, the
+    #: dashboard and the sheet all read this, and a 備案 counts for none of them.
+    #: A backup hangs off its entry, as `TripLeg.backups`.
     legs = relationship(
         "TripLeg",
+        primaryjoin="and_(Trip.id == TripLeg.trip_id, TripLeg.backup_of_id.is_(None))",
         back_populates="trip",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -108,6 +113,12 @@ class TripLeg(Base, TimestampMixin):
             in_clause("ride_type", RideType, nullable=True), name="ck_trip_leg_ride_type"
         ),
         CheckConstraint(in_clause("section", Leg, nullable=True), name="ck_trip_leg_section"),
+        # A backup sits wherever its entry sits, and a list is packed for the
+        # journey actually planned, so a backup has neither of its own.
+        CheckConstraint(
+            "backup_of_id IS NULL OR (section IS NULL AND packing_list_id IS NULL)",
+            name="ck_trip_leg_backup_has_no_section_or_list",
+        ),
         # One leg per list: a list is packed for one journey.
         UniqueConstraint("packing_list_id", name="uq_trip_leg_packing_list_id"),
     )
@@ -116,6 +127,14 @@ class TripLeg(Base, TimestampMixin):
     trip_id: Mapped[int] = mapped_column(
         ForeignKey("trip.id", ondelete="CASCADE", name="fk_trip_leg_trip"),
         nullable=False,
+        index=True,
+    )
+    #: Set on a 備案: the entry this one stands in for. One level only - the
+    #: router refuses a backup of a backup. CASCADE: a backup means nothing
+    #: without its entry.
+    backup_of_id: Mapped[int | None] = mapped_column(
+        ForeignKey("trip_leg.id", ondelete="CASCADE", name="fk_trip_leg_backup_of"),
+        nullable=True,
         index=True,
     )
     from_place: Mapped[str] = mapped_column(String, nullable=False)
@@ -170,6 +189,14 @@ class TripLeg(Base, TimestampMixin):
 
     trip = relationship("Trip", back_populates="legs")
     packing_list = relationship("PackingList", back_populates="trip_leg")
+    backups = relationship(
+        "TripLeg",
+        cascade="all",
+        passive_deletes=True,
+        # The same order as `Trip.legs`. A lambda because TripLeg is still
+        # being declared.
+        order_by=lambda: (TripLeg.departs_at.asc().nulls_last(), TripLeg.id),
+    )
 
     @property
     def packing_list_name(self) -> str | None:

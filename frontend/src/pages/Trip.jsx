@@ -14,8 +14,16 @@
  * and the ticks and booking code it has - fixed ones always, optional ones
  * when switched on in the card's ⋯ menu.
  *
- * A round trip (來回) shows two sections, 去程 and 回程, each with its own
- * title, remark and + 新增一段; an entry moves between them from its ⋯ menu.
+ * A round trip (來回) keeps the trip's overall 備註 in the header and shows two
+ * sections, 去程 and 回程, each with its own title, remark and + 新增一段; an
+ * entry moves between them from its ⋯ menu.
+ *
+ * Under each entry are its 備案: backups, each a card like the entry's own, in
+ * a list of their own with + 新增備案. They count for nothing the trip reads -
+ * see `Trip.legs` on the server.
+ *
+ * A 範本's header carries + 從這份範本建立行程, so starting a trip from it
+ * needs no trip back to the index.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -26,6 +34,7 @@ import { endpoints } from '../api/endpoints'
 import { SelectCell, TextAreaCell, TextCell } from '../components/Cell'
 import { Combobox } from '../components/Combobox'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { CreateFromTemplate } from '../components/CreateFromTemplate'
 import { EvictDialog } from '../components/EvictDialog'
 import { KindControls } from '../components/KindControls'
 import { PriceCell } from '../components/PriceCell'
@@ -70,6 +79,7 @@ import {
   firstDeparture,
   formatLegTimes,
   fromTaipeiInput,
+  needsStartDate,
   readinessHint,
   sortLegs,
   taipeiInputValue,
@@ -81,10 +91,10 @@ const TRIPS = ['trips']
 const INVALIDATE = [TRIPS, ['packing-list'], ['packing-lists'], ['label-options']]
 const COPIED_MS = 2000
 const SECTIONS = ['outbound', 'return']
-// Where each section keeps its title and remark. The 去程 remark is the
-// trip's own `notes`, so nothing moves when a trip turns round.
+// Where each section keeps its title and remark. The trip's own `notes` is the
+// overall 備註, one-way or round trip.
 const SECTION_FIELDS = {
-  outbound: { title: 'outbound_title', remark: 'notes' },
+  outbound: { title: 'outbound_title', remark: 'outbound_notes' },
   return: { title: 'return_title', remark: 'return_notes' },
 }
 
@@ -409,9 +419,9 @@ function LegFieldCell({ leg, field, ticketTypes, patch }) {
 
 /**
  * An entry's ⋯: 移到去程 / 移到回程 on a round trip, 顯示 / 隱藏 for each of
- * the type's optional ticks and code, and 刪除這段.
+ * the type's optional ticks and code, and 刪除這段 (刪除備案 on a backup).
  */
-function LegMenu({ leg, roundTrip, onPatch, onDelete }) {
+function LegMenu({ leg, roundTrip, deleteLabel, onPatch, onDelete }) {
   const [open, setOpen] = useState(false)
   const type = leg.transport_type
   const actions = []
@@ -426,7 +436,7 @@ function LegMenu({ leg, roundTrip, onPatch, onDelete }) {
       onSelect: () => onPatch({ [flagField(flag)]: !on }),
     })
   }
-  actions.push({ label: '刪除這段', danger: true, onSelect: onDelete })
+  actions.push({ label: deleteLabel, danger: true, onSelect: onDelete })
   return (
     <>
       <button
@@ -468,7 +478,35 @@ function TypeSelect({ value, onChange, placeholder, autoFocus = false, className
   )
 }
 
-function LegCard({ leg, roundTrip, ticketTypes, actions }) {
+/** An entry's 備案, in departure order, then + 新增備案. */
+function Backups({ leg, ticketTypes, actions }) {
+  return (
+    <section aria-label="備案" className="mt-3 flex flex-col gap-2 border-l-2 border-border-strong pl-3">
+      {sortLegs(leg.backups).map((backup, index) => (
+        <LegCard
+          key={backup.id}
+          leg={backup}
+          backupNumber={index + 1}
+          ticketTypes={ticketTypes}
+          actions={actions}
+        />
+      ))}
+      <AddLeg
+        label="+ 新增備案"
+        ticketTypes={ticketTypes}
+        onAdd={(payload) => actions.addBackup.mutateAsync({ legId: leg.id, payload })}
+      />
+    </section>
+  )
+}
+
+/**
+ * One entry, or with `backupNumber` one of an entry's 備案: the same card,
+ * without what only an entry has - a section to move between, a packing list
+ * and backups of its own.
+ */
+function LegCard({ leg, roundTrip = false, backupNumber = null, ticketTypes, actions }) {
+  const isBackup = backupNumber !== null
   const [editingTimes, setEditingTimes] = useState(false)
   const [timesProblem, setTimesProblem] = useState(null)
   const [confirming, setConfirming] = useState(false)
@@ -493,6 +531,7 @@ function LegCard({ leg, roundTrip, ticketTypes, actions }) {
     <article className="rounded-md border border-border bg-surface p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
+          {isBackup && <p className="m-0 text-xs font-semibold text-text-muted">備案 {backupNumber}</p>}
           <h3 className="m-0 flex flex-wrap items-center text-lg font-semibold">
             <span className="[&_button]:w-auto [&_input]:w-32">
               <TextCell
@@ -542,6 +581,7 @@ function LegCard({ leg, roundTrip, ticketTypes, actions }) {
         <LegMenu
           leg={leg}
           roundTrip={roundTrip}
+          deleteLabel={isBackup ? '刪除備案' : '刪除這段'}
           onPatch={patch}
           onDelete={() => setConfirming(true)}
         />
@@ -593,14 +633,23 @@ function LegCard({ leg, roundTrip, ticketTypes, actions }) {
         </Field>
       </dl>
 
-      <div className="mt-2">
-        <PackingListLink leg={leg} onLink={(packing_list_id) => patchAsync({ packing_list_id })} />
-      </div>
+      {!isBackup && (
+        <>
+          <div className="mt-2">
+            <PackingListLink leg={leg} onLink={(packing_list_id) => patchAsync({ packing_list_id })} />
+          </div>
+          <Backups leg={leg} ticketTypes={ticketTypes} actions={actions} />
+        </>
+      )}
 
       {confirming && (
         <ConfirmDialog
           title={`刪除「${leg.from_place} → ${leg.to_place}」？`}
-          body="這一段的訂票資料會一起刪除，連結的打包清單不受影響。"
+          body={
+            isBackup
+              ? '這個備案的訂票資料會一起刪除，原本的這一段不受影響。'
+              : '這一段的訂票資料和它的備案會一起刪除，連結的打包清單不受影響。'
+          }
           confirmLabel="刪除"
           onConfirm={() => {
             setConfirming(false)
@@ -657,11 +706,12 @@ function AddField({ type, field, value, ticketTypes, onChange }) {
 }
 
 /**
- * + 新增一段: 類型 first, then only that type's fields, and a 顯示 checkbox
- * for each optional tick and code, starting at the type's default. Times are
- * optional. The booking code and 備註 are filled in on the card.
+ * + 新增一段 or + 新增備案 (`label`): 類型 first, then only that type's fields,
+ * and a 顯示 checkbox for each optional tick and code, starting at the type's
+ * default. Times are optional. The booking code and 備註 are filled in on the
+ * card.
  */
-function AddLeg({ ticketTypes, onAdd }) {
+function AddLeg({ label = '+ 新增一段', ticketTypes, onAdd }) {
   const [open, setOpen] = useState(false)
   const [type, setType] = useState('')
   const [from, setFrom] = useState('')
@@ -724,7 +774,7 @@ function AddLeg({ ticketTypes, onAdd }) {
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className={`${smallButton} self-start`}>
-        + 新增一段
+        {label}
       </button>
     )
   }
@@ -1004,15 +1054,30 @@ function TripView({ trip, unlinked, ticketTypes, actions, onDeleted, onDismissNo
           <KindControls row={trip} noun="行程" onPatch={patchTrip} onMakeTemplate={makeTemplate} />
           {trip.kind !== 'template' && <Readiness trip={trip} onPatch={patchTripAsync} />}
           <RoundTripToggle trip={trip} onPatch={patchTripAsync} />
+          {trip.kind === 'template' && (
+            <CreateFromTemplate
+              template={trip}
+              noun="行程"
+              dateRequired={needsStartDate(trip)}
+              pending={actions.createFromTemplate.isPending}
+              failed={actions.createFromTemplate.isError}
+              onCreate={({ name, date }) =>
+                actions.createFromTemplate.mutate({
+                  name,
+                  kind: 'free',
+                  copy_from_id: trip.id,
+                  ...(date && needsStartDate(trip) ? { start_date: date } : {}),
+                })
+              }
+            />
+          )}
         </div>
-        {!roundTrip && (
-          <TextAreaCell
-            value={trip.notes}
-            placeholder="備註"
-            ariaLabel="備註"
-            onCommit={(notes) => patchTrip({ notes })}
-          />
-        )}
+        <TextAreaCell
+          value={trip.notes}
+          placeholder="備註"
+          ariaLabel="備註"
+          onCommit={(notes) => patchTrip({ notes })}
+        />
         {(trip.kind === 'saved' || isAutoSaved(trip) || trip.archive_note) && (
           <TextAreaCell
             value={trip.archive_note}
@@ -1111,6 +1176,17 @@ export default function Trip() {
     send(endpoints.trips.leg(id), 'PATCH', changes),
   )
   const deleteLeg = useTripMutation((id) => send(endpoints.trips.leg(id), 'DELETE'))
+  const addBackup = useTripMutation(({ legId, payload }) =>
+    send(endpoints.trips.legBackups(legId), 'POST', payload),
+  )
+  // Its own mutation, so a failed 當作範本 is not reported on this form. What
+  // the copy could not carry rides along, as it does from the index.
+  const createFromTemplate = useApiMutation({
+    invalidate: INVALIDATE,
+    mutationFn: (payload) => send(endpoints.trips.index(), 'POST', payload),
+    onSuccess: (created) =>
+      navigate(`/trips/${created.id}`, { state: { unlinked: created.unlinked_from } }),
+  })
 
   const makeTemplate = (source) => {
     // 當作範本 keeps the dates: the copy starts on the source's own first day.
@@ -1157,7 +1233,16 @@ export default function Trip() {
   const ticketTypes = (options.data || [])
     .filter((row) => row.kind === 'ticket_type')
     .map((row) => row.value)
-  const actions = { patchTrip, deleteTrip, addLeg, patchLeg, deleteLeg, makeTemplate }
+  const actions = {
+    patchTrip,
+    deleteTrip,
+    addLeg,
+    patchLeg,
+    deleteLeg,
+    addBackup,
+    createFromTemplate,
+    makeTemplate,
+  }
   const evicting = index.data?.evict_next ?? []
 
   // 保存 instead moves the doomed trips to 保存, then retries the change. A

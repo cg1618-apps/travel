@@ -41,8 +41,8 @@ def _get_note(db: Session, note_id: int) -> Note:
     return note
 
 
-def _link_rows(urls: list[str]) -> list[NoteLink]:
-    return [NoteLink(url=url, position=position) for position, url in enumerate(urls)]
+def _link_rows(links: list[dict]) -> list[NoteLink]:
+    return [NoteLink(**link, position=position) for position, link in enumerate(links)]
 
 
 @router.get("/api/notes", response_model=list[NoteResponse])
@@ -78,7 +78,7 @@ def create_note(payload: NoteCreate, db: Session = Depends(get_db)):
         title=payload.title,
         description=payload.description,
         position=place_in_group(db, Note, ALL_NOTES, "group_name", payload.group_name),
-        links=_link_rows(payload.links),
+        links=_link_rows(payload.model_dump()["links"]),
     )
     db.add(note)
     db.commit()

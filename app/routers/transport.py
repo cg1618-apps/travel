@@ -117,8 +117,8 @@ def _next_note_position(db: Session, route_id: int) -> int:
     return 0 if highest is None else highest + 1
 
 
-def _link_rows(urls: list[str]) -> list[TransportNoteLink]:
-    return [TransportNoteLink(url=url, position=position) for position, url in enumerate(urls)]
+def _link_rows(links: list[dict]) -> list[TransportNoteLink]:
+    return [TransportNoteLink(**link, position=position) for position, link in enumerate(links)]
 
 
 def _apply_order(
@@ -356,7 +356,7 @@ def create_note(route_id: int, payload: TransportNoteCreate, db: Session = Depen
         title=payload.title,
         description=payload.description,
         position=_next_note_position(db, route_id),
-        links=_link_rows(payload.links),
+        links=_link_rows(payload.model_dump()["links"]),
     )
     db.add(note)
     db.commit()
@@ -371,7 +371,7 @@ def update_note(note_id: int, payload: TransportNoteUpdate, db: Session = Depend
     # The title-or-link rule holds for the note as it will be, not the body:
     # a body clearing the title is fine while the note keeps a link.
     title = changes.get("title", note.title)
-    links = changes["links"] if "links" in changes else [link.url for link in note.links]
+    links = changes["links"] if "links" in changes else note.links
     if title is None and not links:
         raise HTTPException(status_code=422, detail=NOTE_NEEDS_TITLE_OR_LINK)
     if "links" in changes:

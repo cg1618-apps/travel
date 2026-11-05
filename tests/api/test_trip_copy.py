@@ -179,7 +179,8 @@ def test_a_copy_of_a_done_trip_starts_not_done(client):
 def test_types_switches_and_sections_carry(client):
     source = client.post("/api/trips", json={"name": "來回"}).json()
     url = f"/api/trips/{source['id']}"
-    client.patch(url, json={"round_trip": True, "outbound_title": "去", "return_title": "回",
+    client.patch(url, json={"round_trip": True, "notes": "整趟", "outbound_title": "去",
+                            "outbound_notes": "靠窗", "return_title": "回",
                             "return_notes": "早點出門"})
     for leg in (
         {"transport_type": "car", "ride_type": "car_rental", "has_booked": True,
@@ -192,6 +193,7 @@ def test_types_switches_and_sections_carry(client):
     new = copy(client, source, start_date="2026-10-01").json()
     assert (new["round_trip"], new["outbound_title"], new["return_title"], new["return_notes"]) == (
         True, "去", "回", "早點出門")
+    assert (new["notes"], new["outbound_notes"]) == ("整趟", "靠窗")
     car, train = new["legs"]
     assert (car["transport_type"], car["ride_type"], car["direction"], car["section"]) == (
         "car", "car_rental", "南下", "outbound")

@@ -59,17 +59,25 @@ export function notePayload({ title, description, links, group_name: group }) {
   const payload = {
     title: title.trim() || null,
     description: description.trim() || null,
-    links: links.map((link) => link.trim()).filter(Boolean),
+    links: links
+      .map((link) => ({ url: link.url.trim(), title: link.title.trim() || null }))
+      .filter((link) => link.url),
   }
   if (group !== undefined) payload.group_name = group.trim() || null
   return payload
 }
 
+/** A link title typed with no URL: saving would silently drop it. */
+export const hasTitleWithoutUrl = (links) =>
+  links.some((link) => link.title.trim() && !link.url.trim())
+
 /**
  * A route's note needs a title or a link; a description alone is not enough.
- * A note on the 筆記 page needs a title whatever else it has.
+ * A note on the 筆記 page needs a title whatever else it has. Neither saves
+ * while a link has a title and no URL.
  */
 export function canSaveNote(fields, { titleRequired = false } = {}) {
+  if (hasTitleWithoutUrl(fields.links)) return false
   const { title, links } = notePayload(fields)
   if (titleRequired) return title !== null
   return title !== null || links.length > 0
@@ -98,6 +106,9 @@ export function linkText(url) {
   }
 }
 
+/** A note's link as shown: its title when it has one, else its address. */
+export const noteLinkText = (link) => link.title ?? linkText(link.url)
+
 /** What a note is called in its menu and dialog: its title, else its first link. */
 export const noteName = (note) =>
-  note.title ?? (note.links[0] ? linkText(note.links[0]) : '筆記')
+  note.title ?? (note.links[0] ? noteLinkText(note.links[0]) : '筆記')
