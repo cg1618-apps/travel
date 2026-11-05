@@ -214,8 +214,22 @@ def test_an_item_carries_detail_need_and_location(client, packing_list):
     assert (body["detail"], body["need"], body["location"]) == ("家鑰匙", "bring", "彰化")
 
 
-def test_need_may_be_left_blank(client, packing_list):
-    assert add_item(client, packing_list).json()["need"] is None
+def test_need_defaults_to_bring(client, packing_list):
+    assert add_item(client, packing_list).json()["need"] == "bring"
+
+
+def test_bulk_created_items_default_to_bring_too(client, packing_list):
+    response = client.post(
+        f"/api/packing-lists/{packing_list.id}/items/bulk-create",
+        json={"items": [{"name": "a"}, {"name": "b", "need": "buy"}, {"name": "c", "need": None}]},
+    )
+    assert response.status_code == 201
+    assert [row["need"] for row in response.json()] == ["bring", "buy", None]
+
+
+def test_need_may_still_be_left_blank_by_saying_so(client, packing_list):
+    # 需帶 is the default, not a requirement: — is still something to choose.
+    assert add_item(client, packing_list, need=None).json()["need"] is None
 
 
 def test_an_unknown_need_is_a_422_not_a_500(client, packing_list):

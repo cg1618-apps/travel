@@ -50,6 +50,7 @@ from app.services.domain.trip import (
     is_ready,
     needs_start_date,
     not_ready_message,
+    promote_backup,
     section_for,
     settle_done,
 )
@@ -64,6 +65,7 @@ COPY_SOURCE_NOT_FOUND = "Trip to copy from not found."
 START_DATE_REQUIRED = "start_date is required to copy a trip with legs."
 BACKUP_OF_A_BACKUP = "A backup cannot have backups of its own."
 BACKUP_WITH_A_LIST = "A backup cannot link a packing list."
+ONLY_A_BACKUP = "Only a backup can become the main entry."
 
 
 def _trips_query():
@@ -287,6 +289,22 @@ def create_backup(leg_id: int, payload: TripLegCreate, db: Session = Depends(get
     db.commit()
     db.refresh(backup)
     return backup
+
+
+@router.post("/api/trip-legs/{leg_id}/promote", response_model=TripLegResponse)
+def promote_leg(leg_id: int, db: Session = Depends(get_db)):
+    """設為主要: this backup becomes the main option, and the entry's option a
+    backup. Answers with the entry. Unlike editing a backup this can make the
+    trip not ready, since what was uncounted now counts, so `done` is settled."""
+    backup = _get_leg(db, leg_id)
+    if backup.backup_of_id is None:
+        raise HTTPException(status_code=422, detail=ONLY_A_BACKUP)
+    entry = _get_leg(db, backup.backup_of_id)
+    promote_backup(backup, entry)
+    settle_done(db, entry.trip)
+    db.commit()
+    db.expire_all()
+    return _get_leg(db, entry.id)
 
 
 def _leg_refusals(leg: TripLeg, changes: dict) -> list[str]:

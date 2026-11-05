@@ -20,7 +20,7 @@
  *
  * Under each entry are its 備案: backups, each a card like the entry's own, in
  * a list of their own with + 新增備案. They count for nothing the trip reads -
- * see `Trip.legs` on the server.
+ * see `Trip.legs` on the server - until 設為主要 swaps one with the entry.
  *
  * A 範本's header carries + 從這份範本建立行程, so starting a trip from it
  * needs no trip back to the index.
@@ -81,6 +81,7 @@ import {
   fromTaipeiInput,
   needsStartDate,
   readinessHint,
+  samePlaces,
   sortLegs,
   taipeiInputValue,
   tripReadiness,
@@ -418,13 +419,15 @@ function LegFieldCell({ leg, field, ticketTypes, patch }) {
 }
 
 /**
- * An entry's ⋯: 移到去程 / 移到回程 on a round trip, 顯示 / 隱藏 for each of
- * the type's optional ticks and code, and 刪除這段 (刪除備案 on a backup).
+ * An entry's ⋯: 設為主要 on a backup, 移到去程 / 移到回程 on a round trip, 顯示 /
+ * 隱藏 for each of the type's optional ticks and code, and 刪除這段 (刪除備案 on
+ * a backup).
  */
-function LegMenu({ leg, roundTrip, deleteLabel, onPatch, onDelete }) {
+function LegMenu({ leg, roundTrip, deleteLabel, onPatch, onPromote, onDelete }) {
   const [open, setOpen] = useState(false)
   const type = leg.transport_type
   const actions = []
+  if (onPromote) actions.push({ label: '設為主要', onSelect: onPromote })
   if (roundTrip) {
     const target = leg.section === 'return' ? 'outbound' : 'return'
     actions.push({ label: `移到${LEG_LABELS[target]}`, onSelect: () => onPatch({ section: target }) })
@@ -487,12 +490,14 @@ function Backups({ leg, ticketTypes, actions }) {
           key={backup.id}
           leg={backup}
           backupNumber={index + 1}
+          entry={leg}
           ticketTypes={ticketTypes}
           actions={actions}
         />
       ))}
       <AddLeg
         label="+ 新增備案"
+        startFrom={leg}
         ticketTypes={ticketTypes}
         onAdd={(payload) => actions.addBackup.mutateAsync({ legId: leg.id, payload })}
       />
@@ -503,14 +508,18 @@ function Backups({ leg, ticketTypes, actions }) {
 /**
  * One entry, or with `backupNumber` one of an entry's 備案: the same card,
  * without what only an entry has - a section to move between, a packing list
- * and backups of its own.
+ * and backups of its own. A backup going between the same two places as its
+ * `entry` keeps them out of the way until its ✎ opens them.
  */
-function LegCard({ leg, roundTrip = false, backupNumber = null, ticketTypes, actions }) {
+function LegCard({ leg, roundTrip = false, backupNumber = null, entry = null, ticketTypes, actions }) {
   const isBackup = backupNumber !== null
   const [editingTimes, setEditingTimes] = useState(false)
   const [timesProblem, setTimesProblem] = useState(null)
+  const [editingPlaces, setEditingPlaces] = useState(false)
+  const [promoteProblem, setPromoteProblem] = useState(null)
   const [confirming, setConfirming] = useState(false)
   const type = leg.transport_type
+  const placesRepeat = isBackup && samePlaces(leg, entry)
   const patch = (changes) => actions.patchLeg.mutate({ id: leg.id, changes })
   const patchAsync = (changes) => actions.patchLeg.mutateAsync({ id: leg.id, changes })
   const fields = fieldsFor(type)
@@ -527,28 +536,55 @@ function LegCard({ leg, roundTrip = false, backupNumber = null, ticketTypes, act
     }
   }
 
+  const promote = async () => {
+    try {
+      await actions.promoteLeg.mutateAsync(leg.id)
+      setPromoteProblem(null)
+    } catch {
+      setPromoteProblem('發生錯誤')
+    }
+  }
+
   return (
     <article className="rounded-md border border-border bg-surface p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          {isBackup && <p className="m-0 text-xs font-semibold text-text-muted">備案 {backupNumber}</p>}
-          <h3 className="m-0 flex flex-wrap items-center text-lg font-semibold">
-            <span className="[&_button]:w-auto [&_input]:w-32">
-              <TextCell
-                value={leg.from_place}
-                placeholder="起點"
-                onCommit={required((from_place) => patch({ from_place }))}
-              />
-            </span>
-            <span aria-hidden="true">→</span>
-            <span className="[&_button]:w-auto [&_input]:w-32">
-              <TextCell
-                value={leg.to_place}
-                placeholder="終點"
-                onCommit={required((to_place) => patch({ to_place }))}
-              />
-            </span>
-          </h3>
+          {isBackup && (
+            <p className="m-0 flex items-center gap-1 text-xs font-semibold text-text-muted">
+              備案 {backupNumber}
+              {placesRepeat && (
+                <button
+                  type="button"
+                  aria-label="編輯起點終點"
+                  aria-pressed={editingPlaces}
+                  onClick={() => setEditingPlaces(!editingPlaces)}
+                  className={editButton}
+                  style={{ minHeight: 0 }}
+                >
+                  ✎
+                </button>
+              )}
+            </p>
+          )}
+          {(!placesRepeat || editingPlaces) && (
+            <h3 className="m-0 flex flex-wrap items-center text-lg font-semibold">
+              <span className="[&_button]:w-auto [&_input]:w-32">
+                <TextCell
+                  value={leg.from_place}
+                  placeholder="起點"
+                  onCommit={required((from_place) => patch({ from_place }))}
+                />
+              </span>
+              <span aria-hidden="true">→</span>
+              <span className="[&_button]:w-auto [&_input]:w-32">
+                <TextCell
+                  value={leg.to_place}
+                  placeholder="終點"
+                  onCommit={required((to_place) => patch({ to_place }))}
+                />
+              </span>
+            </h3>
+          )}
           <p className="m-0 flex items-center gap-1 text-sm text-text-muted">
             {times ? <span>{times}</span> : <span className="text-text-faint">未定時間</span>}
             <button
@@ -572,6 +608,7 @@ function LegCard({ leg, roundTrip = false, backupNumber = null, ticketTypes, act
               problem={timesProblem}
             />
           )}
+          <Problem>{promoteProblem}</Problem>
         </div>
         <TypeSelect
           value={type}
@@ -583,6 +620,7 @@ function LegCard({ leg, roundTrip = false, backupNumber = null, ticketTypes, act
           roundTrip={roundTrip}
           deleteLabel={isBackup ? '刪除備案' : '刪除這段'}
           onPatch={patch}
+          onPromote={isBackup ? promote : null}
           onDelete={() => setConfirming(true)}
         />
       </div>
@@ -709,9 +747,10 @@ function AddField({ type, field, value, ticketTypes, onChange }) {
  * + 新增一段 or + 新增備案 (`label`): 類型 first, then only that type's fields,
  * and a 顯示 checkbox for each optional tick and code, starting at the type's
  * default. Times are optional. The booking code and 備註 are filled in on the
- * card.
+ * card. `startFrom`, on + 新增備案, is the entry whose places and departure the
+ * form opens with, as they are at that moment.
  */
-function AddLeg({ label = '+ 新增一段', ticketTypes, onAdd }) {
+function AddLeg({ label = '+ 新增一段', startFrom = null, ticketTypes, onAdd }) {
   const [open, setOpen] = useState(false)
   const [type, setType] = useState('')
   const [from, setFrom] = useState('')
@@ -733,6 +772,15 @@ function AddLeg({ label = '+ 新增一段', ticketTypes, onAdd }) {
     setFlags({})
     setProblem(null)
     setOpen(false)
+  }
+
+  const start = () => {
+    if (startFrom) {
+      setFrom(startFrom.from_place)
+      setTo(startFrom.to_place)
+      setDeparts(timeValue(startFrom.departs_at))
+    }
+    setOpen(true)
   }
 
   const pickType = (next) => {
@@ -773,7 +821,7 @@ function AddLeg({ label = '+ 新增一段', ticketTypes, onAdd }) {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className={`${smallButton} self-start`}>
+      <button type="button" onClick={start} className={`${smallButton} self-start`}>
         {label}
       </button>
     )
@@ -1179,6 +1227,7 @@ export default function Trip() {
   const addBackup = useTripMutation(({ legId, payload }) =>
     send(endpoints.trips.legBackups(legId), 'POST', payload),
   )
+  const promoteLeg = useTripMutation((id) => send(endpoints.trips.promoteLeg(id), 'POST'))
   // Its own mutation, so a failed 當作範本 is not reported on this form. What
   // the copy could not carry rides along, as it does from the index.
   const createFromTemplate = useApiMutation({
@@ -1240,6 +1289,7 @@ export default function Trip() {
     patchLeg,
     deleteLeg,
     addBackup,
+    promoteLeg,
     createFromTemplate,
     makeTemplate,
   }

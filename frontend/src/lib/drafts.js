@@ -25,7 +25,7 @@ export function emptyDraft(category = '') {
     status: 'not_packed',
     check: 'off',
     timing: 'whenever',
-    need: '',
+    need: 'bring',
     location: '',
     notes: '',
   }

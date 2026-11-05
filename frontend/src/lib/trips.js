@@ -122,6 +122,11 @@ export function sortLegs(legs) {
   })
 }
 
+/** Whether a backup goes between the same two places as its entry. */
+export function samePlaces(backup, entry) {
+  return backup.from_place === entry.from_place && backup.to_place === entry.to_place
+}
+
 /** A copy needs a start date only when some leg has a time to move. */
 export function needsStartDate(trip) {
   return trip.legs.some((leg) => leg.departs_at)
