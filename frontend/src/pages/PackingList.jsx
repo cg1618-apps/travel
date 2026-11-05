@@ -10,7 +10,9 @@
  * data model, asked of someone who wants to pack a bag.
  *
  * The header carries the list's 狀態, 保存 and 當作範本, the same controls as
- * its row on /lists, with 備註 and - where it matters - 保存備註 beneath.
+ * its row on /lists, with 備註 and - where it matters - 保存備註 beneath. A
+ * 範本's carries + 從這份範本建立清單, so starting a list from it needs no trip
+ * back to the index.
  */
 
 import { useQueryClient } from '@tanstack/react-query'
@@ -21,6 +23,7 @@ import { endpoints } from '../api/endpoints'
 import { TextAreaCell, TextCell } from '../components/Cell'
 import { Checklist } from '../components/Checklist'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { CreateFromTemplate } from '../components/CreateFromTemplate'
 import { DeleteMenu } from '../components/DeleteMenu'
 import { EvictDialog } from '../components/EvictDialog'
 import { Grid } from '../components/Grid'
@@ -197,6 +200,17 @@ export default function PackingList() {
       }),
     onSuccess: (created) => navigate(`/lists/${created.id}`),
   })
+  const createFromTemplate = useApiMutation({
+    invalidate: [['packing-lists']],
+    mutationFn: ({ name, date }) =>
+      send(endpoints.packingLists.index(), 'POST', {
+        name,
+        departure_at: date,
+        kind: 'free',
+        copy_from_id: list.data.id,
+      }),
+    onSuccess: (created) => navigate(`/lists/${created.id}`),
+  })
   // Not this list's own key: refetching a list that was just deleted is a 404
   // on the screen being left. The trips refresh because a leg loses its link.
   const removeList = useApiMutation({
@@ -284,6 +298,15 @@ export default function PackingList() {
             onPatch={(changes) => patchList.mutate(changes)}
             onMakeTemplate={() => makeTemplate.mutate()}
           />
+          {list.data.kind === 'template' && (
+            <CreateFromTemplate
+              template={list.data}
+              noun="清單"
+              pending={createFromTemplate.isPending}
+              failed={createFromTemplate.isError}
+              onCreate={createFromTemplate.mutate}
+            />
+          )}
         </div>
         <TextAreaCell
           value={list.data.notes}

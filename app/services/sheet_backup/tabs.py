@@ -17,6 +17,10 @@ every row it points at, so each foreign key finds its target.
     Packing List     -> Trip Leg              (trip_leg.packing_list_id)
     Note             -> Note Link             (note_link.note_id)
 
+Trip Leg also points at itself (`trip_leg.backup_of_id`). A tab order cannot
+settle that one; the rows can, because a tab is written and restored by `id`
+and a backup is always created after the entry it stands in for.
+
 Label Option points at nothing and comes first; Note points at nothing either
 and comes after the trips. Deleting runs the other way.
 `tests/unit/test_sheet_backup_tabs.py` checks the order against the models'

@@ -28,8 +28,8 @@ const queryClient = new QueryClient({
 // Chinese.
 const NAV_LINKS = [
   ['/lists', '打包清單'],
-  ['/transport', '交通'],
   ['/trips', '行程'],
+  ['/transport', '交通'],
   ['/notes', '筆記'],
   ['/options', '選項'],
 ]

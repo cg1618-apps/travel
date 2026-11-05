@@ -157,7 +157,8 @@ class TransportNote(Base, TimestampMixin):
 
 
 class TransportNoteLink(Base, TimestampMixin):
-    """One URL on a note, in the order the note lists them."""
+    """One URL on a note, with an optional title, in the order the note lists
+    them."""
 
     __tablename__ = "transport_note_link"
 
@@ -170,6 +171,7 @@ class TransportNoteLink(Base, TimestampMixin):
         index=True,
     )
     url: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str | None] = mapped_column(String, nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     note = relationship("TransportNote", back_populates="links")

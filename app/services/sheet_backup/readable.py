@@ -209,21 +209,31 @@ def _leg_order(leg: TripLeg) -> tuple:
     return (leg.departs_at is None, leg.departs_at or datetime.min.replace(tzinfo=TAIPEI), leg.id)
 
 
+def _leg_rows(leg: TripLeg) -> list[list]:
+    """An entry's row, then a row per 備案, marked in its first cell."""
+    backups = (
+        [f"備案：{backup.from_place}", *leg_row(backup)[1:]]
+        for backup in sorted(leg.backups, key=_leg_order)
+    )
+    return [leg_row(leg), *backups]
+
+
 def trip_matrix(trip: Trip) -> list[list]:
-    """The trip's header block, then its legs in departure order: one block
-    on a one-way trip, a 去程 block and a 回程 block on a round trip, each
-    with its title and remark."""
+    """The trip's header block with its overall remark, then its legs in
+    departure order: one block on a one-way trip, a 去程 block and a 回程 block
+    on a round trip, each with its title and remark."""
     legs: list[TripLeg] = sorted(trip.legs, key=_leg_order)
     header = [
         [trip.name],
         ["狀態", status_label(trip)],
         ["準備", DONE_LABEL if trip.done else NOT_DONE_LABEL],
         ["車票", TICKET_STATUS_LABELS[trip.ticket_status]],
+        ["備註", _text(trip.notes)],
     ]
     if not trip.round_trip:
-        return [*header, ["備註", _text(trip.notes)], [], LEG_HEADERS, *map(leg_row, legs)]
+        return [*header, [], LEG_HEADERS, *(row for leg in legs for row in _leg_rows(leg))]
     sections = (
-        (Leg.OUTBOUND, trip.outbound_title, trip.notes),
+        (Leg.OUTBOUND, trip.outbound_title, trip.outbound_notes),
         (Leg.RETURN, trip.return_title, trip.return_notes),
     )
     rows = header
@@ -235,7 +245,12 @@ def trip_matrix(trip: Trip) -> list[list]:
             LEG_HEADERS,
             # A leg with no section on a round trip cannot be stored by the
             # API; one put there by hand reads as 去程, as the screen shows it.
-            *(leg_row(leg) for leg in legs if (leg.section or Leg.OUTBOUND) == section),
+            *(
+                row
+                for leg in legs
+                if (leg.section or Leg.OUTBOUND) == section
+                for row in _leg_rows(leg)
+            ),
         ]
     return rows
 
@@ -248,8 +263,9 @@ def departures_text(option: TransportOption, day_type: str) -> str:
 
 def note_text(note: TransportNote) -> str:
     """`title · description · link link`: one route note on one line, its
-    missing parts left out."""
-    parts = [note.title, note.description, " ".join(link.url for link in note.links)]
+    missing parts left out. A titled link reads `title url`."""
+    links = " ".join(f"{link.title} {link.url}" if link.title else link.url for link in note.links)
+    parts = [note.title, note.description, links]
     return " · ".join(part for part in parts if part)
 
 

@@ -23,7 +23,7 @@ Routes are declared in `src/App.jsx`: `/` the dashboard, `/lists` and
 bookmark still lands: `/trip` to `/trips`, and `/trips/auto-saved` to
 `/trips?tab=auto_saved` (declared above `/trips/:tripId`, which would otherwise
 read it as an id). Any other path renders the dashboard.
-The nav bar names 打包清單, 交通, 行程, 筆記 and 選項, ends with the theme toggle, and the app's name `travel` links to `/`. Every screen is editable, so every one of
+The nav bar names 打包清單, 行程, 交通, 筆記 and 選項, ends with the theme toggle, and the app's name `travel` links to `/`. Every screen is editable, so every one of
 them goes through TanStack Query — media's split is query hooks for anything
 written back from the UI and plain `fetch` for read-only pages, and this app has
 no read-only pages.
@@ -371,8 +371,11 @@ a 行程 leg (`departure_source: "trip_leg"`) says so — `由行程設定` — 
 
 Under the date the header carries the list's kind: a 範本 / 保存 / 自動保存
 badge, and the same `KindControls` as its row on `/lists`. 當作範本 here opens
-the new template. Then a **備註** cell, and a **保存備註** cell when the list is
-saved or auto-saved or already has a remark — both multi-line
+the new template. On a 範本 the same row holds **+ 從這份範本建立清單**
+(`components/CreateFromTemplate.jsx`): it opens a name, already filled from the
+template, and an optional 出發日期, and 建立 makes a 一般 list with the
+template's items and opens it. Then a **備註** cell, and a **保存備註** cell when
+the list is saved or auto-saved or already has a remark — both multi-line
 (`TextAreaCell`, below). 過去使用 into a full 自動保存
 opens the same `EvictDialog`; the index it names from is fetched only once a
 refusal has happened, and the dialog opens only once that read has arrived
@@ -393,13 +396,19 @@ has to be told it:
   instead.
 
 **A remark is several lines: `TextAreaCell`.** Every remark field uses it — a
-trip's 備註 (and 回程備註), 保存備註 on a trip or a list, an entry's 備註, a
-list's 備註, a packing item's 備註 on the sheet, a route's and an option's
-備註, and a note's 說明 on a route and on 筆記. It shows its text with the line
-breaks kept; clicking opens a textarea that grows with its content. **Enter is
-a new line**, so Ctrl+Enter (⌘+Enter) or leaving the cell commits, and Escape
-reverts. Trailing blank lines are dropped and nothing but whitespace saves as
-null (`remarkValue` in `lib/cells.js`).
+trip's 備註 (and 去程備註, 回程備註), 保存備註 on a trip or a list, an entry's
+備註, a list's 備註, a packing item's 備註 on the sheet, a route's and an
+option's 備註, and a note's 說明 on a route and on 筆記. It shows its text with
+the line breaks kept; clicking opens a textarea. **Enter is a new line**, so
+Ctrl+Enter (⌘+Enter) or leaving the cell commits, and Escape reverts. Trailing
+blank lines are dropped and nothing but whitespace saves as null (`remarkValue`
+in `lib/cells.js`).
+
+**Every multi-line field is an `AutoGrowTextarea`**
+(`components/AutoGrowTextarea.jsx`): as tall as its text, growing and shrinking
+while you type, never scrolling inside itself. That is `TextAreaCell`'s editor,
+the 說明 in the note form, which starts at three lines (`rows`), and 備註 in the
+sheet's new rows.
 
 數量 is one cell holding the target and its unit — "5 雙" is one fact.
 The number must be whole: anything else (`1.5`, `兩`) reverts the cell and
@@ -472,15 +481,19 @@ answers 404 — or 422, for an id that is not a number — reads 找不到這條
 - **筆記.** Under 備註, a 筆記 section lists the route's notes
   (`note_entries`) in order: the title in bold when there is one, the
   description (a `TextAreaCell`, edited in place), then each link opening in a
-  new tab, shown as host and path without the scheme (`linkText`), cut short
-  with an ellipsis on a narrow screen and titled with the full URL. With none
+  new tab, shown as its title when it has one and otherwise as host and path
+  without the scheme (`noteLinkText`), cut short with an ellipsis on a narrow
+  screen and titled with the full URL. With none
   it reads 還沒有筆記。 **+ 新增筆記** and each note's ✎ open the same form
-  (`components/NoteEditor.jsx`, shared with 筆記): 標題, 說明 (a textarea)
-  and one input per link, with ↑ / ↓ to move a link, ✕ to remove one and
+  (`components/NoteEditor.jsx`, shared with 筆記): 標題, 說明 (an
+  `AutoGrowTextarea`) and, per link, an optional 連結標題 and its URL, with
+  ↑ / ↓ to move a link, ✕ to remove one and
   **+ 新增連結** to add another; the links save in the order shown. Empty link
   inputs are dropped before sending (`notePayload`), and 儲存 stays disabled —
   with 需要標題或至少一個連結。 under it — until there is a title or a link,
-  since a description alone is refused (`canSaveNote`). A failed save keeps
+  since a description alone is refused (`canSaveNote`). It stays disabled too,
+  with 有標題的連結需要網址。, while a link has a title and no URL, which saving
+  would silently drop (`hasTitleWithoutUrl`). A failed save keeps
   the form open with 無法儲存筆記，請再試一次。 ⋯ 刪除筆記 asks first; a
   failed delete shows 無法刪除筆記，請再試一次。 Each note has a ⠿ grip; a drop
   sends every note id of the route in one
@@ -567,7 +580,12 @@ number — reads 找不到這個行程。
   自動保存 badge beside it. Under it `KindControls` — the 狀態 select on a
   一般 or 自動保存 trip, the 保存 checkbox and 當作範本, none of them on a 範本
   — then, except on a 範本, **已準備完成** and the ticket status, and on every
-  trip the **單程 / 來回** toggle. Then 備註 on a one-way trip. The ⋯ menu
+  trip the **單程 / 來回** toggle. A 範本 has **+ 從這份範本建立行程** there
+  (`components/CreateFromTemplate.jsx`): a name, already filled from the
+  template, and a 出發日期, required when some entry has a departure to move
+  (`needsStartDate`), and 建立 makes a 一般 trip from it and opens it, with the
+  same notice as 從範本 about packing lists the copy could not carry. Then the
+  trip's overall 備註, one-way or round trip. The ⋯ menu
   holds 保存 (or 取消保存, which asks first, as the checkbox does), 當作範本
   and 刪除行程, which asks first and returns to `/trips`; a 範本's ⋯ offers
   only 刪除行程. **當作範本** creates a template of the same name with the
@@ -588,13 +606,14 @@ number — reads 找不到這個行程。
 - **The ticket status** is a three-way `Segmented` control: 未買票 / 無需買票 /
   已買票 (`ticket_status`).
 - **單程 / 來回** (`round_trip`). A one-way trip is one list of entries under
-  its 備註. A round trip has no overall remark: it shows two sections, **去程**
-  and **回程**, each with a title cell (`outbound_title`, `return_title`), a
-  remark (`notes` — the one-way remark, so nothing moves when the trip turns
-  round — and `return_notes`), its entries and its own **+ 新增一段**, which
-  sends that `section`. An entry with no section shows under 去程. Back to
-  單程 is refused while 回程 holds an entry, a title or a remark, and the
-  screen says 回程還有行程段、標題或備註。請先移到去程或刪除，再改回單程。
+  its 備註. A round trip keeps that overall 備註 (`notes`) in the header and
+  shows two sections, **去程** and **回程**, each with a title cell
+  (`outbound_title`, `return_title`), a remark (`outbound_notes`,
+  `return_notes`), its entries and its own **+ 新增一段**, which sends that
+  `section`. An entry with no section shows under 去程. Back to 單程 is refused
+  while 回程 holds an entry, a title or a remark, and the screen says
+  回程還有行程段、標題或備註。請先移到去程或刪除，再改回單程。 去程's title and
+  remark are kept but not shown, and come back with the round trip.
 - **Entries** are cards in `departs_at` order, an entry with no departure
   after every entry with one, then by id (`sortLegs`). The top line is
   起點 → 終點, each a cell; an emptied one keeps its value (`required` in
@@ -640,7 +659,7 @@ number — reads 找不到這個行程。
 - **The ticks** the entry shows are toggles, each its own field.
 - **⋯** holds 移到去程 or 移到回程 on a round trip (`PATCH section`), a
   顯示「…」 / 隱藏「…」 item for each optional tick and the code, and
-  刪除這段, which asks first.
+  刪除這段, which asks first and says the entry's 備案 go with it.
 - **備註** is a `TextAreaCell`.
 - **Packing list.** A linked list shows as `打包清單：{name}`, a link to it; ✎
   opens a select of every list **except templates**, newest `created_at`
@@ -652,6 +671,14 @@ number — reads 找不到這個行程。
   linked to stays in the list, so the select never reads （不連結） for a
   linked entry. （不連結） unlinks. A 409 shows 這份清單已經連到別的行程段. The
   list's own header then reads 由行程設定 for its date.
+- **備案.** Under the packing list, set off by a rule down its left, an entry
+  lists its backups in `departs_at` order, each a card labelled 備案 1, 備案 2…
+  and otherwise the entry's own card: the same 類型, fields, times, ticks, code
+  and 備註, edited the same way. It has no packing list, no 移到去程 / 移到回程
+  and no 備案 of its own, and its ⋯ says 刪除備案. **+ 新增備案** opens the same
+  form as + 新增一段 (`POST /api/trip-legs/{id}/backups`). A backup's ticks count
+  for nothing: `tripReadiness`, the date range, the calendar and the index's
+  leg lines all read `trip.legs`, which does not include backups.
 - **Adding.** **+ 新增一段** opens a form that asks for the **類型** first;
   only then does it show 起點 and 終點, two optional Taipei times (an empty
   arrival takes the departure as it is chosen), the type's fields, and a
@@ -674,7 +701,8 @@ read from `['notes']` (`GET /api/notes`).
   ungrouped ones first with no heading, each named group under a small heading
   — the same convention as 交通's routes.
 - **A note** reads as on a route: its title, its 說明 as a `TextAreaCell`
-  edited in place, and its links, each opening in a new tab. ⋯ 刪除筆記 asks
+  edited in place, and its links, each opening in a new tab and shown by its
+  title when it has one. ⋯ 刪除筆記 asks
   first; a failed delete shows 無法刪除筆記，請再試一次。
 - **Order.** The ⠿ beside a note drags it within its group; **排序群組**,
   shown once there are two named groups, orders the named groups. Either sends

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  canSaveNote, formatPrice, groupByDayType, inIdOrder, linkText, moveBy, moveTo, noteName, notePayload,
+  canSaveNote, formatPrice, groupByDayType, hasTitleWithoutUrl, inIdOrder, linkText, moveBy, moveTo, noteLinkText, noteName, notePayload,
   optionSummary,
 } from './transport'
 
@@ -70,21 +70,31 @@ describe('inIdOrder', () => {
 
 describe('notePayload and canSaveNote', () => {
   const fields = (overrides) => ({ title: '', description: '', links: [], ...overrides })
+  const link = (url, title = '') => ({ url, title })
   it('sends blanks as null and drops empty link inputs', () => {
-    expect(notePayload(fields({ title: '  ', description: ' 第一行\n第二行 ', links: ['', ' https://a.example/x ', '  '] })))
-      .toEqual({ title: null, description: '第一行\n第二行', links: ['https://a.example/x'] })
+    expect(notePayload(fields({ title: '  ', description: ' 第一行\n第二行 ', links: [link(''), link(' https://a.example/x ', ' 時刻表 '), link('  ')] })))
+      .toEqual({ title: null, description: '第一行\n第二行', links: [{ url: 'https://a.example/x', title: '時刻表' }] })
+    expect(notePayload(fields({ links: [link('https://a.example', '  ')] })).links)
+      .toEqual([{ url: 'https://a.example', title: null }])
   })
   it('saves with a title alone or a link alone', () => {
     expect(canSaveNote(fields({ title: '轉乘' }))).toBe(true)
-    expect(canSaveNote(fields({ links: ['https://a.example'] }))).toBe(true)
+    expect(canSaveNote(fields({ links: [link('https://a.example')] }))).toBe(true)
   })
   it('refuses a description alone, or only blank links', () => {
     expect(canSaveNote(fields({ description: '說明' }))).toBe(false)
-    expect(canSaveNote(fields({ description: '說明', links: ['', ' '] }))).toBe(false)
+    expect(canSaveNote(fields({ description: '說明', links: [link(''), link(' ')] }))).toBe(false)
+  })
+  it('refuses a link with a title and no URL, which saving would drop', () => {
+    const orphan = fields({ title: '轉乘', links: [link('', '時刻表')] })
+    expect(hasTitleWithoutUrl(orphan.links)).toBe(true)
+    expect(canSaveNote(orphan)).toBe(false)
+    // Mirror: the same note, its link given a URL, saves.
+    expect(canSaveNote(fields({ title: '轉乘', links: [link('https://a.example', '時刻表')] }))).toBe(true)
   })
   it('needs a title on the 筆記 page, links or not', () => {
     const page = { titleRequired: true }
-    expect(canSaveNote(fields({ links: ['https://a.example'] }), page)).toBe(false)
+    expect(canSaveNote(fields({ links: [link('https://a.example')] }), page)).toBe(false)
     expect(canSaveNote(fields({ title: ' ' }), page)).toBe(false)
     expect(canSaveNote(fields({ title: '轉乘' }), page)).toBe(true)
   })
@@ -117,10 +127,18 @@ describe('linkText', () => {
   })
 })
 
+describe('noteLinkText', () => {
+  it('is the title when there is one, else the address', () => {
+    expect(noteLinkText({ url: 'https://a.example/x', title: '時刻表' })).toBe('時刻表')
+    expect(noteLinkText({ url: 'https://a.example/x', title: null })).toBe('a.example/x')
+  })
+})
+
 describe('noteName', () => {
   it('is the title, else the first link, else 筆記', () => {
     expect(noteName({ title: '轉乘', links: [] })).toBe('轉乘')
-    expect(noteName({ title: null, links: ['https://a.example/x'] })).toBe('a.example/x')
+    expect(noteName({ title: null, links: [{ url: 'https://a.example/x', title: null }] })).toBe('a.example/x')
+    expect(noteName({ title: null, links: [{ url: 'https://a.example/x', title: '時刻表' }] })).toBe('時刻表')
     expect(noteName({ title: null, links: [] })).toBe('筆記')
   })
 })

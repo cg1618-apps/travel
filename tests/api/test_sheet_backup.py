@@ -91,7 +91,8 @@ def seeded(db_session):
     db.flush()
     db.add_all([
         TransportNoteLink(note_id=transfer.id, url="https://example.invalid/a", position=0),
-        TransportNoteLink(note_id=transfer.id, url="https://example.invalid/b", position=1),
+        TransportNoteLink(note_id=transfer.id, url="https://example.invalid/b", title="時刻表",
+                          position=1),
         TransportNoteLink(note_id=link_only.id, url="https://example.invalid/c", position=0),
     ])
     trip = Trip(name="彰化 ⇄ 台北", kind=Kind.FREE, usage=Usage.IN_USE, notes="中秋")
@@ -124,7 +125,7 @@ def seeded(db_session):
     db.flush()
     db.add_all([
         NoteLink(note_id=grouped.id, url="https://example.invalid/n1", position=0),
-        NoteLink(note_id=grouped.id, url="https://example.invalid/n2", position=1),
+        NoteLink(note_id=grouped.id, url="https://example.invalid/n2", title="訂房", position=1),
         NoteLink(note_id=loose.id, url="https://example.invalid/n3", position=0),
     ])
     db.commit()
@@ -175,6 +176,36 @@ def test_a_backup_restores_every_column_of_every_row(seeded, fake, sheets):
     result = run_restore(seeded, sheets)
     assert result.rows == {name: len(rows) for name, rows in before.items()}
     assert snapshot(seeded) == before
+
+
+def add_a_backup(db):
+    """A 備案 of the seeded booked entry. Created last, so its id is above its
+    entry's, as every backup's is."""
+    entry = db.scalars(select(TripLeg).where(TripLeg.booking_code == "0123")).one()
+    db.add(TripLeg(trip_id=entry.trip_id, backup_of_id=entry.id, from_place="松山",
+                   to_place="羽田", transport_type="flight"))
+    db.commit()
+
+
+def test_a_backup_comes_back_with_its_entry(seeded, sheets):
+    """`trip_leg` points at itself, which the tab order cannot settle: this is
+    the row order doing it."""
+    add_a_backup(seeded)
+    before = snapshot(seeded)
+    run_backup(seeded, sheets, now=NOW)
+    wipe(seeded, {name: rows[0]["id"] for name, rows in before.items()})
+    run_restore(seeded, sheets)
+    assert snapshot(seeded) == before
+    seeded.expire_all()
+    restored = seeded.scalars(select(TripLeg).where(TripLeg.booking_code == "0123")).one()
+    assert [backup.from_place for backup in restored.backups] == ["松山"]
+
+
+def test_a_trip_tab_shows_a_backup_under_its_entry(seeded, fake, sheets):
+    add_a_backup(seeded)
+    run_backup(seeded, sheets, now=NOW)
+    firsts = [row[0] for row in fake.tab("行程 · 彰化 ⇄ 台北").values() if row]
+    assert firsts[firsts.index("台北車站") + 1] == "備案：松山"
 
 
 def test_after_a_restore_new_rows_take_fresh_ids(seeded, sheets):
@@ -422,7 +453,7 @@ def test_a_trip_tab_shows_taipei_times_and_the_linked_list(seeded, fake, sheets)
 def test_a_round_trip_tab_has_a_block_per_section(db_session, fake, sheets):
     db = db_session
     trip = Trip(name="來回", usage=Usage.IN_USE, round_trip=True, outbound_title="去台中",
-                notes="去程備註", return_title="回台北", return_notes="回程備註",
+                notes="整趟備註", outbound_notes="去程備註", return_title="回台北", return_notes="回程備註",
                 ticket_status="bought", done=True)
     db.add(trip)
     db.flush()
@@ -437,6 +468,7 @@ def test_a_round_trip_tab_has_a_block_per_section(db_session, fake, sheets):
     rows = fake.tab("行程 · 來回").values()
     assert ["準備", "已準備完成"] in rows and ["車票", "已買票"] in rows
     out, back = rows.index(["去程", "去台中"]), rows.index(["回程", "回台北"])
+    assert rows.index(["備註", "整趟備註"]) < out
     assert rows[out + 1] == ["備註", "去程備註"] and rows[back + 1] == ["備註", "回程備註"]
     assert [r[0] for r in rows[out + 3:back] if r] == ["台北"]
     assert rows[out + 3][5] == "南下"
@@ -459,7 +491,7 @@ def test_the_transport_tab_shows_a_routes_notes_under_its_remark(seeded, fake, s
     route_row = next(r for r in rows if r[:2] == ["宿舍", "彰化火車站"] and r[2] == "")
     assert route_row[17].split("\n") == [
         "走路也行",
-        "轉乘 · 在彰化換車 · https://example.invalid/a https://example.invalid/b",
+        "轉乘 · 在彰化換車 · https://example.invalid/a 時刻表 https://example.invalid/b",
         "https://example.invalid/c",
     ]
 
