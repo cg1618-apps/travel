@@ -73,7 +73,7 @@ function Option({ option, onRename, onDelete }) {
  */
 function KindTabs({ active, counts, onSelect }) {
   return (
-    <div className="sticky top-0 z-10 mt-4 bg-canvas pt-2">
+    <div className="sticky top-[var(--nav-h)] z-10 mt-4 bg-canvas pt-2">
       {/* The scroller and the baseline are two boxes, as in IndexTabs: the
           active tab's -mb-px overlaps the inner row's border, not a scroller's
           edge, so no vertical scrollbar appears. */}

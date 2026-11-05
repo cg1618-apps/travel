@@ -23,7 +23,16 @@ Routes are declared in `src/App.jsx`: `/` the dashboard, `/lists` and
 bookmark still lands: `/trip` to `/trips`, and `/trips/auto-saved` to
 `/trips?tab=auto_saved` (declared above `/trips/:tripId`, which would otherwise
 read it as an id). Any other path renders the dashboard.
-The nav bar names 打包清單, 行程, 交通, 筆記 and 選項, ends with the theme toggle, and the app's name `travel` links to `/`. Every screen is editable, so every one of
+The nav bar names 打包清單, 行程, 交通, 筆記 and 選項, ends with the theme toggle, and the app's name `travel` links to `/`.
+
+**The nav bar is sticky**, and holds one height, `--nav-h` in `index.css`:
+on a screen too narrow for every name, the names scroll sideways and the toggle
+stays put, rather than the bar wrapping to a second row. Anything else that
+sticks to the window pins below it with `top-[var(--nav-h)]`, which
+`nav-offset.test.js` guards. It sits at `z-40`, over the sticky headers and
+under the `z-50` dialogs and menus.
+
+Every screen is editable, so every one of
 them goes through TanStack Query — media's split is query hooks for anything
 written back from the UI and plain `fetch` for read-only pages, and this app has
 no read-only pages.
@@ -197,9 +206,9 @@ cell is painted on the canvas so nothing shows through, and its right edge is a
 shadow, since a collapsed border scrolls away with the table.
 
 The header row is sticky. On a screen wide enough for the whole sheet the page
-scrolls and the header sticks to the top of the window; on a narrower one the
+scrolls and the header sticks just below the nav bar; on a narrower one the
 sheet scrolls sideways inside its own box, which then also scrolls vertically
-(at most a screen tall) so the header can stick to that box's top. A sticky
+(at most the screen the nav bar leaves) so the header can stick to that box's top. A sticky
 element sticks to its nearest scroll container, and an `overflow-x` box is one
 whether or not it scrolls vertically.
 
@@ -571,7 +580,7 @@ trip. A `/trips/{id}` that answers 404 — or 422, for an id that is not a
 number — reads 找不到這個行程。
 
 - **Header.** It is sticky: ← 行程, the name and ⋯, the controls, 備註 and
-  保存備註 stay at the top of the screen on a canvas background with a rule
+  保存備註 stay just below the nav bar on a canvas background with a rule
   under it while the entries scroll beneath. The page's `<main>` is
   `overflow-x-clip` rather than `overflow-x-hidden` for that reason — both
   stop a wide card scrolling the page sideways, but `hidden` makes `<main>` a
