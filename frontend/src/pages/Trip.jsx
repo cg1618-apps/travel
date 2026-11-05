@@ -1021,7 +1021,7 @@ function TripView({ trip, unlinked, ticketTypes, actions, onDeleted, onDismissNo
           layout where it was while leaving a little air once it is stuck. z-10
           lifts it over the leg cards, which set no z-index of their own, and
           stays under the z-50 dialogs and menus. */}
-      <div className="sticky top-0 z-10 -mx-4 -mt-3 border-b border-border bg-canvas px-4 pt-3 pb-3">
+      <div className="sticky top-[var(--nav-h)] z-10 -mx-4 -mt-3 border-b border-border bg-canvas px-4 pt-3 pb-3">
         <Link
           to={tab === 'free' ? '/trips' : `/trips?tab=${tab}`}
           className="text-sm text-text-faint no-underline"

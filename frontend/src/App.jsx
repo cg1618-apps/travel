@@ -45,25 +45,32 @@ function ThemeToggle() {
       title={label}
       aria-label={label}
       aria-pressed={theme === 'dark'}
-      className="ml-auto min-w-11 rounded-md text-ink-text/70 hover:text-ink-text"
+      className="min-w-11 shrink-0 rounded-md text-ink-text/70 hover:text-ink-text"
     >
       {theme === 'dark' ? '☀' : '☾'}
     </button>
   )
 }
 
+// The bar stays on screen, and everything else that sticks to the window pins
+// below it by --nav-h. So it holds one height: on a screen too narrow for every
+// name the names scroll sideways rather than wrapping to a second row, and the
+// toggle stays put. z-40 keeps it over the z-10 sticky headers and the z-20 row
+// being dragged, and under the z-50 dialogs and menus.
 function Nav() {
   return (
-    <nav className="border-b border-border bg-ink text-ink-text">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
-        <Link to="/" className="mr-2 font-semibold text-ink-text no-underline">
-          travel
-        </Link>
-        {NAV_LINKS.map(([to, label]) => (
-          <Link key={to} to={to} className="text-sm text-ink-text/70 no-underline">
-            {label}
+    <nav className="sticky top-0 z-40 h-[var(--nav-h)] border-b border-border bg-ink text-ink-text">
+      <div className="mx-auto flex h-full max-w-6xl items-center gap-x-2 px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-x-3 overflow-x-auto whitespace-nowrap sm:gap-x-4">
+          <Link to="/" className="font-semibold text-ink-text no-underline sm:mr-2">
+            travel
           </Link>
-        ))}
+          {NAV_LINKS.map(([to, label]) => (
+            <Link key={to} to={to} className="text-sm text-ink-text/70 no-underline">
+              {label}
+            </Link>
+          ))}
+        </div>
         <ThemeToggle />
       </div>
     </nav>

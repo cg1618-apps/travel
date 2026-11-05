@@ -104,6 +104,12 @@
   }
 }
 
+/* The nav bar's height. Whatever else sticks to the window offsets by this, so
+   it pins below the bar rather than under it. */
+:root {
+  --nav-h: 3.5rem;
+}
+
 html,
 body,
 #root {

@@ -68,11 +68,12 @@ const FILTER_TONES = {
 }
 
 // A sticky header needs its scroll container to be the one that scrolls. A
-// wide screen fits the sheet, so the page scrolls and nothing here clips; a
-// narrow one scrolls sideways inside this box, which is then also given the
-// vertical scroll so the header can stick to its top.
+// wide screen fits the sheet, so the page scrolls, nothing here clips and the
+// header pins below the nav bar; a narrow one scrolls sideways inside this box,
+// which is then also given the vertical scroll so the header can stick to its
+// top, and is sized to fit in the screen the nav bar leaves.
 const SCROLLER =
-  'max-h-[calc(100dvh-1rem)] overflow-auto min-[1160px]:max-h-none min-[1160px]:overflow-visible'
+  'max-h-[calc(100dvh_-_var(--nav-h)_-_1rem)] overflow-auto min-[1160px]:max-h-none min-[1160px]:overflow-visible'
 
 // The header's own borders scroll away under border-collapse, so the line
 // under it is a shadow.
@@ -230,7 +231,7 @@ export function Grid({
 
       <div className={SCROLLER}>
         <table className="w-full min-w-[1110px] border-collapse text-sm whitespace-nowrap">
-          <thead className="sticky top-0 z-10">
+          <thead className="sticky top-0 min-[1160px]:top-[var(--nav-h)] z-10">
             <tr>
               <th scope="col" className={NUMBER_HEAD}>
                 #
