@@ -12,7 +12,8 @@ class PackingItemBase(BaseModel):
     category: str | None = None
     bag: str | None = None
     location: str | None = None
-    need: Need | None = None
+    # 需帶 unless the request says otherwise; an explicit null is still a choice.
+    need: Need | None = Need.BRING
     # `ge=0` on both: a negative count is not a state, and the database has no
     # constraint saying so. Over-packing deliberately IS allowed, so there is
     # no check that `quantity_packed <= quantity`.
@@ -42,6 +43,10 @@ class PackingItemBulkCreate(BaseModel):
     """
 
     items: list[PackingItemBase] = Field(min_length=1)
+
+
+class PackingItemIds(BaseModel):
+    ids: list[int]
 
 
 class PackingItemUpdate(NonNullableUpdate):

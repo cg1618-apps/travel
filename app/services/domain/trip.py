@@ -63,6 +63,32 @@ def settle_done(db: Session, trip: Trip) -> None:
         trip.done = False
 
 
+# --- backups --------------------------------------------------------------------
+
+#: What belongs to the place in the trip rather than to the option in it. Named
+#: this way round so a column added later swaps by default: an option that left
+#: part of itself behind would read as a booking that is simply wrong.
+_STAYS_WITH_THE_ROW = frozenset(
+    {"id", "trip_id", "backup_of_id", "section", "packing_list_id", "created_at", "updated_at"}
+)
+
+
+def promote_backup(backup: TripLeg, entry: TripLeg) -> None:
+    """Make `backup`'s option the main one, and `entry`'s option its backup.
+
+    The two rows swap contents rather than `backup_of_id`, so an entry keeps
+    the id lower than its backups' that a restore relies on - see "Choosing the
+    main option swaps contents" in docs/notes/decisions.md. The section and the
+    packing list stay with the entry, because both describe the journey being
+    made rather than one way of making it.
+    """
+    for column in TripLeg.__table__.columns:
+        if column.name not in _STAYS_WITH_THE_ROW:
+            held = getattr(entry, column.name)
+            setattr(entry, column.name, getattr(backup, column.name))
+            setattr(backup, column.name, held)
+
+
 # --- round trips ----------------------------------------------------------------
 
 

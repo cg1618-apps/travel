@@ -37,6 +37,7 @@ import { TIMING_LABELS } from '../lib/labels'
 import { TIMINGS } from '../lib/timing'
 import { CHECK_TONES, NEED_TONES, STATUS_TONES, TIMING_TONES, toneClass, toneForText } from '../lib/tones'
 import { FilterMenu } from './FilterMenu'
+import { ConfirmDialog } from './ConfirmDialog'
 import { GroupOrderDialog, UNCATEGORISED } from './GroupOrderDialog'
 import { GridRow } from './GridRow'
 import { NewRows } from './NewRows'
@@ -68,11 +69,12 @@ const FILTER_TONES = {
 }
 
 // A sticky header needs its scroll container to be the one that scrolls. A
-// wide screen fits the sheet, so the page scrolls and nothing here clips; a
-// narrow one scrolls sideways inside this box, which is then also given the
-// vertical scroll so the header can stick to its top.
+// wide screen fits the sheet, so the page scrolls, nothing here clips and the
+// header pins below the nav bar; a narrow one scrolls sideways inside this box,
+// which is then also given the vertical scroll so the header can stick to its
+// top, and is sized to fit in the screen the nav bar leaves.
 const SCROLLER =
-  'max-h-[calc(100dvh-1rem)] overflow-auto min-[1160px]:max-h-none min-[1160px]:overflow-visible'
+  'max-h-[calc(100dvh_-_var(--nav-h)_-_1rem)] overflow-auto min-[1160px]:max-h-none min-[1160px]:overflow-visible'
 
 // The header's own borders scroll away under border-collapse, so the line
 // under it is a shadow.
@@ -139,7 +141,7 @@ function TimingChips({ selected, onToggle }) {
   )
 }
 
-function Group({ group, numbers, sortable, onMove, rowProps }) {
+function Group({ group, numbers, sortable, selected, onMove, rowProps }) {
   const ids = group.items.map((item) => item.id)
   const move = useCallback((from, to) => onMove(group.key, from, to), [group.key, onMove])
 
@@ -158,6 +160,7 @@ function Group({ group, numbers, sortable, onMove, rowProps }) {
             showName={showName}
             continuesRun={!showName}
             sortLabel={itemTitle(item)}
+            selected={selected.has(item.id)}
             {...rowProps}
           />
         ))}
@@ -176,12 +179,33 @@ export function Grid({
   onAddMany,
   onAddVariant,
   onReorder,
+  deleting = false,
+  deleteFailed = false,
+  onBulkDelete,
 }) {
   const [filters, setFilters] = useState({})
   const [orderingGroups, setOrderingGroups] = useState(false)
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState(new Set())
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const filtering = isFiltering(filters)
   const shown = applyFilters(items, filters)
+  // Read through what is on screen, so a row selected and then filtered out
+  // cannot be deleted unseen.
+  const chosen = shown.filter((item) => selected.has(item.id))
+  const toggleSelected = useCallback((id) => {
+    setSelected((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+  const leaveSelecting = () => {
+    setSelecting(false)
+    setSelected(new Set())
+  }
   const groups = groupByCategory(shown)
   const allGroups = groupByCategory(items)
   const numbers = rowNumbers(items)
@@ -192,7 +216,15 @@ export function Grid({
     [items, onReorder],
   )
 
-  const rowProps = { categories, locations, onPatch, onDelete, onAddVariant }
+  const rowProps = {
+    categories,
+    locations,
+    onPatch,
+    onDelete,
+    onAddVariant,
+    selecting,
+    onToggleSelected: toggleSelected,
+  }
 
   return (
     <>
@@ -226,11 +258,50 @@ export function Grid({
             </button>
           </>
         )}
+        <button
+          type="button"
+          onClick={() => (selecting ? leaveSelecting() : setSelecting(true))}
+          disabled={!selecting && items.length === 0}
+          className={`${smallButton} disabled:opacity-40`}
+          style={{ minHeight: 36 }}
+        >
+          {selecting ? '完成' : '刪除模式'}
+        </button>
+        {selecting && (
+          <>
+            <label className="flex items-center gap-1 text-sm text-text-muted">
+              <input
+                type="checkbox"
+                className="size-4"
+                aria-label="全選"
+                checked={shown.length > 0 && chosen.length === shown.length}
+                onChange={(event) =>
+                  setSelected(new Set(event.target.checked ? shown.map((item) => item.id) : []))
+                }
+              />
+              全選
+            </label>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={chosen.length === 0 || deleting}
+              className="rounded-md border border-danger px-3 text-sm text-danger disabled:opacity-40"
+              style={{ minHeight: 36 }}
+            >
+              刪除所選（{chosen.length}）
+            </button>
+            {deleteFailed && (
+              <p role="alert" className="m-0 w-full text-sm text-danger">
+                無法刪除，請再試一次。
+              </p>
+            )}
+          </>
+        )}
       </div>
 
       <div className={SCROLLER}>
         <table className="w-full min-w-[1110px] border-collapse text-sm whitespace-nowrap">
-          <thead className="sticky top-0 z-10">
+          <thead className="sticky top-0 min-[1160px]:top-[var(--nav-h)] z-10">
             <tr>
               <th scope="col" className={NUMBER_HEAD}>
                 #
@@ -271,7 +342,8 @@ export function Grid({
               key={group.key}
               group={group}
               numbers={numbers}
-              sortable={!filtering}
+              sortable={!filtering && !selecting}
+              selected={selected}
               onMove={onMove}
               rowProps={rowProps}
             />
@@ -306,6 +378,19 @@ export function Grid({
             onReorder(orderIds(order))
           }}
           onCancel={() => setOrderingGroups(false)}
+        />
+      )}
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`刪除 ${chosen.length} 個項目？`}
+          body={chosen.map((item) => `「${itemTitle(item)}」`).join('、')}
+          confirmLabel="刪除"
+          onConfirm={() => {
+            setConfirmingDelete(false)
+            onBulkDelete(chosen.map((item) => item.id), leaveSelecting)
+          }}
+          onCancel={() => setConfirmingDelete(false)}
         />
       )}
     </>

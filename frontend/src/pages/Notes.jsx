@@ -3,9 +3,10 @@
  * links, under a 群組 of their own choosing.
  *
  * Shown grouped, the ungrouped notes first with no heading. The ⠿ beside a
- * note drags it within its group, 排序群組 orders the groups, and the server
- * keeps both as one order (`PUT /api/notes/order`), refusing one that splits a
- * group. A note is added and edited in the same form a route's note uses
+ * note drags it within its group, the ↑ / ↓ on a group's heading move the whole
+ * group a place, and the server keeps both as one order
+ * (`PUT /api/notes/order`), refusing one that splits a group. A note is added
+ * and edited in the same form a route's note uses
  * (`NoteEditor.jsx`), where it also needs a title and can take a 群組; its
  * description is a cell of its own on the card too. Links open in a new tab.
  */
@@ -16,7 +17,6 @@ import { useState } from 'react'
 import { endpoints } from '../api/endpoints'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { DeleteMenu } from '../components/DeleteMenu'
-import { GroupOrderDialog } from '../components/GroupOrderDialog'
 import { NoteBody, NoteForm } from '../components/NoteEditor'
 import { DragHandle, SortableItem, SortableList } from '../components/Sortable'
 import { EmptyState, ErrorState, LoadingState } from '../components/States'
@@ -29,10 +29,43 @@ import {
   orderIds,
   reposition,
 } from '../lib/grouping'
-import { noteName } from '../lib/transport'
+import { moveBy, noteName } from '../lib/transport'
 
 const KEY = ['notes']
-const smallButton = 'rounded-md border border-border-strong px-3 text-sm text-text-muted'
+const arrowButton = 'px-2 text-text-faint hover:text-text disabled:opacity-30'
+
+/** A named group's heading; `onMove` is absent when there is nowhere to move it. */
+function GroupHeading({ name, onMove, isFirst, isLast, disabled }) {
+  return (
+    <div className="mb-1 flex items-center gap-1 px-4">
+      <h2 className="m-0 text-xs font-semibold uppercase tracking-wide text-text-faint">{name}</h2>
+      {onMove && (
+        <>
+          <button
+            type="button"
+            aria-label={`上移群組「${name}」`}
+            disabled={disabled || isFirst}
+            onClick={() => onMove(-1)}
+            className={arrowButton}
+            style={{ minHeight: 0 }}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            aria-label={`下移群組「${name}」`}
+            disabled={disabled || isLast}
+            onClick={() => onMove(1)}
+            className={arrowButton}
+            style={{ minHeight: 0 }}
+          >
+            ↓
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
 
 /** One note: ⠿, body, ✎ and ⋯ 刪除筆記; the form in its place while editing. */
 function NoteCard({ note, groupNames, actions }) {
@@ -95,7 +128,6 @@ function NoteCard({ note, groupNames, actions }) {
 export default function Notes() {
   const notes = useApiQuery(KEY, endpoints.notes.index())
   const [adding, setAdding] = useState(false)
-  const [orderingGroups, setOrderingGroups] = useState(false)
   const queryClient = useQueryClient()
 
   const addNote = useApiMutation({
@@ -138,22 +170,15 @@ export default function Notes() {
     <main className="mx-auto max-w-4xl pb-16">
       <div className="flex items-center justify-between gap-2 px-4 pt-6">
         <h1 className="m-0 text-xl font-semibold">筆記</h1>
-        <div className="flex gap-2">
-          {named.length > 1 && (
-            <button type="button" onClick={() => setOrderingGroups(true)} className={smallButton}>
-              排序群組
-            </button>
-          )}
-          {!adding && (
-            <button
-              type="button"
-              onClick={() => setAdding(true)}
-              className="rounded-md bg-brand px-4 text-sm font-medium text-on-brand"
-            >
-              + 新增筆記
-            </button>
-          )}
-        </div>
+        {!adding && (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="rounded-md bg-brand px-4 text-sm font-medium text-on-brand"
+          >
+            + 新增筆記
+          </button>
+        )}
       </div>
       {adding && (
         <div className="mt-3 px-4">
@@ -185,12 +210,24 @@ export default function Notes() {
       ) : (
         groups.map((group) => {
           const ids = group.items.map((note) => note.id)
+          const namedIndex = named.indexOf(group)
           return (
             <section key={group.key} aria-label={group.name ?? undefined} className="mt-3">
               {group.name && (
-                <h2 className="m-0 mb-1 px-4 text-xs font-semibold uppercase tracking-wide text-text-faint">
-                  {group.name}
-                </h2>
+                <GroupHeading
+                  name={group.name}
+                  isFirst={namedIndex === 0}
+                  isLast={namedIndex === named.length - 1}
+                  disabled={reorder.isPending}
+                  onMove={
+                    named.length > 1
+                      ? (delta) =>
+                          reorder.mutate(
+                            orderAfterGroupSort(groups, moveBy(named, namedIndex, delta)),
+                          )
+                      : undefined
+                  }
+                />
               )}
               <ul className="m-0 list-none border-t border-border p-0">
                 <SortableList
@@ -207,20 +244,6 @@ export default function Notes() {
             </section>
           )
         })
-      )}
-
-      {orderingGroups && (
-        <GroupOrderDialog
-          groups={named}
-          title="排序群組"
-          hint="拖曳群組調整順序，群組裡的筆記會一起移動。未分組的筆記一直在最前面。"
-          nameOf={(group) => group.name}
-          onSave={(order) => {
-            setOrderingGroups(false)
-            reorder.mutate(orderAfterGroupSort(groups, order))
-          }}
-          onCancel={() => setOrderingGroups(false)}
-        />
       )}
     </main>
   )

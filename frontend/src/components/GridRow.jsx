@@ -80,6 +80,9 @@ export function GridRow({
   onPatch,
   onDelete,
   onAddVariant,
+  selecting = false,
+  selected = false,
+  onToggleSelected,
 }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const openMenu = useCallback(() => setMenuOpen(true), [])
@@ -96,7 +99,17 @@ export function GridRow({
     >
       <td className={NUMBER_CELL}>{number}</td>
       <td className="text-center">
-        <DragHandle label={sortLabel} />
+        {selecting ? (
+          <input
+            type="checkbox"
+            className="size-4 align-middle"
+            aria-label={`選取「${itemTitle(item)}」`}
+            checked={selected}
+            onChange={() => onToggleSelected(item.id)}
+          />
+        ) : (
+          <DragHandle label={sortLabel} />
+        )}
       </td>
       <td className={cell}>
         <TextCell

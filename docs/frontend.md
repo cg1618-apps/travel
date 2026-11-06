@@ -23,7 +23,16 @@ Routes are declared in `src/App.jsx`: `/` the dashboard, `/lists` and
 bookmark still lands: `/trip` to `/trips`, and `/trips/auto-saved` to
 `/trips?tab=auto_saved` (declared above `/trips/:tripId`, which would otherwise
 read it as an id). Any other path renders the dashboard.
-The nav bar names 打包清單, 行程, 交通, 筆記 and 選項, ends with the theme toggle, and the app's name `travel` links to `/`. Every screen is editable, so every one of
+The nav bar names 打包清單, 行程, 交通, 筆記 and 選項, ends with the theme toggle, and the app's name `travel` links to `/`.
+
+**The nav bar is sticky**, and holds one height, `--nav-h` in `index.css`:
+on a screen too narrow for every name, the names scroll sideways and the toggle
+stays put, rather than the bar wrapping to a second row. Anything else that
+sticks to the window pins below it with `top-[var(--nav-h)]`, which
+`nav-offset.test.js` guards. It sits at `z-40`, over the sticky headers and
+under the `z-50` dialogs and menus.
+
+Every screen is editable, so every one of
 them goes through TanStack Query — media's split is query hooks for anything
 written back from the UI and plain `fetch` for read-only pages, and this app has
 no read-only pages.
@@ -197,11 +206,21 @@ cell is painted on the canvas so nothing shows through, and its right edge is a
 shadow, since a collapsed border scrolls away with the table.
 
 The header row is sticky. On a screen wide enough for the whole sheet the page
-scrolls and the header sticks to the top of the window; on a narrower one the
+scrolls and the header sticks just below the nav bar; on a narrower one the
 sheet scrolls sideways inside its own box, which then also scrolls vertically
-(at most a screen tall) so the header can stick to that box's top. A sticky
+(at most the screen the nav bar leaves) so the header can stick to that box's top. A sticky
 element sticks to its nearest scroll container, and an `overflow-x` box is one
 whether or not it scrolls vertically.
+
+**刪除模式** on the sheet's toolbar puts a checkbox in place of each row's grip,
+with 全選 and 刪除所選（n）, disabled with nothing ticked or while a delete is in
+flight. That opens one `ConfirmDialog` naming every selected item; confirming
+calls `POST /api/packing-lists/{id}/items/bulk-delete`, and a failure shows
+無法刪除，請再試一次。 完成 leaves the mode and clears the selection. **Only what
+the filters show can be deleted**: 全選 takes the rows on screen, and a row ticked
+and then filtered out drops out of the count, so nothing goes unseen. Rows cannot
+be dragged in the mode. The checklist has no such mode; it is for working through
+a list, and offers the tick and the row menu alone.
 
 **Colour says the value.** 打包狀態, Double Check, 打包時機, 需求 and 取得地點
 tint their whole cell, a sheet's conditional colour (`lib/tones.js`, classes
@@ -289,8 +308,10 @@ pressing ↑ / ↓ moves a row one place. A drop never leaves its group.
 
 **Groups are ordered in 排序類別**, a dialog of their own
 (`GroupOrderDialog.jsx`), so a drag on the sheet only ever means a row. Nothing
-is saved until its 儲存. The same dialog is 排序群組 on 交通 and 筆記, given
-its own title, hint and group name.
+is saved until its 儲存. Each list keeps its own order, including of categories
+another list also has, because the order is that list's item positions. The same
+dialog is 排序群組 on 交通, given its own title, hint and group name. 筆記 orders
+its groups with arrows instead.
 
 Both write the list's whole order in one `PUT …/order`, built by `orderIds`.
 The page applies it to the cache first, so a dropped row stays where it was
@@ -571,7 +592,7 @@ trip. A `/trips/{id}` that answers 404 — or 422, for an id that is not a
 number — reads 找不到這個行程。
 
 - **Header.** It is sticky: ← 行程, the name and ⋯, the controls, 備註 and
-  保存備註 stay at the top of the screen on a canvas background with a rule
+  保存備註 stay just below the nav bar on a canvas background with a rule
   under it while the entries scroll beneath. The page's `<main>` is
   `overflow-x-clip` rather than `overflow-x-hidden` for that reason — both
   stop a wide card scrolling the page sideways, but `hidden` makes `<main>` a
@@ -675,8 +696,14 @@ number — reads 找不到這個行程。
   lists its backups in `departs_at` order, each a card labelled 備案 1, 備案 2…
   and otherwise the entry's own card: the same 類型, fields, times, ticks, code
   and 備註, edited the same way. It has no packing list, no 移到去程 / 移到回程
-  and no 備案 of its own, and its ⋯ says 刪除備案. **+ 新增備案** opens the same
-  form as + 新增一段 (`POST /api/trip-legs/{id}/backups`). A backup's ticks count
+  and no 備案 of its own, and its ⋯ says 刪除備案. **設為主要**, first in a
+  backup's ⋯, swaps it with the entry (`POST /api/trip-legs/{id}/promote`), with
+  no confirmation because doing it again swaps back. **+ 新增備案** opens the same
+  form as + 新增一段 (`POST /api/trip-legs/{id}/backups`), starting from the
+  entry's 起點, 終點 and 出發時間 as they are when it opens; 類型 and 抵達時間 are
+  left to choose. **A backup going between the same two places as its entry
+  hides them** (`samePlaces`): the ✎ beside 備案 n opens them to edit and closes
+  them again, and it is only there while they match. A backup's ticks count
   for nothing: `tripReadiness`, the date range, the calendar and the index's
   leg lines all read `trip.legs`, which does not include backups.
 - **Adding.** **+ 新增一段** opens a form that asks for the **類型** first;
@@ -704,12 +731,14 @@ read from `['notes']` (`GET /api/notes`).
   edited in place, and its links, each opening in a new tab and shown by its
   title when it has one. ⋯ 刪除筆記 asks
   first; a failed delete shows 無法刪除筆記，請再試一次。
-- **Order.** The ⠿ beside a note drags it within its group; **排序群組**,
-  shown once there are two named groups, orders the named groups. Either sends
-  every note id in the new order, the ungrouped first, in one
-  `PUT /api/notes/order`; the cache takes it first, the list is read again
-  afterwards, and a refusal shows 排序沒有儲存，已還原。 Links are reordered in
-  the form with ↑ / ↓.
+- **Order.** The ⠿ beside a note drags it within its group. Once there are two
+  named groups, each heading has **↑ / ↓**, which move that group and its notes
+  one place and save at once, with no dialog; the arrows that would pass either
+  end are disabled, and all of them while a move is saving. The ungrouped notes
+  have no heading and stay first. Either way every note id goes in the new
+  order, the ungrouped first, in one `PUT /api/notes/order`; the cache takes it
+  first, the list is read again afterwards, and a refusal shows
+  排序沒有儲存，已還原。 Links are reordered in the form with ↑ / ↓.
 - **Empty.** 還沒有筆記。按「+ 新增筆記」開始。
 
 ## 選項 (`/options`)

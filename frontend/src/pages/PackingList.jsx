@@ -168,6 +168,10 @@ export default function PackingList() {
     invalidate,
     mutationFn: (id) => send(endpoints.packingItems.detail(id), 'DELETE'),
   })
+  const bulkRemove = useApiMutation({
+    invalidate,
+    mutationFn: (ids) => send(endpoints.packingLists.bulkDelete(listId), 'POST', { ids }),
+  })
   const reset = useApiMutation({
     invalidate: [key, ['packing-lists']],
     mutationFn: () => send(endpoints.packingLists.reset(listId), 'POST'),
@@ -352,6 +356,9 @@ export default function PackingList() {
               adding={addMany.isPending}
               onAddMany={(rows) => addMany.mutateAsync(rows)}
               onReorder={reorder.mutate}
+              deleting={bulkRemove.isPending}
+              deleteFailed={bulkRemove.isError}
+              onBulkDelete={(ids, onSuccess) => bulkRemove.mutate(ids, { onSuccess })}
               {...handlers}
             />
           </>
