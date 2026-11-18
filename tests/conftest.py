@@ -15,25 +15,6 @@ from pathlib import Path
 
 import pytest
 
-from app.config import settings
-
-
-def admin_url(database: str) -> str:
-    """`settings.sqlalchemy_database_url` with only the trailing db name swapped.
-
-    Both the from-zero migration test and the API fixtures need an
-    administrative connection, and neither may assume the shared PostgreSQL's
-    superuser password — that value is per-machine and not something a test
-    should hardcode. Deriving it from the app's own settings means the tests
-    work wherever the app itself would.
-
-    It lives here rather than in either caller because two copies of this rule
-    is two places to get it wrong.
-    """
-    base = settings.sqlalchemy_database_url
-    return base.rsplit("/", 1)[0] + f"/{database}"
-
-
 VERSIONS = Path(__file__).resolve().parents[1] / "alembic" / "versions"
 
 

@@ -64,6 +64,21 @@ reader can tell a decision from an accident.
   `alembic_version` — which `create_all` never writes — so the divergence
   cannot be quietly undone.
 
+- **Every test database is minted per run, following media's
+  `tests/databases.py`.** The platform's rule asks for `travel_test_<uuid>`;
+  the name is `travel_test_<epoch>_<hex>` instead, as media's is, because the
+  sweep of leftovers needs an age. A database with no connections is not
+  necessarily abandoned: a run that has just issued `CREATE DATABASE` and not
+  yet started the `alembic upgrade` subprocess looks exactly like one, and a
+  neighbour sweeping in that second would drop it. Dropping only leftovers
+  older than two hours closes that window, at the cost of a crashed run's
+  database lingering that long. Unlike media, the run's database is created
+  by a session fixture rather than while the root conftest is imported:
+  nothing in travel connects at import, so the unit tier never touches the
+  server. The split between the unit tier and the database tier is the
+  `tests/api/` directory rather than a marker, which is why
+  `test_migrations_build_the_schema.py` moved there.
+
 - **Revision ids are mnemonics, not sequence numbers.** `p1acking0001`,
   following media (`c1image0001`, `s1r2rootflag`, `al1n2ilist`) and food
   (`i1ngredients_the_ingredient_library`). Only `0001_baseline` is numbered, and
