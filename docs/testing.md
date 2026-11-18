@@ -93,6 +93,12 @@ it implements.
   `CREATE DATABASE` and its first connection, which is why the epoch is in
   the name. So a crashed run's database is gone by the first run two hours
   later.
+- **Every test connection goes to `127.0.0.1`**, even when a machine's `.env`
+  names `localhost`. Windows resolves `localhost` to `::1` first, the
+  development database listens on the IPv4 loopback only, and each new
+  connection — every `alembic` subprocess, every engine — waited 21 seconds
+  before falling back. The app's own default host is `127.0.0.1` for the same
+  reason.
 - `drop()` refuses any name it did not mint, so no mistake here can drop
   `travel` or another app's database.
 

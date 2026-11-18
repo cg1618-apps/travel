@@ -48,7 +48,11 @@ class Settings(BaseSettings):
     postgres_user: str = "travel"
     postgres_password: str = ""
     postgres_db: str = "travel"
-    postgres_host: str = "localhost"
+    # 127.0.0.1, not localhost: the development database publishes on the
+    # IPv4 loopback only, and Windows resolves localhost to ::1 first, so
+    # every new connection waited out a 21-second timeout before falling
+    # back. The box sets POSTGRES_HOST=db and never reads this default.
+    postgres_host: str = "127.0.0.1"
     postgres_port: int = 5432
 
     database_url: str | None = None

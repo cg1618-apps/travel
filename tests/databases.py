@@ -47,6 +47,12 @@ def server_url(database: str) -> str:
     from app.config import settings
 
     url = sa.engine.url.make_url(settings.sqlalchemy_database_url)
+    if url.host == "localhost":
+        # A machine's .env may still name `localhost`. On Windows that
+        # resolves to ::1 first, the development database listens on
+        # 127.0.0.1 only, and every new connection - each alembic
+        # subprocess, each engine - waited 21 seconds before falling back.
+        url = url.set(host="127.0.0.1")
     return url.set(database=database).render_as_string(hide_password=False)
 
 
