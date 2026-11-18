@@ -9,11 +9,12 @@ name: Tests
 # runs when"), and it stays ONE job named `test` so the required check never
 # changes:
 #
-# - a pull request into dev runs the fast checks: one Alembic head, linters,
-#   the unit tier (everything outside tests/api/, which needs no PostgreSQL),
-#   the frontend and the executable bits;
-# - one that touches the migrations or the models adds the from-zero build,
-#   the release round trip and the revision tests;
+# - a pull request into dev runs the fast checks - one Alembic head, linters,
+#   the frontend and the executable bits - and the backend tests
+#   scripts/pr_tests.py selects: the unit tier (everything outside
+#   tests/api/, which needs no PostgreSQL), every test file the pull request
+#   adds or edits, and, when it touches alembic/ or app/models/, the
+#   from-zero build, the release round trip and its revisions' own tests;
 # - the merge queue into dev (merge_group) and a release into main run the
 #   full suite. The queue is what makes the PR's lighter run safe: what lands
 #   on dev is what the queue tested in full.
@@ -69,16 +70,7 @@ jobs:
       # check blocks the merge for ever. Documentation is `docs/**` and any
       # `*.md`; one other file anywhere runs the whole job. An empty diff runs
       # it too, so the fast path is only taken on positive evidence.
-      #
-      # The same step decides how much of the backend suite runs (`suite`):
-      #   full        the merge queue, a release into main, any other base, or
-      #               an empty diff; also a dev pull request that changes the
-      #               test harness, the dependencies, Alembic's own config or
-      #               this workflow, since those can break any test without
-      #               touching it
-      #   migrations  a dev pull request touching alembic/ or app/models/
-      #   unit        any other dev pull request
-      - name: Decide what changed and how much to run
+      - name: Decide whether anything but documentation changed
         id: changes
         env:
           # A merge-queue run has no pull_request payload; its base and head
@@ -86,8 +78,6 @@ jobs:
           # empty, which runs the whole job - safe, but never the fast path.
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
-          EVENT: ${{ github.event_name }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           changed=$(git diff --name-only "$BASE...$HEAD")
           printf '%s\n' "$changed"
@@ -97,19 +87,6 @@ jobs:
           else
             echo "code=true" >> "$GITHUB_OUTPUT"
           fi
-
-          harness='^(tests/conftest\.py|tests/databases\.py|tests/api/conftest\.py|requirements[^/]*\.txt|alembic\.ini|alembic/env\.py|\.github/workflows/)'
-          if [ "$EVENT" != "pull_request" ] || [ "$BASE_REF" != "dev" ] || [ -z "$changed" ]; then
-            suite=full
-          elif printf '%s\n' "$changed" | grep -qE "$harness"; then
-            suite=full
-          elif printf '%s\n' "$changed" | grep -qE '^(alembic/|app/models/)'; then
-            suite=migrations
-          else
-            suite=unit
-          fi
-          echo "Backend suite: $suite"
-          echo "suite=$suite" >> "$GITHUB_OUTPUT"
 
       # The bit has been lost six times across these repositories: both
       # development machines have core.fileMode=false, so git records 100644
@@ -164,29 +141,33 @@ jobs:
         if: steps.changes.outputs.code == 'true'
         run: shellcheck deploy/migrations entrypoint.sh
 
-      # Everything outside tests/api/ needs no PostgreSQL (docs/testing.md,
-      # "Layout"). It runs on every code change; the full suite below
-      # includes it, so it is skipped there rather than run twice.
-      - name: Unit tests
-        if: steps.changes.outputs.code == 'true' && steps.changes.outputs.suite != 'full'
-        run: python -m pytest tests/ --ignore=tests/api -q
-
-      # The from-zero build, the one head, the revision tests (which live in
-      # the same file as the build), the release round trip - which reads
-      # origin/main, present because of fetch-depth: 0 above - and the test
-      # databases' own rules.
-      - name: Migration tests
-        if: steps.changes.outputs.code == 'true' && steps.changes.outputs.suite == 'migrations'
-        run: >-
-          python -m pytest -q
-          tests/api/test_migrations_build_the_schema.py
-          tests/api/test_migration_round_trip.py
-          tests/api/test_test_databases.py
-          tests/api/test_the_fixture_runs_migrations.py
-
-      - name: Full test suite
-        if: steps.changes.outputs.code == 'true' && steps.changes.outputs.suite == 'full'
-        run: python -m pytest tests/ -q
+      # The full suite in the merge queue and on a release into main; on a
+      # pull request into dev, the selection scripts/pr_tests.py prints - the
+      # unit tier, the test files it touches, and the migration guards and its
+      # own revisions' tests when it touches alembic/ or app/models/ (or FULL,
+      # when it changes the harness, the dependencies, Alembic's config or
+      # this workflow). The round trip reads origin/main, present because of
+      # fetch-depth: 0 above. tests/unit/test_pr_tests.py pins the selection.
+      - name: Run the tests
+        if: steps.changes.outputs.code == 'true'
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ] && [ "$BASE_REF" = "dev" ]; then
+            selection=$(python scripts/pr_tests.py "$BASE" "$HEAD")
+          else
+            selection=FULL
+          fi
+          echo "$selection"
+          if [ "$selection" = "FULL" ]; then
+            python -m pytest tests/ -q -p no:cacheprovider
+          else
+            # shellcheck disable=SC2086 # one path per line, none with spaces
+            python -m pytest -q -p no:cacheprovider $selection
+          fi
 
       - uses: actions/setup-node@v7
         if: steps.changes.outputs.code == 'true'

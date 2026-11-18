@@ -310,18 +310,30 @@ as the platform's `docs/registry.md`, "What runs when", lays out:
 
 | Trigger | Backend tests |
 | --- | --- |
-| pull request into `dev` | the unit tier — `pytest tests/ --ignore=tests/api` |
-| …that touches `alembic/` or `app/models/` | the unit tier, plus the migration tests: the from-zero build and the revision tests (`test_migrations_build_the_schema.py`), the release round trip, the test databases' own rules and the fixture's |
-| …that touches the test harness (`tests/conftest.py`, `tests/databases.py`, `tests/api/conftest.py`), `requirements*.txt`, `alembic.ini`, `alembic/env.py` or a workflow | the full suite, because a change there can break any test without touching it |
+| pull request into `dev` | the unit tier (`tests/unit` and every test file directly under `tests/`), plus every test file the pull request adds or edits |
+| …that touches `alembic/` or `app/models/` | the above, plus the from-zero build with its revision tests (`test_migrations_build_the_schema.py`), the release round trip, and every file in `tests/api/` that names, in quotes, a revision the pull request adds or edits |
+| …that touches the test harness (`tests/conftest.py`, `tests/databases.py`, `tests/api/conftest.py`), `requirements*.txt`, `alembic.ini`, `alembic/env.py`, `ci.yml` or `scripts/pr_tests.py`, or whose diff is empty | the full suite, because a change there can break any test without touching it |
 | `merge_group` (the merge queue into `dev`) | the full suite |
 | pull request into `main` (the release) | the full suite |
 
+The selection for a pull request into `dev` is `scripts/pr_tests.py <base>
+<head>`, which prints pytest's arguments one per line, or `FULL`. It is the
+same script, in the same shape, as `media`'s and `food`'s, so all the apps
+select tests the same way. The decision itself is a pure function, and
+`tests/unit/test_pr_tests.py` pins it with no git and no database —
+including the mirror that a database test naming some *other* revision is
+not picked. To see what a branch would run:
+
+```bash
+venv/Scripts/python.exe scripts/pr_tests.py origin/dev HEAD
+```
+
 **The lighter pull-request run is only safe because of the merge queue.** A
 pull request into `dev` is tested in full in the queue, on `dev` plus
-everything queued ahead of it, and lands only if that passes. The deciding
-step prints the suite it chose (`Backend suite: unit`, `migrations` or
-`full`), so the log says which way it went. The `postgres:17` service is
-declared on every run, since a service cannot depend on a step's output.
+everything queued ahead of it, and lands only if that passes. The test step
+prints the selection it ran (or `FULL`), so the log says which way it went.
+The `postgres:17` service is declared on every run, since a service cannot
+depend on a step's output.
 
 ### A documentation-only pull request skips the job
 
