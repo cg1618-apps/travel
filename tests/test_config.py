@@ -34,9 +34,22 @@ def test_defaults_are_intact_for_a_test_that_patches_nothing():
     # Ordered after the two patching tests in this file. Under the leak this
     # sees postgres_host == "db" from the previous test and fails, which is
     # the whole point of asserting it here rather than trusting the fixture.
+    #
+    # Compared with a freshly built Settings rather than a literal, so a
+    # machine whose .env names its own host still passes: the leak is the
+    # module-level object disagreeing with the real environment.
     from app import config
 
-    assert config.settings.postgres_host == "localhost"
+    assert config.settings.postgres_host == config.Settings().postgres_host
+
+
+def test_the_default_host_is_the_ipv4_loopback():
+    # Not localhost: Windows resolves that to ::1 first, the development
+    # database listens on 127.0.0.1 only, and every connection then waited
+    # 21 seconds before falling back.
+    from app import config
+
+    assert config.Settings.model_fields["postgres_host"].default == "127.0.0.1"
 
 
 def test_a_misspelt_app_env_is_refused():

@@ -22,47 +22,62 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from tests.conftest import admin_url
+from tests import databases
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Distinct from the from-zero test's `travel_migration_test`, which that test
-# drops and recreates mid-session. Sharing one database between the two would
-# pull the schema out from under every test in this directory.
-TEST_DATABASE = "travel_test"
 
+def run_alembic(database: str, *command: str) -> subprocess.CompletedProcess:
+    """The real `alembic` command as a subprocess, pointed at one database.
 
-@pytest.fixture(scope="session")
-def migrated_database():
-    """A database built by `alembic upgrade head`, dropped when the session ends."""
-    admin = create_engine(admin_url("postgres"), isolation_level="AUTOCOMMIT")
-    with admin.connect() as conn:
-        conn.execute(text(f"DROP DATABASE IF EXISTS {TEST_DATABASE} WITH (FORCE)"))
-        conn.execute(text(f"CREATE DATABASE {TEST_DATABASE}"))
-
-    url = admin_url(TEST_DATABASE)
-    env = dict(os.environ)
-    env["DATABASE_URL"] = url
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
+    `alembic/env.py` reads the URL from `app.config.settings` at import, so an
+    already-running test process cannot repoint it; `DATABASE_URL` in the
+    child's environment can, because the app honours it verbatim. A
+    subprocess is also what a human runs.
+    """
+    return subprocess.run(
+        [sys.executable, "-m", "alembic", *command],
         cwd=ROOT,
-        env=env,
+        env={**os.environ, "DATABASE_URL": databases.server_url(database)},
         capture_output=True,
         text=True,
     )
-    # Loud rather than mysterious: without this, a failed migration surfaces as
-    # every test in the directory failing on a missing table.
-    assert result.returncode == 0, result.stderr
 
-    yield url
 
-    with admin.connect() as conn:
-        conn.execute(text(f"DROP DATABASE IF EXISTS {TEST_DATABASE} WITH (FORCE)"))
-    admin.dispose()
+@pytest.fixture(scope="session")
+def _leftovers_swept():
+    """Drop what crashed runs left behind, once, before this run creates any.
+
+    Every database fixture below depends on this, so the sweep happens the
+    first time a run touches PostgreSQL - and the unit tier, which never
+    does, needs no server at all.
+    """
+    databases.drop_leftovers()
+
+
+@pytest.fixture(scope="session")
+def migrated_database(_leftovers_swept):
+    """This run's own database, built by `alembic upgrade head` and dropped
+    `WITH (FORCE)` when the session ends. Its name is minted for the run
+    (`tests/databases.py`), so a second run - another worktree, another
+    session - builds its own rather than dropping this one."""
+    with databases.scratch() as name:
+        result = run_alembic(name, "upgrade", "head")
+        # Loud rather than mysterious: without this, a failed migration
+        # surfaces as every test in the directory failing on a missing table.
+        assert result.returncode == 0, result.stderr
+        yield databases.server_url(name)
+
+
+@pytest.fixture
+def scratch_database(_leftovers_swept):
+    """One empty database for a test that builds its own chain, dropped after."""
+    with databases.scratch() as name:
+        yield name
 
 
 @pytest.fixture(scope="session")

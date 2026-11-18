@@ -1,6 +1,6 @@
 # Testing
 
-Last verified: 2026-11-14
+Last verified: 2026-11-18
 
 **What this is for.** How this application's tests are laid out, what each
 fixture gives you, and the two rules that decide whether a test is worth
@@ -11,9 +11,18 @@ writing any test that asserts something is *refused*.
 
 | Directory | What lives there | Needs PostgreSQL |
 | --- | --- | --- |
-| `tests/` | Tests that need neither a schema nor a running app — configuration, the deploy hook's shape, the platform contract, SPA routing, the migration chain. | Only `test_migrations_build_the_schema.py`, which builds its own. |
-| `tests/api/` | Everything that needs a schema or an HTTP client. | Yes. |
+| `tests/` | Tests that need neither a schema nor a running app — configuration, the deploy hook's shape, the platform contract, SPA routing, the health probe with its reads stubbed. | No. |
 | `tests/unit/` | Tests with no database and no network. | No. |
+| `tests/api/` | Everything that needs a schema, an HTTP client or a database of its own — the routers, the backup and import, the migration chain and the release round trip. | Yes. |
+
+**The split between the two tiers is the directory, and nothing else.**
+Everything outside `tests/api/` is the *unit tier*: it never opens a
+connection, so it runs with no PostgreSQL at all (`pytest tests
+--ignore=tests/api`), and a pull request into `dev` runs it on every change. A
+test that needs the database goes in `tests/api/`; a test outside it that
+starts needing one is in the wrong place. No marker is involved, because a
+marker forgotten on one test silently moves it to the wrong tier and a
+directory cannot be forgotten.
 
 Test files are named `test_<subject>.py`. Test functions are named as
 sentences describing the behaviour — `test_a_nameless_item_is_a_422_not_a_500`,
@@ -22,10 +31,12 @@ say what stopped being true.
 
 ## Running them
 
-**One pytest at a time, across every repository on this machine.** All four
-applications share one PostgreSQL, and concurrent runs produce
-`relation does not exist` and unique-constraint failures that look like real
-breakage. Take the machine-wide lock:
+**Every run has a database of its own**, so two runs never collide through
+this app's tests: the database is named for the run, not fixed (see "The
+run's database" below). The machine-wide lock is still taken, because the
+platform's rule is that it stays until all four apps meet that standard —
+one app on a fixed name breaks the guarantee, and a session cannot tell from
+outside which have switched:
 
 ```bash
 LOCK=/c/Users/$USERNAME/AppData/Local/Temp/anime_site_pytest.lock
@@ -42,7 +53,8 @@ Defined in `tests/api/conftest.py`.
 
 | Fixture | Scope | What it gives you |
 | --- | --- | --- |
-| `migrated_database` | session | A `travel_test` database built by `alembic upgrade head`, dropped at the end. |
+| `migrated_database` | session | The URL of this run's own database, built by `alembic upgrade head` and dropped `WITH (FORCE)` at the end. |
+| `scratch_database` | function | The name of an empty database for one test that builds its own chain, dropped afterwards. |
 | `engine` | session | An engine bound to it. |
 | `db_session` | function | A `Session` inside a transaction that is rolled back on teardown, so no test sees another's rows. |
 | `client` | function | A `TestClient` whose requests run inside that same transaction. |
@@ -54,10 +66,48 @@ float numbers, a day-fraction time, `*` and `...` departure cells, a route with
 no end and one with no mode. The parser and writer tests share it, so no
 `.xlsx` is ever committed.
 
-`tests/conftest.py` holds `admin_url(database)`, which derives an
-administrative connection URL from the app's own settings rather than
-hardcoding a per-machine superuser password, and an autouse fixture that
-reloads `app.config` after each test.
+`tests/conftest.py` holds an autouse fixture that reloads `app.config` after
+each test, and the revision helpers the health tests read.
+
+### The run's database
+
+`tests/databases.py` mints every database a test touches, and nothing else
+creates one. Names are `travel_test_<epoch>_<hex>` — never a fixed name, and
+never read from `.env`; only the server and the credentials come from the
+app's own settings (`server_url`), so the tests work wherever the app does.
+It is the media tracker's `tests/databases.py`, and the platform's
+`docs/registry.md`, "How an app's tests use the shared server", is the rule
+it implements.
+
+- **The run's database** is created and migrated by `migrated_database` the
+  first time a test needs it, and dropped `WITH (FORCE)` when the session
+  ends, so an assertion that leaves a connection open cannot block the drop.
+- **Every scratch database** — the from-zero build, the revision tests, the
+  round trip — comes from the same `scratch()` helper under the same kind of
+  name. A scratch database with a fixed name collides with itself exactly as
+  the main one did.
+- **Leftovers are swept once per run**, before the run creates anything
+  (`_leftovers_swept`): a `travel_test_*` database with no connections that is
+  older than two hours is dropped. A database with a connection belongs to a
+  run in progress. A *young* one with none may be a run between
+  `CREATE DATABASE` and its first connection, which is why the epoch is in
+  the name. So a crashed run's database is gone by the first run two hours
+  later.
+- **Every test connection goes to `127.0.0.1`**, even when a machine's `.env`
+  names `localhost`. Windows resolves `localhost` to `::1` first, the
+  development database listens on the IPv4 loopback only, and each new
+  connection — every `alembic` subprocess, every engine — waited 21 seconds
+  before falling back. The app's own default host is `127.0.0.1` for the same
+  reason.
+- `drop()` refuses any name it did not mint, so no mistake here can drop
+  `travel` or another app's database.
+
+`tests/api/test_test_databases.py` pins all of that against a real server,
+with the in-use and the young database as the mirrors of the swept one.
+
+**No test writes outside `tmp_path`, and none creates a cluster-wide
+object** — no role, no tablespace, no database outside `tests/databases.py`.
+A fixed file path is a fixed database name by another route.
 
 **No test reaches Google.** `_no_real_google_sheets`, an autouse fixture in
 `tests/conftest.py`, makes constructing a `gspread.Client` raise. The guard is
@@ -92,7 +142,7 @@ one place the drift is invisible.
 `alembic_version`, which `create_all` never writes. If someone simplifies the
 fixture back, that test is what goes red.
 
-`tests/test_migrations_build_the_schema.py` checks five further claims:
+`tests/api/test_migrations_build_the_schema.py` checks six further claims:
 
 - **The chain builds from nothing** — `alembic upgrade head` run as a real
   subprocess against a scratch database created for the test, then read back
@@ -118,6 +168,40 @@ fixture back, that test is what goes red.
   after the upgrade the 0 is null and the 3 untouched, and an insert naming no
   count stores null. The downgrade fills the nulls with 0 and the column is
   NOT NULL again. Unseeded, both `UPDATE`s would meet nothing.
+- **`t5rip0000005` backfills, and refuses to invent a time** — from the
+  revision before it, one trip and one timed leg are seeded; after the
+  upgrade both carry the backfilled defaults. An untimed leg then makes the
+  downgrade refuse with "will not invent a time", and the mirror — the same
+  downgrade with that leg deleted — goes through.
+
+**A revision test finds the revision before its own through Alembic's
+`ScriptDirectory`** (`previous("k1ind0000001")`), never by writing the
+parent's id in. Reparenting a revision to fix two heads changes its parent,
+and a test holding the old id would then exercise the wrong step without
+failing. A revision-specific test is written in the branch that adds its
+revision and kept until that revision is deployed (the platform's
+`docs/registry.md`, "Migration tests: what is permanent and what is
+retired"); the from-zero build, the one head and the round trip stay for
+good.
+
+### The release round trip
+
+`tests/api/test_migration_round_trip.py` downgrades a scratch database from
+head to **the revision `origin/main` is at** — what a rollback of the release
+does — upgrades it again, and compares every sequence, constraint, index and
+column with the snapshot taken before the downgrade. Exit codes alone would
+pass a pair that runs cleanly and lands somewhere else.
+
+`origin/main`'s revision is found from git and Alembic together: `git
+ls-tree origin/main alembic/versions/` lists the revision files `main` holds,
+and the walk goes down from head through Alembic's `ScriptDirectory` until it
+reaches a revision whose file is among them. When this checkout holds no
+revision beyond `main`, the range is one step (`-1`); when `origin/main`
+cannot be read at all — a shallow clone, a checkout never fetched — it falls
+back to one step too, and says so with a warning. CI checks out with
+`fetch-depth: 0`, which brings `origin/main`, so CI always checks the whole
+release. `test_the_release_range_is_what_a_rollback_would_undo` pins the walk
+on a made-up chain with no database and no git.
 
 None of those is the same claim as **an incremental upgrade succeeds** — a run
 against a database that already holds the earlier revisions, such as the
@@ -212,12 +296,44 @@ the entire failure being guarded against.
 ## What CI runs
 
 `.github/workflows/ci.yml` (workflow name `Tests`) runs on every pull request
-and on nothing else, on `ubuntu-latest`. Its one job is `test`, the check the
-repository ruleset requires on `main` and `dev`. It checks out the whole
-history, decides whether the pull request changes anything but documentation,
-and only if it does goes on to assert that the deploy and backup scripts are executable in the commit, `ruff check .`, shellcheck, the pytest
-suite against a `postgres:17` service, then `npm ci`, the frontend lint, the
-frontend tests and the frontend build.
+and in the merge queue (`merge_group`), and on nothing else, on
+`ubuntu-latest`. Its one job is `test`, the check the repository ruleset
+requires on `main` and `dev`. It checks out the whole history — every branch,
+so `origin/main` is there for the release round trip — and decides whether
+the change touches anything but documentation. Only if it does does it go on.
+
+Every code change then gets the **fast checks**: the deploy and backup
+scripts are executable in the commit, exactly one Alembic head, `ruff check
+.`, shellcheck, `npm ci`, the frontend lint, the frontend tests and the
+frontend build. How much of the backend suite runs depends on the trigger,
+as the platform's `docs/registry.md`, "What runs when", lays out:
+
+| Trigger | Backend tests |
+| --- | --- |
+| pull request into `dev` | the unit tier (`tests/unit` and every test file directly under `tests/`), plus every test file the pull request adds or edits |
+| …that touches `alembic/` or `app/models/` | the above, plus the from-zero build with its revision tests (`test_migrations_build_the_schema.py`), the release round trip, and every file in `tests/api/` that names, in quotes, a revision the pull request adds or edits |
+| …that touches the test harness (`tests/conftest.py`, `tests/databases.py`, `tests/api/conftest.py`), `requirements*.txt`, `alembic.ini`, `alembic/env.py`, `ci.yml` or `scripts/pr_tests.py`, or whose diff is empty | the full suite, because a change there can break any test without touching it |
+| `merge_group` (the merge queue into `dev`) | the full suite |
+| pull request into `main` (the release) | the full suite |
+
+The selection for a pull request into `dev` is `scripts/pr_tests.py <base>
+<head>`, which prints pytest's arguments one per line, or `FULL`. It is the
+same script, in the same shape, as `media`'s and `food`'s, so all the apps
+select tests the same way. The decision itself is a pure function, and
+`tests/unit/test_pr_tests.py` pins it with no git and no database —
+including the mirror that a database test naming some *other* revision is
+not picked. To see what a branch would run:
+
+```bash
+venv/Scripts/python.exe scripts/pr_tests.py origin/dev HEAD
+```
+
+**The lighter pull-request run is only safe because of the merge queue.** A
+pull request into `dev` is tested in full in the queue, on `dev` plus
+everything queued ahead of it, and lands only if that passes. The test step
+prints the selection it ran (or `FULL`), so the log says which way it went.
+The `postgres:17` service is declared on every run, since a service cannot
+depend on a step's output.
 
 ### A documentation-only pull request skips the job
 
