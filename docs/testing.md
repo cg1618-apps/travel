@@ -290,12 +290,32 @@ the entire failure being guarded against.
 ## What CI runs
 
 `.github/workflows/ci.yml` (workflow name `Tests`) runs on every pull request
-and on nothing else, on `ubuntu-latest`. Its one job is `test`, the check the
-repository ruleset requires on `main` and `dev`. It checks out the whole
-history, decides whether the pull request changes anything but documentation,
-and only if it does goes on to assert that the deploy and backup scripts are executable in the commit, `ruff check .`, shellcheck, the pytest
-suite against a `postgres:17` service, then `npm ci`, the frontend lint, the
-frontend tests and the frontend build.
+and in the merge queue (`merge_group`), and on nothing else, on
+`ubuntu-latest`. Its one job is `test`, the check the repository ruleset
+requires on `main` and `dev`. It checks out the whole history — every branch,
+so `origin/main` is there for the release round trip — and decides whether
+the change touches anything but documentation. Only if it does does it go on.
+
+Every code change then gets the **fast checks**: the deploy and backup
+scripts are executable in the commit, exactly one Alembic head, `ruff check
+.`, shellcheck, `npm ci`, the frontend lint, the frontend tests and the
+frontend build. How much of the backend suite runs depends on the trigger,
+as the platform's `docs/registry.md`, "What runs when", lays out:
+
+| Trigger | Backend tests |
+| --- | --- |
+| pull request into `dev` | the unit tier — `pytest tests/ --ignore=tests/api` |
+| …that touches `alembic/` or `app/models/` | the unit tier, plus the migration tests: the from-zero build and the revision tests (`test_migrations_build_the_schema.py`), the release round trip, the test databases' own rules and the fixture's |
+| …that touches the test harness (`tests/conftest.py`, `tests/databases.py`, `tests/api/conftest.py`), `requirements*.txt`, `alembic.ini`, `alembic/env.py` or a workflow | the full suite, because a change there can break any test without touching it |
+| `merge_group` (the merge queue into `dev`) | the full suite |
+| pull request into `main` (the release) | the full suite |
+
+**The lighter pull-request run is only safe because of the merge queue.** A
+pull request into `dev` is tested in full in the queue, on `dev` plus
+everything queued ahead of it, and lands only if that passes. The deciding
+step prints the suite it chose (`Backend suite: unit`, `migrations` or
+`full`), so the log says which way it went. The `postgres:17` service is
+declared on every run, since a service cannot depend on a step's output.
 
 ### A documentation-only pull request skips the job
 
