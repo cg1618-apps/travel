@@ -1,6 +1,6 @@
 # Frontend
 
-Last verified: 2026-10-03
+Last verified: 2026-11-19
 
 **What this is for.** How the React app is laid out, where each kind of thing
 lives, and the decisions a new screen has to follow. The endpoints it calls are
@@ -795,7 +795,11 @@ stored the page follows the OS, live. `index.html` applies the same rule in an
 inline script before the first paint, so a dark phone never flashes bone paper
 on load. Every colour comes from the semantic tokens, which is what lets one
 attribute recolour every screen. Media-specific tokens, such as its per-media-type
-scope hues, are not copied.
+scope hues, are not copied, and no component is shared: the apps are separate
+repositories, and a shared component library would be a git pointer between
+them. The theme is a hook (`useTheme`) rather than media's context provider,
+because only the nav bar reads it — the colours come from the attribute through
+the tokens, not from React.
 
 Use the semantic tokens (`bg-surface`, `text-text-muted`, `border-border`)
 rather than raw colours, so a palette change reaches every screen at once.

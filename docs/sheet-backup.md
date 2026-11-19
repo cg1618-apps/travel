@@ -1,6 +1,6 @@
 # Backing up to the Travel sheet, and restoring from it
 
-Last verified: 2026-10-07
+Last verified: 2026-11-19
 
 **What this is for.** travel copies its whole database into a Google
 spreadsheet called **Travel**. The copy serves two purposes:
@@ -13,7 +13,7 @@ This is also how data moves between the home and company machines, and the
 only copy of travel's data kept off the box. The box's own dumps are taken
 only at deploy time and stay on the box.
 
-Why it is shaped this way is in `notes/decisions.md`, "The sheet backup". The
+Why it is shaped this way is in `notes/decisions/2026-10-07-sheet-backup.md`. The
 endpoint is in `api.md`, the button in `frontend.md`, and the nightly job in
 `deployment-selfhost.md`.
 

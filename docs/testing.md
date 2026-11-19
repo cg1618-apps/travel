@@ -1,6 +1,6 @@
 # Testing
 
-Last verified: 2026-11-18
+Last verified: 2026-11-19
 
 **What this is for.** How this application's tests are laid out, what each
 fixture gives you, and the two rules that decide whether a test is worth
@@ -134,7 +134,7 @@ It also records each call, so a test can assert what was *not* done.
 
 `migrated_database` runs `alembic upgrade head`. It does **not** call
 `Base.metadata.create_all`, and that is a deliberate divergence from the media
-tracker — see `notes/decisions.md`. A fixture built from the models tests the
+tracker — see `notes/decisions/2026-09-19-test-schema-built-by-alembic.md`. A fixture built from the models tests the
 models against themselves and proves nothing about the migrations, which is the
 one place the drift is invisible.
 
@@ -209,6 +209,21 @@ development database. That proves the last step only.
 
 Say which one you ran. The weaker claim stated honestly is worth more than the
 stronger one rounded up.
+
+## SPA routing is tested against a bundle the test builds
+
+`create_app(dist)` is a factory so the catch-all can be mounted against a
+directory a test controls. Nothing builds the frontend before the suite runs —
+CI builds it in a later step — so `frontend_dist/` need not exist, and the
+module-level `app` then mounts no catch-all at all: a test written against it
+would pass by finding nothing to test. `tests/test_spa_routing.py` therefore
+builds each app with `create_app(dist=tmp_path)`.
+
+It asserts both halves of the file-serving guard: a real file in the bundle is
+served as itself, and a traversal path is not. The `.env` its traversal test
+writes beside the bundle is load-bearing: `is_file()` is False for a path that
+does not exist, so without a real file to leak the test would pass against an
+unguarded handler.
 
 ## The frontend suite
 

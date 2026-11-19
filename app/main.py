@@ -79,7 +79,8 @@ def create_app(dist: Path = DIST) -> FastAPI:
             confined to the dist directory before it is served - otherwise
             `..%2F.env` reads any file beside the bundle, the app's own
             credentials included. This is media's resolve-and-confine block,
-            adopted rather than redesigned; docs/notes/decisions.md records
+            adopted rather than redesigned;
+            docs/notes/decisions/2026-09-20-catch-all-serves-real-files.md records
             why it is that rather than a list of special-cased icon paths.
             """
             if full_path == "api" or full_path.startswith("api/"):
