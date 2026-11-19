@@ -6,7 +6,7 @@ in `notes/`.
 
 | Page | What it holds |
 | --- | --- |
-| `notes/decisions.md` | Why things are the way they are, including rejected alternatives. The one place that is allowed to talk about the past. |
+| `notes/decisions/` | Why things are the way they are, including rejected alternatives: one file per decision, `YYYY-MM-DD-<topic>.md`. The one place that is allowed to talk about the past. |
 | `deployment-selfhost.md` | What a release does to the box, and what your options are when one fails. `bin/rollback` names this page when it freezes. |
 | `api.md` | Every HTTP endpoint, the shared conventions, and the two-step refusal that guards 自動保存. |
 | `frontend.md` | How the React app is laid out, the visual language it shares with the media tracker, and the mobile-first rules a new screen follows. |
@@ -16,6 +16,7 @@ in `notes/`.
 | `sheet-import.md` | How the owner's Google Sheet export is loaded into an empty database, what each tab becomes, and what is skipped or refused. |
 | `sheet-backup.md` | How the whole database is copied to the Travel sheet and restored from it, what the readable tabs show, and what a restore refuses. |
 | `logging.md` | What a log line looks like, why uvicorn's loggers are taken over, and why an inbound `X-Request-ID` is validated even though this app is gated. travel's half of a platform contract. |
+| `to-do-next.md` | Decided work nobody has started, in the order it is to be built. An item is closed by deleting it in the change that builds it. |
 | `open-items.md` | Known defects and unmade decisions nobody is working on. Everything in it is open; an item is closed by deleting it in the change that fixes it. |
 | `superpowers/` | Where a spec and a plan live **while a task is in progress**, and nowhere else. Both are deleted when that task ends, with anything durable moved into a real page first — so the directory is absent between tasks, which is its normal state. |
 

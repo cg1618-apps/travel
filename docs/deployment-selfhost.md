@@ -1,6 +1,6 @@
 # Deployment, and getting back from a bad one
 
-Last verified: 2026-10-08
+Last verified: 2026-11-19
 
 **What this is for.** What a release of `travel` does to the box, and what your
 options are when one fails. `bin/rollback` names this page when it freezes, so
@@ -35,6 +35,16 @@ platform's `CLAUDE.md`, "Git Branches").
 `deploy/migrations` is the hook the platform calls. It has three subcommands —
 `current`, `added` and `downgrade` — and it must be committed executable
 (`git ls-tree HEAD -- deploy/migrations` must show `100755`; CI asserts it).
+
+- **`downgrade` runs the new image, not the one being rolled back to**, with
+  `--entrypoint alembic`. The previous image has never heard of the revisions
+  being reversed, so it cannot undo them; and without the entrypoint override
+  the image's own `entrypoint.sh` would discard the command and re-run the
+  upgrade that just failed.
+- **`current` clears `COMPOSE_PROJECT_NAME`; `downgrade` does not.** `current`
+  reaches the shared PostgreSQL, which lives in the platform's compose project;
+  `downgrade` runs this app's own image in this app's project, where the
+  exported name is the right one.
 
 ## When the rollback freezes
 

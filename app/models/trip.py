@@ -47,7 +47,8 @@ class Trip(Base, TimestampMixin, KindMixin):
     # 已準備完成: the owner's mark that the trip is ready. Only a ready trip can
     # be marked, and a write that makes it not ready clears it in the same
     # transaction - see `app.services.domain.trip`. Independent of `kind` and
-    # `usage` on purpose - see docs/notes/decisions.md.
+    # `usage` on purpose - see
+    # docs/notes/decisions/2026-11-04-done-is-a-gated-flag.md.
     done: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
