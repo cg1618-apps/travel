@@ -6,7 +6,7 @@
 import { AUTO_SAVED_LABEL, KIND_LABELS, USAGE_LABELS } from './labels'
 import { taipeiInputValue, tripEnd, tripStart } from './trips'
 
-export const AUTO_SAVE_LIMIT = { lists: 5, trips: 10 }
+export const AUTO_SAVE_LIMIT = { lists: 10, trips: 10 }
 
 const CURRENT = ['in_use', 'upcoming']
 

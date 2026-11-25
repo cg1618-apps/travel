@@ -1,7 +1,7 @@
 """Creating a list, copying one, its kind and usage, and the refusal standing
 between you and a list you did not mean to destroy.
 
-`five_auto_saved` follows `test_auto_save.py`'s reasoning and is rebuilt here
+`full_auto_saved` follows `test_auto_save.py`'s reasoning and is rebuilt here
 for the same reason: every assertion about the queue refusing is vacuous
 without it. A fresh database has nothing to drop, so the refusal cannot fail.
 """
@@ -12,28 +12,27 @@ import pytest
 
 from app.constants import Kind, Usage
 from app.models import PackingItem, PackingList
+from app.services.domain.auto_save import AUTO_SAVE_LIMIT
 
 EPOCH = datetime(2026, 9, 1, tzinfo=timezone.utc)
 
 
 def make_list(db_session, name, *, days=0, **overrides) -> PackingList:
-    packing_list = PackingList(
-        name=name, created_at=EPOCH + timedelta(days=days), **overrides
-    )
+    packing_list = PackingList(name=name, created_at=EPOCH + timedelta(days=days), **overrides)
     db_session.add(packing_list)
     db_session.flush()
     return packing_list
 
 
 @pytest.fixture
-def five_auto_saved(db_session):
+def full_auto_saved(db_session):
     """The queue at its limit, oldest first. Load-bearing: without it no
     refusal can fail."""
     rows = [
         make_list(
             db_session, f"L{day}", usage=Usage.PAST, auto_saved_at=EPOCH + timedelta(days=day)
         )
-        for day in range(5)
+        for day in range(AUTO_SAVE_LIMIT[PackingList])
     ]
     db_session.commit()
     return rows
@@ -88,9 +87,9 @@ def test_a_list_cannot_be_created_saved(client):
     assert client.post("/api/packing-lists", json={"name": "x", "kind": "saved"}).status_code == 422
 
 
-def test_creating_is_never_refused_by_the_queue(five_auto_saved, client, db_session):
+def test_creating_is_never_refused_by_the_queue(full_auto_saved, client, db_session):
     assert client.post("/api/packing-lists", json={"name": "x"}).status_code == 201
-    assert db_session.query(PackingList).count() == 6
+    assert db_session.query(PackingList).count() == AUTO_SAVE_LIMIT[PackingList] + 1
 
 
 # --------------------------------------------------------------------------
@@ -98,7 +97,7 @@ def test_creating_is_never_refused_by_the_queue(five_auto_saved, client, db_sess
 # --------------------------------------------------------------------------
 
 
-def test_past_when_full_is_a_409_and_changes_nothing(five_auto_saved, client, db_session):
+def test_past_when_full_is_a_409_and_changes_nothing(full_auto_saved, client, db_session):
     target = make_list(db_session, "new", days=9)
     db_session.commit()
     refused = client.patch(f"/api/packing-lists/{target.id}", json={"usage": "past"})
@@ -107,13 +106,13 @@ def test_past_when_full_is_a_409_and_changes_nothing(five_auto_saved, client, db
     # which list is about to go.
     assert "L0" in refused.json()["detail"]
     db_session.expire_all()
-    assert db_session.get(PackingList, five_auto_saved[0].id) is not None
+    assert db_session.get(PackingList, full_auto_saved[0].id) is not None
     assert db_session.get(PackingList, target.id).usage == Usage.UNUSED
 
 
-def test_past_when_full_and_confirmed_drops_the_oldest(five_auto_saved, client, db_session):
+def test_past_when_full_and_confirmed_drops_the_oldest(full_auto_saved, client, db_session):
     target = make_list(db_session, "new", days=9)
-    oldest = five_auto_saved[0].id
+    oldest = full_auto_saved[0].id
     db_session.commit()
     response = client.patch(
         f"/api/packing-lists/{target.id}", json={"usage": "past", "evict_confirmed": True}
@@ -126,26 +125,22 @@ def test_past_when_full_and_confirmed_drops_the_oldest(five_auto_saved, client, 
     assert db_session.get(PackingList, oldest) is None
 
 
-def test_past_with_room_needs_no_confirmation(five_auto_saved, client, db_session):
+def test_past_with_room_needs_no_confirmation(full_auto_saved, client, db_session):
     # The mirror, on the same fixture: one slot free, nothing dropped.
-    db_session.delete(five_auto_saved[-1])
+    db_session.delete(full_auto_saved[-1])
     target = make_list(db_session, "new", days=9)
     db_session.commit()
     response = client.patch(f"/api/packing-lists/{target.id}", json={"usage": "past"})
     assert response.status_code == 200
-    assert db_session.query(PackingList).count() == 5
+    assert db_session.query(PackingList).count() == AUTO_SAVE_LIMIT[PackingList]
 
 
-def test_renaming_an_auto_saved_list_is_not_held_to_the_queue(
-    five_auto_saved, client, db_session
-):
+def test_renaming_an_auto_saved_list_is_not_held_to_the_queue(full_auto_saved, client, db_session):
     # It already occupies its slot. A check that counted it again would make
     # every edit of a full queue's lists fail.
-    response = client.patch(
-        f"/api/packing-lists/{five_auto_saved[0].id}", json={"name": "renamed"}
-    )
+    response = client.patch(f"/api/packing-lists/{full_auto_saved[0].id}", json={"name": "renamed"})
     assert response.status_code == 200
-    assert db_session.query(PackingList).count() == 5
+    assert db_session.query(PackingList).count() == AUTO_SAVE_LIMIT[PackingList]
 
 
 def test_saving_and_unsaving(client, db_session):
@@ -256,7 +251,7 @@ def test_auto_saved_is_newest_first(client, db_session):
     assert [row["name"] for row in body["auto_saved"]] == ["newer", "older"]
 
 
-def test_the_index_names_what_would_be_dropped_when_the_queue_is_full(five_auto_saved, client):
+def test_the_index_names_what_would_be_dropped_when_the_queue_is_full(full_auto_saved, client):
     # The dialog needs the id to offer 保存 instead; the 409's detail is a
     # plain string and cannot carry one. This is where it comes from.
     body = client.get("/api/packing-lists").json()
@@ -351,9 +346,7 @@ def test_a_copy_does_not_carry_the_source_list_s_own_fields(client, db_session):
 
 
 def test_copying_from_a_list_that_does_not_exist_is_a_404(client):
-    response = client.post(
-        "/api/packing-lists", json={"name": "Sapporo", "copy_from_id": 9999}
-    )
+    response = client.post("/api/packing-lists", json={"name": "Sapporo", "copy_from_id": 9999})
     assert response.status_code == 404
 
 
@@ -409,9 +402,7 @@ def test_a_list_cannot_be_renamed_to_nothing(client, db_session):
 def test_an_unknown_leg_is_rejected_at_the_edge(client, db_session):
     packing_list = make_list(db_session, "Hanoi")
     db_session.commit()
-    response = client.patch(
-        f"/api/packing-lists/{packing_list.id}", json={"leg": "sideways"}
-    )
+    response = client.patch(f"/api/packing-lists/{packing_list.id}", json={"leg": "sideways"})
     assert response.status_code == 422
 
 
@@ -480,13 +471,24 @@ def test_the_counts_are_per_list_not_across_all_of_them(client, db_session):
 def test_a_reset_unpacks_clears_counts_and_checks_but_leaves_no_need_alone(client):
     lst = client.post("/api/packing-lists", json={"name": "r"}).json()
     url = f"/api/packing-lists/{lst['id']}/items"
-    client.post(url, json={"name": "packed", "status": "packed", "quantity": 2,
-                           "quantity_packed": 2, "needs_double_check": True, "double_checked": True})
+    client.post(
+        url,
+        json={
+            "name": "packed",
+            "status": "packed",
+            "quantity": 2,
+            "quantity_packed": 2,
+            "needs_double_check": True,
+            "double_checked": True,
+        },
+    )
     # Load-bearing: without a no_need item the test cannot tell "left alone"
     # from "never there".
     client.post(url, json={"name": "skip", "status": "no_need"})
     other = client.post("/api/packing-lists", json={"name": "o"}).json()
-    client.post(f"/api/packing-lists/{other['id']}/items", json={"name": "keep", "status": "packed"})
+    client.post(
+        f"/api/packing-lists/{other['id']}/items", json={"name": "keep", "status": "packed"}
+    )
 
     response = client.post(f"/api/packing-lists/{lst['id']}/reset")
     assert response.status_code == 200

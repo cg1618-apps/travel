@@ -43,7 +43,7 @@ def free(db, model, name="new", **fields):
 
 @pytest.fixture
 def full_lists(db_session):
-    """Five auto-saved list slots, oldest first. Load-bearing."""
+    """Ten auto-saved list slots, oldest first. Load-bearing."""
     return [
         past(db_session, PackingList, f"L{day}", day)
         for day in range(AUTO_SAVE_LIMIT[PackingList])
@@ -59,8 +59,8 @@ def full_trips(db_session):
 # --- slots -------------------------------------------------------------------
 
 
-def test_the_limits_are_five_lists_and_ten_trips():
-    assert AUTO_SAVE_LIMIT == {PackingList: 5, Trip: 10}
+def test_the_limits_are_ten_lists_and_ten_trips():
+    assert AUTO_SAVE_LIMIT == {PackingList: 10, Trip: 10}
 
 
 @pytest.mark.parametrize("model", [PackingList, Trip])
