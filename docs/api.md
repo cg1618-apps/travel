@@ -139,7 +139,7 @@ deliberately two steps:
 
 ```
 PATCH /api/packing-lists/12 {"usage": "past"}
-  -> 409 {"detail": "Auto-save already holds 5 lists. Marking this one past
+  -> 409 {"detail": "Auto-save already holds 10 lists. Marking this one past
                      would delete \"Kyoto\", the oldest. Save it first if you
                      want to keep it, or confirm to replace it."}
 

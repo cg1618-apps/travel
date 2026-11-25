@@ -265,7 +265,7 @@ green through the change that breaks it, green forever.
 So every refusal test must make its set non-empty, and must say so. **A fixture
 that exists to make a negative test bite is load-bearing and looks like
 decoration** — `full_lists` and `full_trips` in `tests/api/test_auto_save.py`
-are not scene setting: five auto-saved list slots and ten auto-saved trips are
+are not scene setting: ten auto-saved list slots and ten auto-saved trips are
 the only reason 自動保存's refusal can fail, and
 `test_past_under_the_limit_is_not_refused` is the mirror on the same rows.
 

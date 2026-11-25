@@ -25,7 +25,7 @@ Lists and trips share one model. Every row has exactly one **kind**, and a
 | `template` | 範本 | Creating one as 範本 (blank or copied), or 當作範本 on any list or trip, which **copies** it | null | none |
 | `saved` | 保存 | 保存 on a 一般 or 自動保存 row, which **moves** it | null | none |
 | `free` | 一般 | The ordinary create | `in_use` 使用中 · `upcoming` 未來使用 · `unused` 未使用 | none |
-| `free` + `past` | 自動保存 | Setting a 一般 row to `past` 過去使用 | `past` | lists 5 slots, trips 10 |
+| `free` + `past` | 自動保存 | Setting a 一般 row to `past` 過去使用 | `past` | lists 10 slots, trips 10 |
 
 **自動保存 is not a stored kind.** It is `kind = 'free' AND usage = 'past'`, so
 "a 一般 row marked 過去使用 is auto-saved" is true by construction rather than
