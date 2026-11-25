@@ -1,12 +1,12 @@
 # Business rules
 
-Last verified: 2026-11-04
+Last verified: 2026-11-19
 
 **What this is for.** The rules that are not visible in the schema — what kind
 a list or trip is and how it moves between kinds, what fills 自動保存 and what
 dropping a slot destroys, what a copy carries, and how the status and check
 fields relate. Column-level facts live in `data-model.md`; why a rule is shaped
-this way lives in `notes/decisions.md`.
+this way lives in `notes/decisions/`.
 
 These live in `app/services/domain/`, not in the routers: kinds, usage and the
 自動保存 queue in `auto_save.py`, the copy and reset rules in `packing.py`, the
@@ -25,7 +25,7 @@ Lists and trips share one model. Every row has exactly one **kind**, and a
 | `template` | 範本 | Creating one as 範本 (blank or copied), or 當作範本 on any list or trip, which **copies** it | null | none |
 | `saved` | 保存 | 保存 on a 一般 or 自動保存 row, which **moves** it | null | none |
 | `free` | 一般 | The ordinary create | `in_use` 使用中 · `upcoming` 未來使用 · `unused` 未使用 | none |
-| `free` + `past` | 自動保存 | Setting a 一般 row to `past` 過去使用 | `past` | lists 5 slots, trips 10 |
+| `free` + `past` | 自動保存 | Setting a 一般 row to `past` 過去使用 | `past` | lists 10 slots, trips 10 |
 
 **自動保存 is not a stored kind.** It is `kind = 'free' AND usage = 'past'`, so
 "a 一般 row marked 過去使用 is auto-saved" is true by construction rather than
@@ -175,11 +175,10 @@ Every item carries one of `whenever`, `night_before`, `day_of`, `just_before`.
 and offers it in that escalating order in its select and its filter, coloured
 warmer the closer it is to leaving, which is the only special handling it gets.
 
-It used to drive the layout: the list screen grouped by it and highlighted
-whichever groups were "due", computed from `departure_at`. That was removed —
-see `notes/decisions.md`. The escalating order in
-`frontend/src/lib/timing.js` is what survives, along with `daysUntil`, which
-turns a departure date into 明天出發 ("leaving tomorrow"). That still runs on the frontend
+Nothing groups or highlights by it
+(`notes/decisions/2026-09-19-packing-timing-is-a-column.md`). The escalating
+order is in `frontend/src/lib/timing.js`, beside `daysUntil`, which turns a
+departure date into 明天出發 ("leaving tomorrow"). That runs on the frontend
 because the viewer's calendar day is the one that matters and the server's is
 not necessarily the same one.
 
@@ -209,7 +208,9 @@ earliest entry `departs_at`; a list at its effective departure date (see
 "Departure source"), taken as 00:00 in Asia/Taipei, so a list and a trip on the
 same day compare by the trip's clock time. A row with no start goes last, and
 rows that tie — every row without a start among them — keep the order they
-came in (newest created first). 使用中 is not put before 未來使用. The rule is
+came in (newest created first). 使用中 is not put before 未來使用: "what is
+next" is answered by the start, and a 未來使用 trip tomorrow is more urgent
+than a 使用中 list whose trip began last week. The rule is
 `onDashboard` in `frontend/src/lib/kinds.js` and `on_dashboard` in
 `app/services/domain/dashboard.py`, pinned to each other by
 `tests/unit/test_dashboard_rule.py`; the sheet's readable tabs follow it.
@@ -287,8 +288,10 @@ and spelled out in `tests/unit/test_leg_types.py`:
 
 **Times are optional.** An entry may have neither, either or both. When
 `departs_at` is set and `arrives_at` is not, the server sets `arrives_at` to
-`departs_at` — on create, and on the entry as a `PATCH` leaves it. Arriving at
-the moment of departure is allowed; arriving before it is refused. Entries
+`departs_at` — on create, and on the entry as a `PATCH` leaves it — so an entry
+with a start always has an end, and every reader asking when it ends (已結束,
+the calendar) gets one answer. Arriving at the moment of departure is allowed,
+since the fill produces exactly that; arriving before it is refused. Entries
 read by `departs_at`, untimed ones last, then by `id`.
 
 ## 已準備完成 and 已買票 (Readiness)
@@ -445,7 +448,9 @@ report which one applied as `departure_source`.
 `label_option` rows are suggestions for the free-text `category`, `bag` and
 `location` fields of an item and the `ticket_type` of a trip leg, learned from
 what gets typed. An item or leg may always carry a value that is not among
-them.
+them. They are learned rather than curated, so autocomplete is useful from the
+first item instead of after a seeding pass; a small screen (選項) renames,
+reorders and prunes them.
 
 - **Saving an item records its `category`, `bag` and `location`**, and saving a
   leg its `ticket_type`, as options, if they are not already there.

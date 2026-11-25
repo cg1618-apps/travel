@@ -1,11 +1,11 @@
 # Data model
 
-Last verified: 2026-11-04
+Last verified: 2026-11-19
 
 **What this is for.** Every table this application ships, what each column
 means, and which rules the database itself enforces. The vocabularies the
 enumerated columns draw on live in `app/constants.py` and are not repeated
-here; why the shape is what it is lives in `notes/decisions.md`.
+here; why the shape is what it is lives in `notes/decisions/`.
 
 The authority is `alembic/versions/`. If a row here and a migration disagree,
 the migration wins and this page is wrong.
@@ -44,7 +44,9 @@ flowchart TD
 Solid edges are foreign keys; the two dotted ones are not. A round-trip pair is
 two `packing_list` rows sharing a `pair_id` value, and the free-text `category`,
 `bag`, `location` and `ticket_type` fields are values that `label_option` merely
-suggests. Neither is enforced, and both are deliberate — see `notes/decisions.md`.
+suggests. Neither is enforced, and both are deliberate — see
+`notes/decisions/2026-09-19-round-trip-is-two-lists.md` and
+`notes/decisions/2026-09-19-closed-vocabularies-are-check-constraints.md`.
 `trip_leg` to `packing_list` is a real foreign key, `ON DELETE SET NULL`.
 
 A list's date comes from the leg that links it, when one does: the link is
@@ -259,7 +261,7 @@ the table does not. The relationship on the route is `note_entries`, because
 ## `transport_note_link`
 
 One URL on a note, with an optional title. A row per link, not an array or a
-text column — see `notes/decisions.md`. The API reads and writes a note's links
+text column — see `notes/decisions/2026-11-04-route-note-links-are-rows.md`. The API reads and writes a note's links
 as one ordered list, and replaces the rows wholesale on change.
 
 | Column | Type | Null | Default | Notes |
@@ -319,7 +321,9 @@ columns, with the same constraints, as on `packing_list`.
 
 One entry (一段) of a trip — the sheet's This time row. The table and the API
 keep the name leg. Times are timestamps with a zone, entered and shown in
-Asia/Taipei, and both are optional. The relationship orders legs by
+Asia/Taipei, and both are optional. The zone is read through `zoneinfo`, which
+needs the operating system's zone database; Windows has none, so `tzdata` is a
+runtime dependency. The relationship orders legs by
 `departs_at`, untimed ones last, then by `id`.
 
 **A row with `backup_of_id` set is a 備案**, a backup of another entry. It is

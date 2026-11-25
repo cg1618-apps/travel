@@ -1,6 +1,6 @@
 """The 自動保存 queue and every move between kinds, for lists and trips.
 
-自動保存 is a 一般 row whose usage is 過去使用. The queue is capped - five list
+自動保存 is a 一般 row whose usage is 過去使用. The queue is capped - ten list
 slots, ten trips - and the oldest slot is dropped to make room, but never
 silently: the first attempt raises `AutoSaveFull` naming what would go, and
 only a confirmed retry drops it.
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.constants import Kind, Usage
 from app.models import PackingList, Trip
 
-AUTO_SAVE_LIMIT: dict[type, int] = {PackingList: 5, Trip: 10}
+AUTO_SAVE_LIMIT: dict[type, int] = {PackingList: 10, Trip: 10}
 
 
 class KindRefused(ValueError):

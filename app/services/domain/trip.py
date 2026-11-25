@@ -77,8 +77,8 @@ def promote_backup(backup: TripLeg, entry: TripLeg) -> None:
     """Make `backup`'s option the main one, and `entry`'s option its backup.
 
     The two rows swap contents rather than `backup_of_id`, so an entry keeps
-    the id lower than its backups' that a restore relies on - see "Choosing the
-    main option swaps contents" in docs/notes/decisions.md. The section and the
+    the id lower than its backups' that a restore relies on - see
+    docs/notes/decisions/2026-11-05-promote-swaps-contents.md. The section and the
     packing list stay with the entry, because both describe the journey being
     made rather than one way of making it.
     """

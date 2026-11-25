@@ -1,20 +1,39 @@
 name: Tests
 
-# Pull requests only, and ubuntu-latest only. The self-hosted runner is a
-# machine in a house and every repository in this organisation is public; a
-# fork's pull request running on it is the standard catastrophe. No
+# Pull requests and the merge queue, and ubuntu-latest only. The self-hosted
+# runner is a machine in a house and every repository in this organisation is
+# public; a fork's pull request running on it is the standard catastrophe. No
 # pull_request-triggered job may ever name it.
+#
+# How much runs depends on the trigger (the platform's docs/registry.md, "What
+# runs when"), and it stays ONE job named `test` so the required check never
+# changes:
+#
+# - a pull request into dev runs the fast checks - one Alembic head, linters,
+#   the frontend and the executable bits - and the backend tests
+#   scripts/pr_tests.py selects: the unit tier (everything outside
+#   tests/api/, which needs no PostgreSQL), every test file the pull request
+#   adds or edits, and, when it touches alembic/ or app/models/, the
+#   from-zero build, the release round trip and its revisions' own tests;
+# - the merge queue into dev (merge_group) and a release into main run the
+#   full suite. The queue is what makes the PR's lighter run safe: what lands
+#   on dev is what the queue tested in full.
+#
+# merge_group must be here BEFORE the queue is enabled, or a queued pull
+# request waits for ever on a `test` that never runs.
 on:
   pull_request:
+  merge_group:
 
 jobs:
   test:
     runs-on: ubuntu-latest
     services:
-      # tests/test_migrations_build_the_schema.py opens an administrative
-      # connection and builds a scratch database from zero. ubuntu-latest
-      # ships PostgreSQL but does not run it, so without this service the
-      # test errors rather than skipping.
+      # Everything in tests/api/ needs it: every run creates and drops its own
+      # travel_test_* databases through an administrative connection
+      # (tests/databases.py). ubuntu-latest ships PostgreSQL but does not run
+      # it. Declared on every run, including the ones whose steps never
+      # reach it, because a service cannot depend on a step's output.
       postgres:
         image: postgres:17
         env:
@@ -39,6 +58,35 @@ jobs:
       APP_ENV: development
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The whole history, so the base of the pull request is present for
+          # the diff below, and every branch - origin/main above all, which
+          # the release round trip reads its downgrade target from. A shallow clone holds only the merge commit.
+          fetch-depth: 0
+
+      # A pull request that changes only documentation skips everything below
+      # and still reports `test` as passed. Not a workflow-level paths-ignore:
+      # that leaves the required check unreported, and an unreported required
+      # check blocks the merge for ever. Documentation is `docs/**` and any
+      # `*.md`; one other file anywhere runs the whole job. An empty diff runs
+      # it too, so the fast path is only taken on positive evidence.
+      - name: Decide whether anything but documentation changed
+        id: changes
+        env:
+          # A merge-queue run has no pull_request payload; its base and head
+          # are the merge group's. Without the fallback the diff would be
+          # empty, which runs the whole job - safe, but never the fast path.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE...$HEAD")
+          printf '%s\n' "$changed"
+          if [ -n "$changed" ] && ! printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$'; then
+            echo "Documentation only: every other step is skipped."
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
 
       # The bit has been lost six times across these repositories: both
       # development machines have core.fileMode=false, so git records 100644
@@ -52,6 +100,7 @@ jobs:
       # The backup scripts fail the same way, later and more quietly: the
       # timer's run is refused at 04:20 with nobody watching.
       - name: Deploy scripts must be executable in the commit
+        if: steps.changes.outputs.code == 'true'
         run: |
           for path in deploy/migrations deploy/backup/sheets.sh deploy/backup/install.sh; do
             mode=$(git ls-tree HEAD -- "$path" | awk '{print $1}')
@@ -60,34 +109,80 @@ jobs:
           done
 
       - uses: actions/setup-python@v7
+        if: steps.changes.outputs.code == 'true'
         with:
           # Same interpreter as the runtime image (dockerfile: python:3.13-slim).
           python-version: "3.13"
           cache: pip
 
       - name: Install backend dependencies
+        if: steps.changes.outputs.code == 'true'
         run: pip install -r requirements-dev.txt
 
+      # Two migrations parented on the same revision merge cleanly in git and
+      # only collide in Alembic's revision graph. Needs no database: `heads`
+      # reads the revision files. In the merge queue this is the combination
+      # being tested, and it says so in seconds.
+      - name: One Alembic head
+        if: steps.changes.outputs.code == 'true'
+        run: |
+          heads=$(alembic heads)
+          echo "$heads"
+          if [ "$(echo "$heads" | grep -c .)" -ne 1 ]; then
+            echo "::error::More than one Alembic head. Reparent the newer revision's down_revision onto the other head."
+            exit 1
+          fi
+
       - name: Lint backend
+        if: steps.changes.outputs.code == 'true'
         run: ruff check .
 
       - name: Lint shell scripts
+        if: steps.changes.outputs.code == 'true'
         run: shellcheck deploy/migrations entrypoint.sh
 
+      # The full suite in the merge queue and on a release into main; on a
+      # pull request into dev, the selection scripts/pr_tests.py prints - the
+      # unit tier, the test files it touches, and the migration guards and its
+      # own revisions' tests when it touches alembic/ or app/models/ (or FULL,
+      # when it changes the harness, the dependencies, Alembic's config or
+      # this workflow). The round trip reads origin/main, present because of
+      # fetch-depth: 0 above. tests/unit/test_pr_tests.py pins the selection.
       - name: Run the tests
-        run: python -m pytest tests/ -q
+        if: steps.changes.outputs.code == 'true'
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ] && [ "$BASE_REF" = "dev" ]; then
+            selection=$(python scripts/pr_tests.py "$BASE" "$HEAD")
+          else
+            selection=FULL
+          fi
+          echo "$selection"
+          if [ "$selection" = "FULL" ]; then
+            python -m pytest tests/ -q -p no:cacheprovider
+          else
+            # shellcheck disable=SC2086 # one path per line, none with spaces
+            python -m pytest -q -p no:cacheprovider $selection
+          fi
 
       - uses: actions/setup-node@v7
+        if: steps.changes.outputs.code == 'true'
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend dependencies
+        if: steps.changes.outputs.code == 'true'
         run: npm ci
         working-directory: frontend
 
       - name: Lint frontend
+        if: steps.changes.outputs.code == 'true'
         run: npm run lint
         working-directory: frontend
 
@@ -95,11 +190,13 @@ jobs:
       # so nothing in the Python suite covers them. They are only wrong on the
       # evening they matter, which is the worst time to find out.
       - name: Test frontend
+        if: steps.changes.outputs.code == 'true'
         run: npm test
         working-directory: frontend
 
       # dockerfile builds the frontend, so without this a bundle that does not
       # compile is found by the deploy rather than by the pull request.
       - name: Build the frontend
+        if: steps.changes.outputs.code == 'true'
         run: npm run build
         working-directory: frontend
