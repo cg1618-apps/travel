@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { TRANSPORT_TYPES } from './labels'
 import {
   ABSENT, FIXED, FLAGS, LEG_TYPES, OFF, ON, RIDE_TYPES, defaultFlags, fieldLabel, fieldsFor,
-  flagLabel, flagMode, shows, toggleableFlags, untickedLabels,
+  flagLabel, flagMode, shows, tickLabel, toggleableFlags, untickedLabels,
 } from './legTypes'
 
 // The spec's table, written out once more so a change to LEG_TYPES has to be
@@ -51,6 +51,17 @@ describe('flagLabel', () => {
     }
     expect(flagLabel('car', 'paid')).toBe('已付款')
     expect(flagLabel('hsr', 'collected')).toBe('已取票')
+  })
+})
+
+describe('tickLabel', () => {
+  it('reads 已X when ticked and 未X when not', () => {
+    expect(tickLabel('hsr', 'booked', true)).toBe('已訂票')
+    expect(tickLabel('hsr', 'booked', false)).toBe('未訂票')
+    expect(tickLabel('train', 'paid', false)).toBe('未付款')
+    expect(tickLabel('train', 'collected', false)).toBe('未取票')
+    expect(tickLabel('car', 'booked', true)).toBe('已訂')
+    expect(tickLabel('car', 'booked', false)).toBe('未訂')
   })
 })
 
