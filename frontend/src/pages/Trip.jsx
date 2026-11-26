@@ -71,6 +71,7 @@ import {
   flagField,
   flagLabel,
   shows,
+  tickLabel,
   toggleableFlags,
 } from '../lib/legTypes'
 import { parseWholeNumber } from '../lib/numbers'
@@ -659,7 +660,7 @@ function LegCard({ leg, roundTrip = false, backupNumber = null, entry = null, ti
               style={{ minHeight: 32 }}
             >
               {leg[tick] ? '✓ ' : ''}
-              {flagLabel(type, tick)}
+              {tickLabel(type, tick, leg[tick])}
             </button>
           ))}
         </div>
