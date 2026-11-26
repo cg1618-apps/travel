@@ -677,7 +677,10 @@ number — reads 找不到這個行程。
 - **The booking code** (訂票代碼 / 訂單編號), when shown, is large and
   monospaced. Tapping copies it and shows 已複製 for two seconds; a refused
   clipboard shows 無法複製. ✎ edits it.
-- **The ticks** the entry shows are toggles, each its own field.
+- **The ticks** the entry shows are toggles, each its own field. A ticked
+  one is highlighted and reads ✓ 已X; an unticked one reads 未X — 未訂票,
+  未付款, 未取票, 未訂 on 開車 and 腳踏車 (`tickLabel`). ⋯ and the add form
+  still name the tick by its 已X name.
 - **⋯** holds 移到去程 or 移到回程 on a round trip (`PATCH section`), a
   顯示「…」 / 隱藏「…」 item for each optional tick and the code, and
   刪除這段, which asks first and says the entry's 備案 go with it.

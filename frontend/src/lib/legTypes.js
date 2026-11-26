@@ -87,6 +87,12 @@ export function flagLabel(type, flag) {
   return BOOKING_LABELS[flag]
 }
 
+/** A tick as its button reads: 已X when ticked, 未X when not (已訂票 / 未訂票). */
+export function tickLabel(type, tick, ticked) {
+  const label = flagLabel(type, tick)
+  return ticked ? label : label.replace(/^已/, '未')
+}
+
 /** Every flag at the type's default: fixed and optional-on true, the rest false. */
 export function defaultFlags(type) {
   return Object.fromEntries(
